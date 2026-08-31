@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS ma_revoked_codes (
 
 const DEFAULT_APPS = [
   ['servetrack', 'SRV', 'ServeTrack', 'https://servetrack.onrender.com'],
-  ['scheduler', 'SCH', 'After School Scheduler', 'https://after-school-scheduler.onrender.com'],
+  ['scheduler', 'SCH', 'After School Scheduler', 'https://intalsoft-scheduler.onrender.com'],
   ['dealengine', 'DEA', 'Deal Finder', 'https://deal-finder-z4ms.onrender.com']
 ];
 
