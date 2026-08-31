@@ -71,10 +71,14 @@ CREATE TABLE IF NOT EXISTS ma_users (
   email      TEXT NOT NULL UNIQUE,
   name       TEXT NOT NULL DEFAULT '',
   pw         TEXT NOT NULL,                 -- scrypt: salt:hash
+  role       TEXT NOT NULL DEFAULT 'user',  -- owner | user
   active     BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   last_seen  TIMESTAMPTZ
 );
+
+-- for accounts created before roles existed
+ALTER TABLE ma_users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
 
 CREATE TABLE IF NOT EXISTS ma_revoked_codes (
   code       TEXT PRIMARY KEY,
@@ -112,6 +116,17 @@ async function init() {
     const { rows: changed } = await q(
       'UPDATE ma_apps SET secret=$1 WHERE slug=$2 AND secret<>$1 RETURNING slug', [supplied, slug]);
     if (changed.length) console.log(`App secret for ${slug} taken from the environment.`);
+  }
+
+  /* OWNER_EMAIL names the person who owns all of this. Their account is the
+     owner everywhere, in every app, and setting it here means it survives a
+     database that gets rebuilt. It only marks an account that already exists —
+     it never creates one, and never sets a password. */
+  const owner = (process.env.OWNER_EMAIL || '').trim().toLowerCase();
+  if (owner) {
+    const { rows: made } = await q(
+      "UPDATE ma_users SET role='owner' WHERE email=$1 AND role<>'owner' RETURNING email", [owner]);
+    if (made.length) console.log(`${owner} is now the owner.`);
   }
 
   if (!CODE_SECRET) console.log('WARNING: CODE_SECRET not set — codes cannot be issued or verified.');
@@ -338,7 +353,7 @@ async function register({ slug, secret, email, password, name, code }) {
     redeemed = r;
   }
   const p = redeemed ? { plan: 'pro', expires_on: redeemed.expires_on } : await planFor(app.id, mail);
-  return { ok: true, user, plan: p.plan, expires_on: p.expires_on };
+  return { ok: true, user, role: 'user', plan: p.plan, expires_on: p.expires_on };
 }
 
 /* Verify a sign-in. Apps call this instead of holding passwords themselves. */
@@ -362,7 +377,12 @@ async function login({ slug, secret, email, password }) {
   }
   await q('UPDATE ma_users SET last_seen=NOW() WHERE id=$1', [u.id]);
   const p = await planFor(app.id, mail);
-  return { ok: true, user: { id: u.id, email: u.email, name: u.name }, plan: p.plan, expires_on: p.expires_on };
+  /* `role` is the whole point of one sign-in: the owner is the owner in every
+     app, and each app maps that onto whatever it calls an administrator. */
+  return {
+    ok: true, user: { id: u.id, email: u.email, name: u.name },
+    role: u.role || 'user', plan: p.plan, expires_on: p.expires_on
+  };
 }
 
 async function changePassword({ slug, secret, email, oldPassword, newPassword }) {
@@ -401,8 +421,32 @@ async function adminSetPassword({ slug, secret, email, newPassword }) {
   return { ok: true };
 }
 
+/* Create an account from the owner console. This is how the first owner comes
+   into being, and how somebody is added without waiting for them to sign up. */
+async function createUser({ email, name, password, role }) {
+  const mail = String(email || '').trim().toLowerCase();
+  if (!EMAIL_RE.test(mail)) throw new Error('Enter a valid email address');
+  if (String(password || '').length < 8) throw new Error('Password must be at least 8 characters');
+  const { rows: taken } = await q('SELECT 1 FROM ma_users WHERE email=$1', [mail]);
+  if (taken.length) throw new Error('An account already uses ' + mail);
+  const { rows } = await q(
+    'INSERT INTO ma_users (email, name, pw, role) VALUES ($1,$2,$3,$4) RETURNING email, role',
+    [mail, String(name || '').trim(), hashPassword(password), role === 'owner' ? 'owner' : 'user']);
+  console.log(`Account created: ${mail} (${rows[0].role})`);
+  return rows[0];
+}
+
+/* The owner is the owner in every app. Making someone an owner here makes them
+   an administrator everywhere, so it is a deliberate act with a log line. */
+async function setUserRole(email, role) {
+  const { rows } = await q('UPDATE ma_users SET role=$1 WHERE email=$2 RETURNING email, role',
+    [role === 'owner' ? 'owner' : 'user', String(email || '').trim().toLowerCase()]);
+  if (rows.length) console.log(`${rows[0].email} is now ${rows[0].role === 'owner' ? 'an owner' : 'an ordinary user'}.`);
+  return rows[0] || null;
+}
+
 const listUsers = async () => (await q(`
-  SELECT u.id, u.email, u.name, u.active, u.created_at, u.last_seen,
+  SELECT u.id, u.email, u.name, u.role, u.active, u.created_at, u.last_seen,
     (SELECT json_agg(json_build_object('app', a.name, 'plan', s.plan, 'expires_on', s.expires_on))
      FROM ma_subscriptions s JOIN ma_apps a ON a.id = s.app_id WHERE s.account = u.email) AS plans
   FROM ma_users u ORDER BY u.created_at DESC LIMIT 300`)).rows;
@@ -426,5 +470,6 @@ module.exports = {
   init, q, pool, listApps, issue, listSubscriptions, listRedemptions,
   redeem, status, revokeCode, setPlan, applyStripe, mintCode, parseCode, sign,
   register, login, changePassword, adminSetPassword, listUsers, setUserPassword, toggleUser,
+  createUser, setUserRole,
   hashPassword, checkPassword
 };

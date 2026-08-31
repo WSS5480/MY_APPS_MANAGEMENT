@@ -2,10 +2,10 @@
   "name": "my-apps",
   "version": "1.0.0",
   "private": true,
-  "description": "Control panel for all Render services: status, deploys, expiries and costs",
-  "main": "server.js",
+  "description": "Accounts, owners and subscriptions for every app, plus a control panel for the Render services behind them",
+  "main": "myapps-server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node myapps-server.js"
   },
   "engines": {
     "node": ">=20"
