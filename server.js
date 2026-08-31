@@ -13,7 +13,7 @@ const crypto = require('crypto');
 const store = require('./store');
 
 const PORT = process.env.PORT || 3000;
-const BUILD = '2026-08-18.3';
+const BUILD = '2026-08-31.1';
 const PASSWORD = process.env.APP_PASSWORD || '';
 const RENDER_KEY = process.env.RENDER_API_KEY || '';
 const SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -354,25 +354,26 @@ const json = (res, code, obj) => {
 };
 
 async function subsData() {
-  const [apps, subs, redemptions] = await Promise.all([
-    store.listApps(), store.listSubscriptions(), store.listRedemptions()
+  const [apps, subs, redemptions, users] = await Promise.all([
+    store.listApps(), store.listSubscriptions(), store.listRedemptions(), store.listUsers()
   ]);
-  return { apps, subs, redemptions, minted: null, dbError: null };
+  return { apps, subs, redemptions, users, minted: null, dbError: null };
 }
 
-function subsPage({ apps, subs, redemptions, minted, dbError }) {
+function subsPage({ apps, subs, redemptions, users = [], minted, dbError, notice }) {
   const pro = subs.filter(s => s.state === 'Pro').length;
   return page('Subscriptions — My Apps', `
   <div class="top"><b>My Apps</b><span class="sub" style="color:#9db8d6">subscriptions</span>
     <span class="sp"></span><a href="/">status</a> <a href="/logout">sign out</a></div>
   <div class="wrap">
     ${dbError ? `<div class="al bad"><b>Database unavailable</b>${esc(dbError)}</div>` : ''}
+    ${notice ? `<div class="al info">${esc(notice)}</div>` : ''}
 
     <div class="stats">
       <div class="stat"><div class="v">${apps.length}</div><div class="l">Apps</div></div>
       <div class="stat"><div class="v">${pro}</div><div class="l">On Pro now</div></div>
       <div class="stat"><div class="v">${redemptions.length}</div><div class="l">Codes redeemed</div></div>
-      <div class="stat"><div class="v">${subs.length}</div><div class="l">Accounts tracked</div></div>
+      <div class="stat"><div class="v">${users.length}</div><div class="l">Accounts</div></div>
     </div>
 
     ${minted ? `<div class="card"><h2>${minted.codes.length} code${minted.codes.length === 1 ? '' : 's'}
@@ -423,6 +424,29 @@ function subsPage({ apps, subs, redemptions, minted, dbError }) {
     </div>
 
     <div class="card">
+      <h2>Accounts <span class="sub">one sign-in, every app</span></h2>
+      ${users.length ? `<table><tr><th>Email</th><th>Name</th><th>On</th><th>Joined</th><th>Last seen</th><th></th></tr>
+        ${users.map(u => `<tr>
+          <td>${esc(u.email)}${u.active ? '' : ' <span class="pill warn">off</span>'}</td>
+          <td>${esc(u.name || '—')}</td>
+          <td>${(u.plans || []).filter(p => p.plan === 'pro').map(p => `<span class="pill ok">${esc(p.app)}</span>`).join(' ') || '<span class="sub">free</span>'}</td>
+          <td>${esc(String(u.created_at).slice(0, 10))}</td>
+          <td>${u.last_seen ? esc(String(u.last_seen).slice(0, 10)) : '<span class="sub">never</span>'}</td>
+          <td class="num"><form method="POST" action="/users/toggle" style="display:inline">
+            <input type="hidden" name="email" value="${esc(u.email)}">
+            <button style="background:none;color:#2b5b8c;padding:0;font-size:12.5px">${u.active ? 'suspend' : 'restore'}</button></form></td>
+        </tr>`).join('')}</table>`
+        : '<div class="sub">No one has signed up yet. Accounts appear here the moment someone registers in any of your apps.</div>'}
+      <form method="POST" action="/users/reset" style="margin-top:12px">
+        <div class="grid">
+          <div><label class="sub">Reset password for</label><input name="email" type="email" placeholder="someone@example.com"></div>
+          <div><label class="sub">New password</label><input name="password" type="text" placeholder="at least 8 characters"></div>
+        </div>
+        <button style="margin-top:10px">Set password</button>
+      </form>
+    </div>
+
+    <div class="card">
       <h2>App keys <span class="sub">each app needs these to check codes</span></h2>
       <table><tr><th>App</th><th>Slug</th><th>Prefix</th><th>Secret</th></tr>
         ${apps.map(a => `<tr><td>${esc(a.name)}</td><td><code>${esc(a.slug)}</code></td>
@@ -466,6 +490,28 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  /* Central accounts. Every app posts here instead of holding passwords itself,
+     so one sign-in works everywhere and suspending someone cuts off all of it. */
+  const AUTH = {
+    '/api/v1/auth/register': store.register,
+    '/api/v1/auth/login': store.login,
+    '/api/v1/auth/change-password': store.changePassword,
+    '/api/v1/auth/admin-set-password': store.adminSetPassword
+  };
+  if (AUTH[url.pathname]) {
+    if (req.method !== 'POST') return json(res, 405, { error: 'POST only' });
+    try {
+      const out = await AUTH[url.pathname](JSON.parse(await readBody(req) || '{}'));
+      // On refusal the app still gets `known`/`suspended` — see the note in
+      // store.login(). Apps must not relay them to a browser.
+      return json(res, out.ok ? 200 : (out.status || 400), out.ok ? out
+        : { error: out.error, known: out.known, suspended: out.suspended });
+    } catch (e) {
+      console.error(url.pathname + ' failed:', e.message);
+      return json(res, 400, { error: e.message });
+    }
+  }
+
   if (url.pathname === '/login' && req.method === 'POST') {
     let body = '';
     req.on('data', c => { body += c; if (body.length > 4000) req.destroy(); });
@@ -486,6 +532,10 @@ const server = http.createServer(async (req, res) => {
     return send(res, 302, '', { Location: '/', 'Set-Cookie': 'ma=; Path=/; Max-Age=0' });
   }
 
+  /* Anything else under /api/ is not a route. Say so in JSON: an app that gets
+     an HTML sign-in page back with a 200 could mistake it for a yes. */
+  if (url.pathname.startsWith('/api/')) return json(res, 404, { error: 'No such endpoint: ' + url.pathname });
+
   if (!validToken(cookieOf(req, 'ma'))) return send(res, 200, loginPage(''));
 
   // --- subscriptions ---
@@ -505,9 +555,32 @@ const server = http.createServer(async (req, res) => {
     catch (e) { console.error('revoke failed:', e.message); }
     return send(res, 302, '', { Location: '/subscriptions' });
   }
+  if (url.pathname === '/users/reset' && req.method === 'POST') {
+    const body = new URLSearchParams(await readBody(req));
+    const email = body.get('email');
+    let notice;
+    try {
+      notice = await store.setUserPassword(email, body.get('password'))
+        ? `Password set for ${email}. Tell them to sign in with it and change it.`
+        : `No account here uses ${email}.`;
+    } catch (e) { notice = e.message; }
+    try { return send(res, 200, subsPage(Object.assign(await subsData(), { notice }))); }
+    catch (e) { return send(res, 302, '', { Location: '/subscriptions' }); }
+  }
+  if (url.pathname === '/users/toggle' && req.method === 'POST') {
+    const body = new URLSearchParams(await readBody(req));
+    let notice;
+    try {
+      const u = await store.toggleUser(body.get('email'));
+      notice = u ? `${u.email} is now ${u.active ? 'active again' : 'suspended from every app'}.`
+        : `No account here uses ${body.get('email')}.`;
+    } catch (e) { notice = e.message; }
+    try { return send(res, 200, subsPage(Object.assign(await subsData(), { notice }))); }
+    catch (e) { return send(res, 302, '', { Location: '/subscriptions' }); }
+  }
   if (url.pathname === '/subscriptions') {
     try { return send(res, 200, subsPage(await subsData())); }
-    catch (e) { return send(res, 200, subsPage({ apps: [], subs: [], redemptions: [], dbError: e.message })); }
+    catch (e) { return send(res, 200, subsPage({ apps: [], subs: [], redemptions: [], users: [], dbError: e.message })); }
   }
 
   if (url.searchParams.get('refresh')) cache.at = 0;
