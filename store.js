@@ -65,6 +65,17 @@ CREATE TABLE IF NOT EXISTS ma_subscriptions (
   UNIQUE (app_id, account)
 );
 
+-- One account, usable in every app. Apps never store passwords.
+CREATE TABLE IF NOT EXISTS ma_users (
+  id         SERIAL PRIMARY KEY,
+  email      TEXT NOT NULL UNIQUE,
+  name       TEXT NOT NULL DEFAULT '',
+  pw         TEXT NOT NULL,                 -- scrypt: salt:hash
+  active     BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_seen  TIMESTAMPTZ
+);
+
 CREATE TABLE IF NOT EXISTS ma_revoked_codes (
   code       TEXT PRIMARY KEY,
   reason     TEXT,
@@ -89,6 +100,20 @@ async function init() {
     }
     console.log('Seeded app registry.');
   }
+
+  /* An app's secret can also be set from the environment: APP_SECRET_SERVETRACK
+     and so on. That is what makes it possible to configure both ends without
+     anybody copying a long hex string off a web page onto a phone — the same
+     value goes into this service and into the app that uses it. Set here, it
+     wins; leave it unset and whatever is already stored stays. */
+  for (const [slug] of DEFAULT_APPS) {
+    const supplied = process.env['APP_SECRET_' + slug.toUpperCase()];
+    if (!supplied || supplied.length < 16) continue;
+    const { rows: changed } = await q(
+      'UPDATE ma_apps SET secret=$1 WHERE slug=$2 AND secret<>$1 RETURNING slug', [supplied, slug]);
+    if (changed.length) console.log(`App secret for ${slug} taken from the environment.`);
+  }
+
   if (!CODE_SECRET) console.log('WARNING: CODE_SECRET not set — codes cannot be issued or verified.');
   return true;
 }
@@ -245,7 +270,161 @@ async function applyStripe({ appSlug, account, subscriptionId, active }) {
   return true;
 }
 
+
+/* ------------------------------------------------------------- accounts --- */
+/* scrypt from Node's own crypto: no dependency, and deliberately slow to brute
+   force. Format is salt:hash so the salt travels with the hash. */
+
+function hashPassword(plain) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(String(plain), salt, 64).toString('hex');
+  return `${salt}:${hash}`;
+}
+
+function checkPassword(plain, stored) {
+  if (!stored || !stored.includes(':')) return false;
+  const [salt, hash] = stored.split(':');
+  let candidate;
+  try { candidate = crypto.scryptSync(String(plain), salt, 64).toString('hex'); }
+  catch (e) { return false; }
+  const a = Buffer.from(candidate, 'hex');
+  const b = Buffer.from(hash, 'hex');
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+async function appFromCredentials(slug, secret) {
+  const { rows } = await q('SELECT * FROM ma_apps WHERE slug=$1', [String(slug || '')]);
+  const app = rows[0];
+  if (!app || !app.active) return { error: { ok: false, status: 404, error: 'Unknown app' } };
+  if (app.secret !== secret) return { error: { ok: false, status: 403, error: 'Bad app secret' } };
+  return { app };
+}
+
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+async function planFor(appId, account) {
+  const { rows } = await q('SELECT * FROM ma_subscriptions WHERE app_id=$1 AND account=$2', [appId, account]);
+  const s = rows[0];
+  if (!s) return { plan: 'free', expires_on: null, source: null };
+  if (s.plan === 'pro' && s.expires_on && new Date(s.expires_on) < new Date(new Date().toDateString())) {
+    await q("UPDATE ma_subscriptions SET plan='free', expires_on=NULL, updated_at=NOW() WHERE id=$1", [s.id]);
+    return { plan: 'free', expires_on: null, source: s.source };
+  }
+  return { plan: s.plan, expires_on: s.expires_on, source: s.source };
+}
+
+/* Register an account. A code can be supplied at the same time so someone can
+   sign up and be on Pro in a single step. */
+async function register({ slug, secret, email, password, name, code }) {
+  const { app, error } = await appFromCredentials(slug, secret);
+  if (error) return error;
+
+  const mail = String(email || '').trim().toLowerCase();
+  if (!EMAIL_RE.test(mail)) return { ok: false, status: 400, error: 'Enter a valid email address' };
+  if (String(password || '').length < 8) return { ok: false, status: 400, error: 'Password must be at least 8 characters' };
+
+  const { rows: existing } = await q('SELECT id FROM ma_users WHERE email=$1', [mail]);
+  if (existing.length) return { ok: false, status: 409, error: 'An account already uses that email — sign in instead' };
+
+  const { rows } = await q(
+    'INSERT INTO ma_users (email, name, pw) VALUES ($1,$2,$3) RETURNING id, email, name',
+    [mail, String(name || '').trim(), hashPassword(password)]);
+  const user = rows[0];
+
+  let redeemed = null;
+  if (code) {
+    const r = await redeem({ slug, secret, code, account: mail });
+    if (!r.ok) return { ok: true, status: 200, user, plan: 'free', expires_on: null, codeError: r.error };
+    redeemed = r;
+  }
+  const p = redeemed ? { plan: 'pro', expires_on: redeemed.expires_on } : await planFor(app.id, mail);
+  return { ok: true, user, plan: p.plan, expires_on: p.expires_on };
+}
+
+/* Verify a sign-in. Apps call this instead of holding passwords themselves. */
+async function login({ slug, secret, email, password }) {
+  const { app, error } = await appFromCredentials(slug, secret);
+  if (error) return error;
+
+  const mail = String(email || '').trim().toLowerCase();
+  const { rows } = await q('SELECT * FROM ma_users WHERE email=$1', [mail]);
+  const u = rows[0];
+  // Same message either way, so this cannot be used to discover which emails
+  // exist. `known` and `suspended` ride alongside for the app's own benefit —
+  // an app had to present its secret to ask, and must not pass them to the
+  // browser. They are what let an app tell "no such account here, use your own
+  // records" apart from "that password is wrong".
+  if (!u || !u.active || !checkPassword(password, u.pw)) {
+    return {
+      ok: false, status: 401, error: 'Wrong email or password',
+      known: !!u, suspended: !!(u && !u.active)
+    };
+  }
+  await q('UPDATE ma_users SET last_seen=NOW() WHERE id=$1', [u.id]);
+  const p = await planFor(app.id, mail);
+  return { ok: true, user: { id: u.id, email: u.email, name: u.name }, plan: p.plan, expires_on: p.expires_on };
+}
+
+async function changePassword({ slug, secret, email, oldPassword, newPassword }) {
+  const { error } = await appFromCredentials(slug, secret);
+  if (error) return error;
+  if (String(newPassword || '').length < 8) return { ok: false, status: 400, error: 'Password must be at least 8 characters' };
+  const mail = String(email || '').trim().toLowerCase();
+  const { rows } = await q('SELECT * FROM ma_users WHERE email=$1', [mail]);
+  const u = rows[0];
+  if (!u || !checkPassword(oldPassword, u.pw)) {
+    return { ok: false, status: 401, error: 'Current password is wrong', known: !!u };
+  }
+  await q('UPDATE ma_users SET pw=$1 WHERE id=$2', [hashPassword(newPassword), u.id]);
+  return { ok: true };
+}
+
+/* An app resetting a password on someone's behalf — the "I forgot mine" case,
+   handled by the owner from inside whichever app is to hand.
+ *
+ * This is a real privilege: it needs only the app secret, and it changes the
+ * password for every app at once. It is here because one person owns all of
+ * these apps and would otherwise have to come to My Apps to do it. Every use is
+ * logged. If an app secret ever leaks, rotate it in ma_apps and in that app's
+ * environment, and this power goes with it. */
+async function adminSetPassword({ slug, secret, email, newPassword }) {
+  const { app, error } = await appFromCredentials(slug, secret);
+  if (error) return error;
+  if (String(newPassword || '').length < 8) {
+    return { ok: false, status: 400, error: 'Password must be at least 8 characters' };
+  }
+  const mail = String(email || '').trim().toLowerCase();
+  const { rows } = await q('UPDATE ma_users SET pw=$1 WHERE email=$2 RETURNING email',
+    [hashPassword(newPassword), mail]);
+  if (!rows.length) return { ok: false, status: 404, error: 'No central account uses that email', known: false };
+  console.log(`ADMIN PASSWORD RESET: ${mail} reset via ${app.name}`);
+  return { ok: true };
+}
+
+const listUsers = async () => (await q(`
+  SELECT u.id, u.email, u.name, u.active, u.created_at, u.last_seen,
+    (SELECT json_agg(json_build_object('app', a.name, 'plan', s.plan, 'expires_on', s.expires_on))
+     FROM ma_subscriptions s JOIN ma_apps a ON a.id = s.app_id WHERE s.account = u.email) AS plans
+  FROM ma_users u ORDER BY u.created_at DESC LIMIT 300`)).rows;
+
+async function setUserPassword(email, plain) {
+  if (String(plain || '').length < 8) throw new Error('Password must be at least 8 characters');
+  const { rows } = await q('UPDATE ma_users SET pw=$1 WHERE email=$2 RETURNING email',
+    [hashPassword(plain), String(email || '').trim().toLowerCase()]);
+  return rows.length > 0;
+}
+
+/* Suspending an account locks it out of every app at once, without deleting
+   anything — restoring it puts things back exactly as they were. */
+async function toggleUser(email) {
+  const { rows } = await q('UPDATE ma_users SET active = NOT active WHERE email=$1 RETURNING email, active',
+    [String(email || '').trim().toLowerCase()]);
+  return rows[0] || null;
+}
+
 module.exports = {
   init, q, pool, listApps, issue, listSubscriptions, listRedemptions,
-  redeem, status, revokeCode, setPlan, applyStripe, mintCode, parseCode, sign
+  redeem, status, revokeCode, setPlan, applyStripe, mintCode, parseCode, sign,
+  register, login, changePassword, adminSetPassword, listUsers, setUserPassword, toggleUser,
+  hashPassword, checkPassword
 };
