@@ -13,7 +13,7 @@ const crypto = require('crypto');
 const store = require('./store');
 
 const PORT = process.env.PORT || 3000;
-const BUILD = '2026-08-31.4';
+const BUILD = '2026-08-31.5';
 const PASSWORD = process.env.APP_PASSWORD || '';
 const RENDER_KEY = process.env.RENDER_API_KEY || '';
 const SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -282,7 +282,7 @@ const launcher = apps => !apps.length ? '' : `
       </div>
     </div>`;
 
-function dashboard(data, error, apps = []) {
+function dashboard(data, error, apps = [], tenants = [], tenantAlerts = [], kpis = {}, tenantProblems = [], minted = null) {
   const items = data ? data.items : [];
   const alerts = alertsFor(items);
   const services = items.filter(i => i.kind === 'service');
@@ -316,40 +316,114 @@ function dashboard(data, error, apps = []) {
       </div></div>`;
   };
 
+  /* The apps that matter, not everything on the Render account. The other
+     workspaces are other businesses and do not belong on this screen. */
+  const mine = new Set(apps.map(a => (a.url || '').replace(/^https?:\/\//, '').replace(/\/+$/, '')));
+  const isMine = i => mine.has(String(i.url || '').replace(/^https?:\/\//, '').replace(/\/+$/, ''))
+    || /apps-db/i.test(i.name || '');
+  const ours = items.filter(isMine);
+  const oursSpend = ours.reduce((t, i) => t + (i.price || 0), 0);
+  const oursTrouble = ours.filter(i => i.suspended ||
+    (i.deploy && /fail|canceled|error/i.test(i.deploy.status)));
+
+  const planPill = t => {
+    const today = new Date().toISOString().slice(0, 10);
+    const on = t.expires_on ? String(t.expires_on).slice(0, 10) : null;
+    if (t.plan !== 'pro' || (on && on < today)) return '<span class="pill">Free</span>';
+    if (!on) return '<span class="pill ok">Paid</span>';
+    const left = Math.ceil((new Date(on) - new Date(today)) / 864e5);
+    return `<span class="pill ${left <= 7 ? 'warn' : 'ok'}">Trial · ${left}d</span>`;
+  };
+
+  const byApp = {};
+  for (const t of tenants) (byApp[t.appName] = byApp[t.appName] || []).push(t);
+
   return page('My Apps', `
   <div class="top"><b>My Apps</b><span class="sub" style="color:#BBD2F7">build ${BUILD}</span>
-    <span class="sp"></span><a href="/subscriptions">subscriptions</a>
+    <span class="sp"></span><a href="/subscriptions">accounts &amp; codes</a>
     <a href="/?refresh=1">refresh</a> <a href="/logout">sign out</a></div>
   <div class="wrap">
     ${launcher(apps)}
-    ${error ? `<div class="al bad"><b>Couldn't reach Render</b>${esc(error)}</div>` : ''}
+
     <div class="stats">
-      <div class="stat"><div class="v">${services.length}</div><div class="l">Services</div></div>
-      <div class="stat"><div class="v">${dbs.length}</div><div class="l">Databases</div></div>
-      <div class="stat"><div class="v" style="color:${alerts.some(a => a.level === 'bad') ? 'var(--bad)' : 'var(--ink)'}">${
-        alerts.filter(a => a.level !== 'info').length}</div><div class="l">Need attention</div></div>
-      <div class="stat"><div class="v">~$${spend}</div><div class="l">Per month${unknownPrice ? ' (some unknown)' : ''}</div></div>
+      <div class="stat"><div class="v">${kpis.total}</div><div class="l">Customers</div></div>
+      <div class="stat"><div class="v" style="color:var(--ok)">${kpis.paid}</div><div class="l">Paid</div></div>
+      <div class="stat"><div class="v" style="color:${kpis.trials ? 'var(--warn)' : 'var(--ink)'}">${kpis.trials}</div><div class="l">On trial</div></div>
+      <div class="stat"><div class="v">${kpis.newWeek}</div><div class="l">New this week</div></div>
+      <div class="stat"><div class="v">${kpis.people}</div><div class="l">People</div></div>
+      <div class="stat"><div class="v">~$${oursSpend}</div><div class="l">Hosting</div></div>
     </div>
 
-    ${alerts.length ? `<div class="card"><h2>Attention <span class="sub">worst first</span></h2>
-      ${alerts.map(a => `<div class="al ${a.level}"><b>${esc(a.what)}</b>${esc(a.msg)} — ${esc(a.fix)}</div>`).join('')}
-    </div>` : '<div class="card"><h2>Attention</h2><div class="sub">Nothing needs you right now.</div></div>'}
+    ${tenantAlerts.length ? `<div class="card"><h2>Needs you <span class="sub">newest first</span></h2>
+      ${tenantAlerts.map(a => `<div class="al ${a.level}">${esc(a.text)}</div>`).join('')}
+    </div>` : '<div class="card"><h2>Needs you</h2><div class="sub">Nothing right now.</div></div>'}
 
-    ${Object.entries(byWorkspace).map(([ws, list]) => `
-      <div class="card"><h2>${esc(ws)} <span class="sub">${list.length}</span></h2>
-        <div class="grid">${list.map(card).join('')}</div></div>`).join('')}
+    ${Object.keys(byApp).length ? Object.entries(byApp).map(([appName, list]) => `
+      <div class="card"><h2>${esc(appName)} <span class="sub">${list.length} customer${list.length === 1 ? '' : 's'}</span></h2>
+        <table>
+          <tr><th>${esc(list[0].kind)}</th><th>Plan</th><th class="num">People</th>
+              <th class="num">${esc(list[0].workLabel)}</th><th>Administrator</th><th>Since</th><th></th></tr>
+          ${list.map(t => `<tr>
+            <td><b>${esc(t.name)}</b></td>
+            <td>${planPill(t)}${t.expires_on ? `<div class="sub">to ${esc(String(t.expires_on).slice(0, 10))}</div>` : ''}</td>
+            <td class="num">${t.people}</td>
+            <td class="num">${t.work}</td>
+            <td>${t.adminEmail ? `${esc(t.adminName || '')}<div class="sub">${esc(t.adminEmail)}</div>` : '<span class="sub">none yet</span>'}</td>
+            <td class="sub">${esc(String(t.created || '').slice(0, 10))}</td>
+            <td class="num">
+              <form method="POST" action="/tenant/plan" style="display:inline">
+                <input type="hidden" name="slug" value="${esc(t.app)}">
+                <input type="hidden" name="tenant" value="${esc(t.key)}">
+                <input type="hidden" name="name" value="${esc(t.name)}">
+                <select name="plan" style="padding:4px;border:1px solid var(--line);border-radius:7px;font-size:12px">
+                  <option value="free"${t.plan !== 'pro' ? ' selected' : ''}>Free</option>
+                  <option value="pro"${t.plan === 'pro' ? ' selected' : ''}>Paid</option>
+                </select>
+                <input name="days" placeholder="days" value="" style="width:56px;padding:4px;border:1px solid var(--line);border-radius:7px;font-size:12px">
+                <button style="padding:4px 9px;font-size:12px">Set</button>
+              </form>
+            </td>
+          </tr>`).join('')}
+        </table>
+        <div class="sub" style="margin-top:8px">Leave days blank for a paid plan with no end date;
+          put a number in for a trial.</div>
+      </div>`).join('')
+      : `<div class="card"><h2>Customers</h2><div class="sub">Nobody has signed up yet. Schools and
+         companies appear here the moment they register in one of your apps.</div>
+         ${tenantProblems.length ? `<div class="al warn" style="margin-top:10px">Could not read:
+           ${tenantProblems.map(esc).join('; ')}</div>` : ''}</div>`}
 
-    <div class="card"><h2>Costs <span class="sub">approximate list prices, not your invoice</span></h2>
-      <table><tr><th>Service</th><th>Plan</th><th class="num">~$/mo</th></tr>
-        ${items.filter(i => i.plan).map(i => `<tr><td>${esc(i.name)}</td><td>${esc(i.plan)}</td>
-          <td class="num">${i.price === null ? '?' : '$' + i.price}</td></tr>`).join('')}
-        <tr><td colspan="2"><b>Total</b></td><td class="num"><b>~$${spend}</b></td></tr></table>
-      <div class="sub" style="margin-top:8px">Render's API reports plan names, not prices. Check your
-        Render billing page for the real figure.</div>
+    <div class="card">
+      <h2>Give someone a trial</h2>
+      <div class="sub" style="margin-bottom:10px">Generates signed codes. They are not stored — copy
+        them now. Whoever redeems one puts their school or company on Pro for that many days.</div>
+      <form method="POST" action="/codes/mint">
+        <div class="grid">
+          <div><label class="sub">App</label>
+            <select name="slug" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:9px">
+              ${apps.map(a => `<option value="${esc(a.slug)}">${esc(a.name)}</option>`).join('')}
+            </select></div>
+          <div><label class="sub">Days</label><input name="days" value="30"></div>
+          <div><label class="sub">How many</label><input name="count" value="5"></div>
+        </div>
+        <button style="margin-top:10px">Generate codes</button>
+      </form>
+      ${minted ? `<div class="al" style="margin-top:12px"><b>${minted.days}-day codes</b>
+        <div style="font-family:ui-monospace,Menlo,monospace;font-size:13px;line-height:1.8;margin-top:6px">
+        ${minted.codes.map(esc).join('<br>')}</div></div>` : ''}
     </div>
 
-    <div class="card sub">Data ${data ? 'from ' + esc(ago(data.fetchedAt)) : 'unavailable'} ·
-      cached for 60 seconds · <a class="link" href="/?refresh=1">refresh now</a></div>
+    <div class="card">
+      <h2>Hosting <span class="sub">your four apps</span></h2>
+      ${error ? `<div class="al bad"><b>Couldn't reach Render</b>${esc(error)}</div>` : ''}
+      ${oursTrouble.length ? oursTrouble.map(i =>
+        `<div class="al bad"><b>${esc(i.name)}</b> ${esc(i.suspended ? 'suspended' : i.deploy.status)}</div>`).join('')
+        : '<div class="sub">All running.</div>'}
+      <div class="grid" style="margin-top:10px">${ours.map(card).join('')}</div>
+      <div class="sub" style="margin-top:8px">~$${oursSpend}/mo across these.
+        Data ${data ? 'from ' + esc(ago(data.fetchedAt)) : 'unavailable'} ·
+        <a class="link" href="/?refresh=1">refresh</a></div>
+    </div>
   </div>`);
 }
 
@@ -534,6 +608,8 @@ const server = http.createServer(async (req, res) => {
      so one sign-in works everywhere and suspending someone cuts off all of it. */
   const AUTH = {
     '/api/v1/auth/register': store.register,
+    '/api/v1/plan': store.tenantPlan,
+    '/api/v1/redeem-tenant': store.redeemForTenant,
     '/api/v1/auth/login': store.login,
     '/api/v1/auth/change-password': store.changePassword,
     '/api/v1/auth/admin-set-password': store.adminSetPassword
@@ -648,20 +724,68 @@ const server = http.createServer(async (req, res) => {
     catch (e) { return send(res, 200, subsPage({ apps: [], subs: [], redemptions: [], users: [], dbError: e.message })); }
   }
 
+  /* Setting a customer's plan by hand, from the row on the console. */
+  if (url.pathname === '/tenant/plan' && req.method === 'POST') {
+    const b = new URLSearchParams(await readBody(req));
+    try {
+      await store.setTenantPlan({
+        slug: b.get('slug'), tenantKey: b.get('tenant'), tenantName: b.get('name'),
+        plan: b.get('plan'), days: b.get('days'), note: ''
+      });
+    } catch (e) { console.error('set plan:', e.message); }
+    return send(res, 302, '', { Location: '/' });
+  }
+
+  /* Codes are signed, not stored, so they are shown once and then gone. They
+     are held in memory only long enough to render the page that displays them. */
+  if (url.pathname === '/codes/mint' && req.method === 'POST') {
+    const b = new URLSearchParams(await readBody(req));
+    const days = Math.max(1, Math.min(3650, Number(b.get('days')) || 30));
+    const count = Math.max(1, Math.min(50, Number(b.get('count')) || 5));
+    let minted = null;
+    try {
+      const apps = await store.listApps();
+      const app = apps.find(a => a.slug === b.get('slug'));
+      if (app) {
+        const codes = [];
+        for (let i = 0; i < count; i++) codes.push(store.mintCode(app.prefix, days));
+        minted = { days, codes };
+      }
+    } catch (e) { console.error('mint:', e.message); }
+    return renderConsole(res, minted);
+  }
+
   if (url.searchParams.get('refresh')) cache.at = 0;
 
-  // The launcher comes from the app registry, not from Render, so it still
-  // renders when the Render API is having a bad day — and vice versa.
+  return renderConsole(res, null);
+});
+
+/* Every part is fetched on its own and failures are contained: the customer
+   list still renders when Render's API is down, and the hosting panel still
+   renders when the database is. A console that goes blank when one thing
+   breaks is a console you stop trusting. */
+async function renderConsole(res, minted) {
   let apps = [];
   try { apps = await store.listApps(); } catch (e) { /* db down: no launcher */ }
+
+  let tenants = [], problems = [], alerts = [], kpis = {};
   try {
-    const data = await collect();
-    send(res, 200, dashboard(data, null, apps));
+    const t = await store.tenants();
+    tenants = t.tenants;
+    problems = t.problems;
+    alerts = store.tenantAlerts(tenants);
+    kpis = store.tenantKpis(tenants);
   } catch (e) {
-    console.error('collect failed:', e.message);
-    send(res, 200, dashboard(cache.data, e.message, apps));
+    problems = [e.message];
+    console.error('tenants failed:', e.message);
   }
-});
+
+  let data = null, error = null;
+  try { data = await collect(); }
+  catch (e) { data = cache.data; error = e.message; console.error('collect failed:', e.message); }
+
+  send(res, 200, dashboard(data, error, apps, tenants, alerts, kpis, problems, minted));
+}
 
 store.init().catch(e => console.error('store init failed:', e.message));
 

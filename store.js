@@ -65,6 +65,27 @@ CREATE TABLE IF NOT EXISTS ma_subscriptions (
   UNIQUE (app_id, account)
 );
 
+/* A plan belongs to the tenant that bought it, not to a person.
+ * A law firm buys ServeTrack; a school buys the Scheduler. Whoever happens to
+ * be the administrator that week is beside the point, and keying the plan to
+ * their email was the reason billing never lined up across the apps.
+ *
+ * tenant_key is the app's own id for the thing that pays, namespaced so two
+ * apps cannot collide: "company:3", "school:7". */
+CREATE TABLE IF NOT EXISTS ma_tenant_plans (
+  id           SERIAL PRIMARY KEY,
+  app_id       INTEGER NOT NULL REFERENCES ma_apps(id) ON DELETE CASCADE,
+  tenant_key   TEXT NOT NULL,
+  tenant_name  TEXT,
+  plan         TEXT NOT NULL DEFAULT 'free',  -- free | pro
+  source       TEXT NOT NULL DEFAULT 'manual', -- code | stripe | manual
+  expires_on   DATE,                           -- null on a paid plan = no expiry
+  note         TEXT DEFAULT '',
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (app_id, tenant_key)
+);
+
 -- One account, usable in every app. Apps never store passwords.
 CREATE TABLE IF NOT EXISTS ma_users (
   id         SERIAL PRIMARY KEY,
@@ -473,10 +494,212 @@ async function toggleUser(email) {
   return rows[0] || null;
 }
 
+/* ------------------------------------------------------------ tenants --- */
+/* Every school and every company, across every app, in one list.
+ *
+ * The apps share this database, so their tables are readable from here. That is
+ * a deliberate trade: the operator console is coupled to the apps' shapes, and
+ * in exchange there is one screen instead of one per app. Each read is wrapped
+ * on its own — an app whose tables do not exist yet (a fresh database, an app
+ * not deployed) simply contributes nothing rather than breaking the page.
+ */
+
+const TENANT_SOURCES = [
+  {
+    slug: 'servetrack', label: 'Company', prefix: 'company',
+    sql: `SELECT c.id, c.name,
+            to_char(c.created_at,'YYYY-MM-DD') AS created,
+            (SELECT count(*)::int FROM users u WHERE u.company_id=c.id AND u.active) AS people,
+            (SELECT count(*)::int FROM jobs j WHERE j.company_id=c.id) AS work,
+            (SELECT u.email FROM users u WHERE u.company_id=c.id AND u.role='admin'
+             ORDER BY u.id LIMIT 1) AS admin_email,
+            (SELECT u.name FROM users u WHERE u.company_id=c.id AND u.role='admin'
+             ORDER BY u.id LIMIT 1) AS admin_name
+          FROM public.companies c ORDER BY c.id`,
+    workLabel: 'jobs'
+  },
+  {
+    slug: 'scheduler', label: 'School', prefix: 'school',
+    sql: `SELECT s.id, s.name, left(s.created,10) AS created,
+            (SELECT count(*)::int FROM scheduler.users u
+              WHERE u.school_id=s.id AND u.status='approved') AS people,
+            (SELECT count(*)::int FROM scheduler.programs p WHERE p.school_id=s.id) AS work,
+            (SELECT u.email FROM scheduler.users u WHERE u.school_id=s.id AND u.role='admin'
+             ORDER BY u.id LIMIT 1) AS admin_email,
+            (SELECT u.name FROM scheduler.users u WHERE u.school_id=s.id AND u.role='admin'
+             ORDER BY u.id LIMIT 1) AS admin_name
+          FROM scheduler.schools s ORDER BY s.id`,
+    workLabel: 'programs'
+  },
+];
+
+async function tenants() {
+  const { rows: apps } = await q('SELECT id, slug, name, prefix FROM ma_apps');
+  const bySlug = Object.fromEntries(apps.map(a => [a.slug, a]));
+  const { rows: plans } = await q('SELECT * FROM ma_tenant_plans');
+  const planFor = (appId, key) => plans.find(p => p.app_id === appId && p.tenant_key === key);
+
+  const out = [];
+  const problems = [];
+  for (const src of TENANT_SOURCES) {
+    const app = bySlug[src.slug];
+    if (!app) continue;
+    let rows;
+    try { ({ rows } = await q(src.sql)); }
+    catch (e) { problems.push(`${src.slug}: ${e.message}`); continue; }
+    for (const r of rows) {
+      const key = `${src.prefix}:${r.id}`;
+      const p = planFor(app.id, key) || {};
+      out.push({
+        app: app.slug, appName: app.name, prefix: app.prefix,
+        kind: src.label, key, id: r.id, name: r.name,
+        created: r.created, people: r.people, work: r.work, workLabel: src.workLabel,
+        adminEmail: r.admin_email, adminName: r.admin_name,
+        plan: p.plan || 'free', expires_on: p.expires_on || null,
+        source: p.source || null, note: p.note || '',
+      });
+    }
+  }
+  out.sort((a, b) => String(b.created || '').localeCompare(String(a.created || '')));
+  return { tenants: out, problems };
+}
+
+/* What the operator is shown at a glance: who is new, whose trial is nearly up.
+   Deliberately short — a list of twenty things nobody reads is not an alert. */
+function tenantAlerts(list) {
+  const day = 864e5;
+  const weekAgo = new Date(Date.now() - 7 * day).toISOString().slice(0, 10);
+  const in7 = new Date(Date.now() + 7 * day).toISOString().slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
+  const alerts = [];
+  for (const t of list) {
+    if (t.created && t.created >= weekAgo) {
+      alerts.push({ level: 'info', when: t.created,
+        text: `New ${t.kind.toLowerCase()}: ${t.name} on ${t.appName}` +
+              (t.adminEmail ? ` — ${t.adminEmail}` : '') });
+    }
+    if (t.plan === 'pro' && t.expires_on) {
+      const on = String(t.expires_on).slice(0, 10);
+      if (on < today) {
+        alerts.push({ level: 'bad', when: on,
+          text: `Trial expired ${on}: ${t.name} (${t.appName}) has dropped to free` });
+      } else if (on <= in7) {
+        alerts.push({ level: 'warn', when: on,
+          text: `Trial ends ${on}: ${t.name} (${t.appName}) — worth a call` });
+      }
+    }
+  }
+  alerts.sort((a, b) => String(b.when).localeCompare(String(a.when)));
+  return alerts.slice(0, 20);
+}
+
+function tenantKpis(list) {
+  const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
+  const live = t => t.plan === 'pro' && (!t.expires_on || String(t.expires_on).slice(0, 10) >= today);
+  return {
+    total: list.length,
+    newWeek: list.filter(t => t.created && t.created >= weekAgo).length,
+    paid: list.filter(t => live(t) && !t.expires_on).length,
+    trials: list.filter(t => live(t) && t.expires_on).length,
+    free: list.filter(t => !live(t)).length,
+    people: list.reduce((a, t) => a + Number(t.people || 0), 0),
+  };
+}
+
+/* Set a tenant's plan by hand. `days` gives a trial that expires; leaving it
+   out on a pro plan means a paid subscription with no end date. */
+async function setTenantPlan({ slug, tenantKey, tenantName, plan, days, note }) {
+  const { rows: a } = await q('SELECT id FROM ma_apps WHERE slug=$1', [slug]);
+  if (!a.length) throw new Error('No such app: ' + slug);
+  let expires = null;
+  if (plan === 'pro' && Number(days) > 0) {
+    const d = new Date();
+    d.setDate(d.getDate() + Number(days));
+    expires = d.toISOString().slice(0, 10);
+  }
+  const { rows } = await q(
+    `INSERT INTO ma_tenant_plans (app_id, tenant_key, tenant_name, plan, source, expires_on, note)
+     VALUES ($1,$2,$3,$4,'manual',$5,$6)
+     ON CONFLICT (app_id, tenant_key) DO UPDATE
+       SET plan=EXCLUDED.plan, source='manual', expires_on=EXCLUDED.expires_on,
+           tenant_name=COALESCE(EXCLUDED.tenant_name, ma_tenant_plans.tenant_name),
+           note=EXCLUDED.note, updated_at=NOW()
+     RETURNING *`,
+    [a[0].id, tenantKey, tenantName || null, plan === 'pro' ? 'pro' : 'free', expires, note || '']);
+  return rows[0];
+}
+
+/* What an app asks for: "what plan is this tenant on?" Expired trials fall back
+   to free here, so an app never has to work that out for itself. */
+async function tenantPlan({ slug, secret, tenant }) {
+  const { app, error } = await appFromCredentials(slug, secret);
+  if (error) return error;
+  const key = String(tenant || '').trim();
+  if (!key) return { ok: false, status: 400, error: 'No tenant given' };
+
+  const { rows } = await q(
+    'SELECT * FROM ma_tenant_plans WHERE app_id=$1 AND tenant_key=$2', [app.id, key]);
+  const s = rows[0];
+  if (!s) return { ok: true, plan: 'free', expires_on: null, source: null };
+  if (s.plan === 'pro' && s.expires_on &&
+      new Date(s.expires_on) < new Date(new Date().toDateString())) {
+    await q("UPDATE ma_tenant_plans SET plan='free', expires_on=NULL, updated_at=NOW() WHERE id=$1",
+      [s.id]);
+    return { ok: true, plan: 'free', expires_on: null, source: s.source, note: 'expired' };
+  }
+  return { ok: true, plan: s.plan, expires_on: s.expires_on, source: s.source };
+}
+
+/* Redeeming a code against a tenant rather than a person. Same signed codes,
+   same one-use guarantee — what changes is who ends up holding the plan. */
+async function redeemForTenant({ slug, secret, tenant, tenantName, code }) {
+  const { app, error } = await appFromCredentials(slug, secret);
+  if (error) return error;
+  const key = String(tenant || '').trim();
+  if (!key) return { ok: false, status: 400, error: 'No tenant given' };
+
+  const parsed = parseCode(code);
+  if (!parsed) return { ok: false, status: 400, error: 'That code is not valid' };
+  if (parsed.prefix !== String(app.prefix).toUpperCase()) {
+    return { ok: false, status: 403, error: 'That code is for a different app' };
+  }
+  let expected;
+  try { expected = sign(parsed.prefix, parsed.days, parsed.nonce); }
+  catch (e) { return { ok: false, status: 500, error: e.message }; }
+  if (expected !== parsed.sig) return { ok: false, status: 400, error: 'That code is not valid' };
+
+  const { rows: rev } = await q('SELECT 1 FROM ma_revoked_codes WHERE code=$1', [parsed.code]);
+  if (rev.length) return { ok: false, status: 410, error: 'That code has been revoked' };
+
+  const expires = new Date();
+  expires.setDate(expires.getDate() + parsed.days);
+  const expiresOn = expires.toISOString().slice(0, 10);
+
+  try {
+    await q(`INSERT INTO ma_redemptions (code, app_id, account, days, expires_on)
+             VALUES ($1,$2,$3,$4,$5)`, [parsed.code, app.id, key, parsed.days, expiresOn]);
+  } catch (e) {
+    if (e.code === '23505') return { ok: false, status: 410, error: 'That code has already been used' };
+    throw e;
+  }
+
+  await q(`INSERT INTO ma_tenant_plans (app_id, tenant_key, tenant_name, plan, source, expires_on)
+           VALUES ($1,$2,$3,'pro','code',$4)
+           ON CONFLICT (app_id, tenant_key) DO UPDATE
+             SET plan='pro', source='code', expires_on=EXCLUDED.expires_on,
+                 tenant_name=COALESCE(EXCLUDED.tenant_name, ma_tenant_plans.tenant_name),
+                 updated_at=NOW()`,
+    [app.id, key, tenantName || null, expiresOn]);
+
+  return { ok: true, plan: 'pro', days: parsed.days, expires_on: expiresOn, app: app.slug };
+}
+
 module.exports = {
   init, q, pool, listApps, issue, listSubscriptions, listRedemptions,
   redeem, status, revokeCode, setPlan, applyStripe, mintCode, parseCode, sign,
   register, login, changePassword, adminSetPassword, listUsers, setUserPassword, toggleUser,
   createUser, setUserRole,
+  tenants, tenantAlerts, tenantKpis, setTenantPlan, tenantPlan, redeemForTenant,
   hashPassword, checkPassword
 };
