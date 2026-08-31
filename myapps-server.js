@@ -13,7 +13,7 @@ const crypto = require('crypto');
 const store = require('./store');
 
 const PORT = process.env.PORT || 3000;
-const BUILD = '2026-08-31.2';
+const BUILD = '2026-08-31.3';
 const PASSWORD = process.env.APP_PASSWORD || '';
 const RENDER_KEY = process.env.RENDER_API_KEY || '';
 const SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -267,7 +267,22 @@ const loginPage = err => page('My Apps', `<div class="login">
     </form>
   </div></div>`);
 
-function dashboard(data, error) {
+/* The three doors, big enough to be the reason this page is the home screen. */
+const launcher = apps => !apps.length ? '' : `
+    <div class="card" style="padding:14px 16px">
+      <div style="display:flex;flex-wrap:wrap;gap:10px">
+        ${apps.filter(a => a.active).map(a => `
+          <a href="${esc(a.url || '#')}" target="_blank" rel="noopener"
+             style="flex:1 1 150px;display:block;text-decoration:none;text-align:center;
+                    padding:16px 10px;border:1px solid var(--line);border-radius:11px;
+                    background:var(--card,#fff)">
+            <div style="font-size:17px;font-weight:700;color:#1c2530">${esc(a.name)}</div>
+            <div class="sub" style="margin-top:3px">open app →</div>
+          </a>`).join('')}
+      </div>
+    </div>`;
+
+function dashboard(data, error, apps = []) {
   const items = data ? data.items : [];
   const alerts = alertsFor(items);
   const services = items.filter(i => i.kind === 'service');
@@ -306,6 +321,7 @@ function dashboard(data, error) {
     <span class="sp"></span><a href="/subscriptions">subscriptions</a>
     <a href="/?refresh=1">refresh</a> <a href="/logout">sign out</a></div>
   <div class="wrap">
+    ${launcher(apps)}
     ${error ? `<div class="al bad"><b>Couldn't reach Render</b>${esc(error)}</div>` : ''}
     <div class="stats">
       <div class="stat"><div class="v">${services.length}</div><div class="l">Services</div></div>
@@ -634,12 +650,16 @@ const server = http.createServer(async (req, res) => {
 
   if (url.searchParams.get('refresh')) cache.at = 0;
 
+  // The launcher comes from the app registry, not from Render, so it still
+  // renders when the Render API is having a bad day — and vice versa.
+  let apps = [];
+  try { apps = await store.listApps(); } catch (e) { /* db down: no launcher */ }
   try {
     const data = await collect();
-    send(res, 200, dashboard(data, null));
+    send(res, 200, dashboard(data, null, apps));
   } catch (e) {
     console.error('collect failed:', e.message);
-    send(res, 200, dashboard(cache.data, e.message));
+    send(res, 200, dashboard(cache.data, e.message, apps));
   }
 });
 

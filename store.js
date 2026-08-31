@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS ma_revoked_codes (
 const DEFAULT_APPS = [
   ['servetrack', 'SRV', 'ServeTrack', 'https://servetrack.onrender.com'],
   ['scheduler', 'SCH', 'After School Scheduler', 'https://after-school-scheduler.onrender.com'],
-  ['dealengine', 'DEA', 'Deal Engine', 'https://deal-engine-app.onrender.com']
+  ['dealengine', 'DEA', 'Deal Finder', 'https://deal-finder-z4ms.onrender.com']
 ];
 
 async function init() {
@@ -103,6 +103,13 @@ async function init() {
         [slug, prefix, name, url, crypto.randomBytes(24).toString('hex')]);
     }
     console.log('Seeded app registry.');
+  }
+
+  /* Names and addresses follow this file, so a moved app (Deal Finder used to
+     be a static site at another address) corrects itself on the next deploy. */
+  for (const [slug, , name, url] of DEFAULT_APPS) {
+    await q('UPDATE ma_apps SET name=$1, url=$2 WHERE slug=$3 AND (name<>$1 OR url<>$2)',
+      [name, url, slug]);
   }
 
   /* An app's secret can also be set from the environment: APP_SECRET_SERVETRACK
