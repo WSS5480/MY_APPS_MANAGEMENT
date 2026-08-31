@@ -13,7 +13,7 @@ const crypto = require('crypto');
 const store = require('./store');
 
 const PORT = process.env.PORT || 3000;
-const BUILD = '2026-08-31.3';
+const BUILD = '2026-08-31.4';
 const PASSWORD = process.env.APP_PASSWORD || '';
 const RENDER_KEY = process.env.RENDER_API_KEY || '';
 const SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -209,15 +209,15 @@ const ago = iso => {
 };
 
 const CSS = `
-:root{--bg:#f5f6f8;--card:#fff;--ink:#12161f;--muted:#6b7280;--line:#e4e7ec;
-  --brand:#1e3a5f;--ok:#0f7b45;--warn:#b45309;--bad:#b42318;--r:12px}
+:root{--bg:#EDF2FB;--card:#fff;--ink:#101822;--muted:#5A6A80;--line:#DBE4F2;
+  --brand:#0B4FD3;--accent:#F2660D;--ok:#0F7B45;--warn:#B45309;--bad:#B42318;--r:12px}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);
   font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
 .top{background:var(--brand);color:#fff;padding:14px 16px;display:flex;align-items:center;gap:10px;
   padding-top:calc(14px + env(safe-area-inset-top))}
 .top b{font-size:17px}.top .sp{flex:1}
-.top a{color:#cfe0f2;font-size:13px;text-decoration:none}
+.top a{color:#C7DAFB;font-size:13px;text-decoration:none}
 .wrap{max-width:1000px;margin:0 auto;padding:14px 14px 60px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:12px}
 h1{font-size:20px;margin:6px 0 14px}h2{font-size:15px;margin:0 0 10px}
@@ -241,7 +241,7 @@ h1{font-size:20px;margin:6px 0 14px}h2{font-size:15px;margin:0 0 10px}
 .stat .v{font-size:24px;font-weight:700}.stat .l{font-size:12px;color:var(--muted)}
 a.btn,button{font:14px system-ui;padding:9px 15px;border:0;border-radius:9px;background:var(--brand);
   color:#fff;text-decoration:none;display:inline-block;cursor:pointer}
-a.link{color:#2b5b8c;font-size:12.5px}
+a.link{color:#0A3FA8;font-size:12.5px}
 input{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:9px;font:15px system-ui}
 .login{max-width:340px;margin:12vh auto;padding:0 16px}
 .err{color:var(--bad);font-size:13px;margin-top:8px}
@@ -276,8 +276,8 @@ const launcher = apps => !apps.length ? '' : `
              style="flex:1 1 150px;display:block;text-decoration:none;text-align:center;
                     padding:16px 10px;border:1px solid var(--line);border-radius:11px;
                     background:var(--card,#fff)">
-            <div style="font-size:17px;font-weight:700;color:#1c2530">${esc(a.name)}</div>
-            <div class="sub" style="margin-top:3px">open app →</div>
+            <div style="font-size:17px;font-weight:700;color:#0B4FD3">${esc(a.name)}</div>
+            <div style="margin-top:3px;font-size:13px;font-weight:600;color:#F2660D">open app →</div>
           </a>`).join('')}
       </div>
     </div>`;
@@ -317,7 +317,7 @@ function dashboard(data, error, apps = []) {
   };
 
   return page('My Apps', `
-  <div class="top"><b>My Apps</b><span class="sub" style="color:#9db8d6">build ${BUILD}</span>
+  <div class="top"><b>My Apps</b><span class="sub" style="color:#BBD2F7">build ${BUILD}</span>
     <span class="sp"></span><a href="/subscriptions">subscriptions</a>
     <a href="/?refresh=1">refresh</a> <a href="/logout">sign out</a></div>
   <div class="wrap">
@@ -379,7 +379,7 @@ async function subsData() {
 function subsPage({ apps, subs, redemptions, users = [], minted, dbError, notice }) {
   const pro = subs.filter(s => s.state === 'Pro').length;
   return page('Subscriptions — My Apps', `
-  <div class="top"><b>My Apps</b><span class="sub" style="color:#9db8d6">subscriptions</span>
+  <div class="top"><b>My Apps</b><span class="sub" style="color:#BBD2F7">subscriptions</span>
     <span class="sp"></span><a href="/">status</a> <a href="/logout">sign out</a></div>
   <div class="wrap">
     ${dbError ? `<div class="al bad"><b>Database unavailable</b>${esc(dbError)}</div>` : ''}
@@ -434,7 +434,7 @@ function subsPage({ apps, subs, redemptions, users = [], minted, dbError, notice
           <td>${r.expires_on ? esc(String(r.expires_on).slice(0, 10)) : '—'}</td>
           <td class="num"><form method="POST" action="/codes/revoke" style="display:inline">
             <input type="hidden" name="code" value="${esc(r.code)}">
-            <button style="background:none;color:#2b5b8c;padding:0;font-size:12.5px">revoke</button></form></td>
+            <button style="background:none;color:#0A3FA8;padding:0;font-size:12.5px">revoke</button></form></td>
         </tr>`).join('')}</table>`
         : '<div class="sub">None yet.</div>'}
     </div>
@@ -453,12 +453,12 @@ function subsPage({ apps, subs, redemptions, users = [], minted, dbError, notice
             <form method="POST" action="/users/role" style="display:inline">
               <input type="hidden" name="email" value="${esc(u.email)}">
               <input type="hidden" name="role" value="${u.role === 'owner' ? 'user' : 'owner'}">
-              <button style="background:none;color:#2b5b8c;padding:0;font-size:12.5px">${
+              <button style="background:none;color:#0A3FA8;padding:0;font-size:12.5px">${
                 u.role === 'owner' ? 'remove owner' : 'make owner'}</button></form>
             &nbsp;·&nbsp;
             <form method="POST" action="/users/toggle" style="display:inline">
               <input type="hidden" name="email" value="${esc(u.email)}">
-              <button style="background:none;color:#2b5b8c;padding:0;font-size:12.5px">${u.active ? 'suspend' : 'restore'}</button></form></td>
+              <button style="background:none;color:#0A3FA8;padding:0;font-size:12.5px">${u.active ? 'suspend' : 'restore'}</button></form></td>
         </tr>`).join('')}</table>`
         : '<div class="sub">No one has signed up yet. Accounts appear here the moment someone registers in any of your apps.</div>'}
       <form method="POST" action="/users/create" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
