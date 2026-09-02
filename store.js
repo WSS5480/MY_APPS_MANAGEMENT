@@ -106,6 +106,19 @@ CREATE TABLE IF NOT EXISTS ma_revoked_codes (
   reason     TEXT,
   revoked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+/* Forgotten passwords. The token itself is never stored — only its hash — so
+ * a copy of this table is not a set of working reset links. One use, one hour,
+ * and asking again invalidates whatever was sent before. */
+CREATE TABLE IF NOT EXISTS ma_password_resets (
+  id           SERIAL PRIMARY KEY,
+  email        TEXT NOT NULL,
+  token_hash   TEXT NOT NULL UNIQUE,
+  expires_at   TIMESTAMPTZ NOT NULL,
+  used_at      TIMESTAMPTZ,
+  requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS ma_resets_email_idx ON ma_password_resets (email);
 `;
 
 const DEFAULT_APPS = [
@@ -427,6 +440,118 @@ async function changePassword({ slug, secret, email, oldPassword, newPassword })
   return { ok: true };
 }
 
+/* --------------------------------------------------- forgotten passwords --- */
+/* Sending mail needs no dependency: Resend takes an ordinary HTTPS POST, and
+   Node has fetch. If no key is configured the reset still works — the link is
+   handed back to the caller instead of being emailed, which is what lets the
+   owner read it out to someone over the phone. What must never happen is the
+   link going to the browser of whoever typed the email address, so the caller
+   here is always a server, never a page. */
+const MAIL_KEY = process.env.RESEND_KEY || '';
+const MAIL_FROM = process.env.EMAIL_FROM || '';
+const mailEnabled = () => Boolean(MAIL_KEY && MAIL_FROM);
+
+async function sendMail({ to, subject, html }) {
+  if (!mailEnabled()) return { sent: false, reason: 'no mail service configured' };
+  try {
+    const r = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + MAIL_KEY },
+      body: JSON.stringify({ from: MAIL_FROM, to: [to], subject, html }),
+      signal: AbortSignal.timeout(15000)
+    });
+    if (!r.ok) {
+      const detail = await r.text().catch(() => '');
+      console.error(`Reset email to ${to} refused (${r.status}): ${detail.slice(0, 200)}`);
+      return { sent: false, reason: 'the mail service refused it' };
+    }
+    return { sent: true };
+  } catch (e) {
+    console.error(`Reset email to ${to} failed: ${e.message}`);
+    return { sent: false, reason: 'the mail service could not be reached' };
+  }
+}
+
+const RESET_MINUTES = 60;
+const hashToken = t => crypto.createHash('sha256').update(String(t)).digest('hex');
+
+const resetEmailHtml = (name, link) => `
+<div style="font:15px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#101822">
+  <p>Hello${name ? ' ' + escapeHtml(name) : ''},</p>
+  <p>Someone asked to reset the password for this account. If that was you, use
+     the link below within the next hour:</p>
+  <p><a href="${link}" style="display:inline-block;background:#F2660D;color:#fff;
+     text-decoration:none;padding:12px 20px;border-radius:999px;font-weight:700">Choose a new password</a></p>
+  <p style="color:#5A6A80;font-size:13px">The link works once and then stops working.
+     If you did not ask for this, you can ignore this message — nothing has changed.</p>
+</div>`;
+
+const escapeHtml = s => String(s == null ? '' : s)
+  .replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+/* "I forgot my password."
+ *
+ * Always answers the same way, whether or not the address is one we know. An
+ * endpoint that says "no such account" is a way to find out who has an account
+ * here, and this one is reachable without signing in. */
+async function requestReset({ email, appName, baseUrl }) {
+  const mail = String(email || '').trim().toLowerCase();
+  const answer = { ok: true, mail_configured: mailEnabled() };
+  if (!EMAIL_RE.test(mail)) return answer;
+
+  const { rows } = await q('SELECT id, name, active FROM ma_users WHERE email=$1', [mail]);
+  const u = rows[0];
+  if (!u || !u.active) return answer;
+
+  /* Three an hour. Enough for someone who mistypes their address twice, not
+     enough to use this service as a way to send mail to somebody. */
+  const { rows: recent } = await q(
+    "SELECT count(*)::int n FROM ma_password_resets WHERE email=$1 AND requested_at > NOW() - INTERVAL '1 hour'",
+    [mail]);
+  if (recent[0].n >= 3) return Object.assign({ throttled: true }, answer);
+
+  // A new request retires the older ones, so only the newest link works.
+  await q('UPDATE ma_password_resets SET used_at=NOW() WHERE email=$1 AND used_at IS NULL', [mail]);
+
+  const token = crypto.randomBytes(32).toString('base64url');
+  await q(
+    `INSERT INTO ma_password_resets (email, token_hash, expires_at)
+     VALUES ($1,$2, NOW() + ($3 || ' minutes')::interval)`,
+    [mail, hashToken(token), String(RESET_MINUTES)]);
+
+  const base = String(baseUrl || process.env.PUBLIC_URL || '').replace(/\/+$/, '');
+  const link = `${base}/reset?token=${token}`;
+  const out = await sendMail({
+    to: mail,
+    subject: `Reset your ${appName || 'account'} password`,
+    html: resetEmailHtml(u.name, link)
+  });
+  console.log(`Password reset requested for ${mail} — ${out.sent ? 'emailed' : 'not emailed: ' + out.reason}`);
+  return Object.assign({ sent: out.sent, link: out.sent ? undefined : link }, answer);
+}
+
+/* Spend a reset token. Single use is enforced by the row, not by trusting the
+   caller: the update only touches a row that is still unused and unexpired, so
+   two simultaneous attempts cannot both win. */
+async function resetWithToken({ token, newPassword }) {
+  if (String(newPassword || '').length < 8) {
+    return { ok: false, status: 400, error: 'Password must be at least 8 characters' };
+  }
+  const { rows } = await q(
+    `UPDATE ma_password_resets SET used_at=NOW()
+      WHERE token_hash=$1 AND used_at IS NULL AND expires_at > NOW()
+      RETURNING email`,
+    [hashToken(token)]);
+  if (!rows.length) {
+    return { ok: false, status: 400,
+             error: 'That link has expired or has already been used. Ask for a new one.' };
+  }
+  const mail = rows[0].email;
+  await q('UPDATE ma_users SET pw=$1 WHERE email=$2', [hashPassword(newPassword), mail]);
+  console.log(`Password reset completed for ${mail}`);
+  return { ok: true, email: mail };
+}
+
 /* An app resetting a password on someone's behalf — the "I forgot mine" case,
    handled by the owner from inside whichever app is to hand.
  *
@@ -607,6 +732,55 @@ function tenantKpis(list) {
   };
 }
 
+/* ------------------------------------------------------------- trials --- */
+/* Every new customer gets the whole app for a month, no code and no card.
+ *
+ * The trial is recorded as a pro plan with an end date and source 'trial', so
+ * everything downstream — the expiry sweep, the console, the app's own plan
+ * check — already knows what to do with it. Nothing new to teach them.
+ *
+ * It starts once. The row's existence is the proof: an app calls this on every
+ * sign-in because it cannot know whether it is the first, and a tenant that
+ * already has any plan row is left exactly as it is. That is also what stops a
+ * customer restarting the clock by signing out and back in.                  */
+const TRIAL_DAYS = Math.max(0, Number(process.env.TRIAL_DAYS || 30));
+
+const daysLeft = expiresOn => {
+  if (!expiresOn) return null;
+  const end = new Date(expiresOn);
+  const today = new Date(new Date().toDateString());
+  return Math.max(0, Math.round((end - today) / 86400000));
+};
+
+async function startTrial({ slug, secret, tenant, tenantName }) {
+  const { app, error } = await appFromCredentials(slug, secret);
+  if (error) return error;
+  const key = String(tenant || '').trim();
+  if (!key) return { ok: false, status: 400, error: 'No tenant given' };
+  if (!TRIAL_DAYS) return { ok: true, started: false, plan: 'free', expires_on: null, days_left: null };
+
+  const end = new Date();
+  end.setDate(end.getDate() + TRIAL_DAYS);
+  const expiresOn = end.toISOString().slice(0, 10);
+
+  /* DO NOTHING on conflict is the whole guarantee. A second call returns no
+     rows, and the plan already on file is what gets reported back. */
+  const { rows } = await q(
+    `INSERT INTO ma_tenant_plans (app_id, tenant_key, tenant_name, plan, source, expires_on, note)
+     VALUES ($1,$2,$3,'pro','trial',$4,'free trial')
+     ON CONFLICT (app_id, tenant_key) DO NOTHING
+     RETURNING *`,
+    [app.id, key, tenantName || null, expiresOn]);
+
+  if (rows.length) {
+    console.log(`Trial started: ${tenantName || key} on ${app.name} — ${TRIAL_DAYS} days, until ${expiresOn}`);
+    return { ok: true, started: true, plan: 'pro', source: 'trial',
+             expires_on: expiresOn, days_left: TRIAL_DAYS, trial: true };
+  }
+  const current = await tenantPlan({ slug, secret, tenant: key });
+  return Object.assign({ started: false }, current);
+}
+
 /* Set a tenant's plan by hand. `days` gives a trial that expires; leaving it
    out on a pro plan means a paid subscription with no end date. */
 async function setTenantPlan({ slug, tenantKey, tenantName, plan, days, note }) {
@@ -641,14 +815,19 @@ async function tenantPlan({ slug, secret, tenant }) {
   const { rows } = await q(
     'SELECT * FROM ma_tenant_plans WHERE app_id=$1 AND tenant_key=$2', [app.id, key]);
   const s = rows[0];
-  if (!s) return { ok: true, plan: 'free', expires_on: null, source: null };
+  if (!s) return { ok: true, plan: 'free', expires_on: null, source: null, days_left: null, trial: false };
   if (s.plan === 'pro' && s.expires_on &&
       new Date(s.expires_on) < new Date(new Date().toDateString())) {
-    await q("UPDATE ma_tenant_plans SET plan='free', expires_on=NULL, updated_at=NOW() WHERE id=$1",
-      [s.id]);
-    return { ok: true, plan: 'free', expires_on: null, source: s.source, note: 'expired' };
+    /* The plan lapses but the source is kept, so the app can say "your trial
+       has ended" rather than the colder "you are on the free plan". */
+    await q("UPDATE ma_tenant_plans SET plan='free', updated_at=NOW() WHERE id=$1", [s.id]);
+    return { ok: true, plan: 'free', expires_on: s.expires_on, source: s.source,
+             days_left: 0, trial: s.source === 'trial', note: 'expired',
+             trial_over: s.source === 'trial' };
   }
-  return { ok: true, plan: s.plan, expires_on: s.expires_on, source: s.source };
+  return { ok: true, plan: s.plan, expires_on: s.expires_on, source: s.source,
+           days_left: s.plan === 'pro' ? daysLeft(s.expires_on) : null,
+           trial: s.plan === 'pro' && s.source === 'trial' };
 }
 
 /* Redeeming a code against a tenant rather than a person. Same signed codes,
@@ -701,5 +880,7 @@ module.exports = {
   register, login, changePassword, adminSetPassword, listUsers, setUserPassword, toggleUser,
   createUser, setUserRole,
   tenants, tenantAlerts, tenantKpis, setTenantPlan, tenantPlan, redeemForTenant,
+  startTrial, TRIAL_DAYS, daysLeft,
+  requestReset, resetWithToken, mailEnabled,
   hashPassword, checkPassword
 };
