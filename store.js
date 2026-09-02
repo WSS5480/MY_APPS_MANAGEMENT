@@ -224,7 +224,14 @@ async function redeem({ slug, secret, code, account }) {
   const { rows: rev } = await q('SELECT 1 FROM ma_revoked_codes WHERE code=$1', [parsed.code]);
   if (rev.length) return { ok: false, status: 410, error: 'That code has been revoked' };
 
-  const expires = new Date();
+  // Days add to whatever is left, for the same reason as the tenant version
+  // below: an extension must never shorten what somebody already had.
+  const { rows: had } = await q(
+    'SELECT plan, expires_on FROM ma_subscriptions WHERE app_id=$1 AND account=$2', [app.id, account]);
+  const now = new Date(new Date().toDateString());
+  const runsTo = had[0] && had[0].plan === 'pro' && had[0].expires_on
+    ? new Date(had[0].expires_on) : null;
+  const expires = new Date(runsTo && runsTo > now ? runsTo : now);
   expires.setDate(expires.getDate() + parsed.days);
   const expiresOn = expires.toISOString().slice(0, 10);
 
@@ -689,6 +696,108 @@ async function tenants() {
   return { tenants: out, problems };
 }
 
+/* ------------------------------------------------------- support inbox --- */
+/* When a customer inside one of the apps asks for help, the message lands in
+ * that app's own table. The apps share this database, so the messages can be
+ * read from here — which is the whole point of having one place to manage.
+ *
+ * Same trade as the tenant list above, and the same protection: each source is
+ * read on its own, so an app that has no such table yet contributes nothing
+ * instead of emptying the inbox.
+ */
+const SUPPORT_SOURCES = [
+  {
+    slug: 'scheduler', label: 'School',
+    sql: `SELECT m.id, m.message, m.status, m.created,
+            s.name AS tenant, s.slug AS tenant_slug,
+            u.name AS from_name, u.email AS from_email
+          FROM scheduler.support_messages m
+          LEFT JOIN scheduler.schools s ON s.id = m.school_id
+          LEFT JOIN scheduler.users   u ON u.id = m.user_id
+          ORDER BY (m.status='open') DESC, m.created DESC LIMIT 100`,
+    close: 'UPDATE scheduler.support_messages SET status=$1 WHERE id=$2'
+  },
+];
+
+async function supportInbox() {
+  const out = [];
+  const problems = [];
+  for (const src of SUPPORT_SOURCES) {
+    let rows;
+    try { ({ rows } = await q(src.sql)); }
+    catch (e) { problems.push(`${src.slug}: ${e.message}`); continue; }
+    for (const r of rows) {
+      out.push({
+        app: src.slug, kind: src.label, id: r.id,
+        message: r.message, status: r.status || 'open',
+        created: r.created ? String(r.created).slice(0, 16) : '',
+        tenant: r.tenant || '—', tenantSlug: r.tenant_slug || '',
+        fromName: r.from_name || '', fromEmail: r.from_email || ''
+      });
+    }
+  }
+  out.sort((a, b) => (a.status === b.status ? String(b.created).localeCompare(String(a.created))
+                                            : a.status === 'open' ? -1 : 1));
+  return { messages: out, open: out.filter(m => m.status === 'open').length, problems };
+}
+
+async function closeSupport(appSlug, id, reopen) {
+  const src = SUPPORT_SOURCES.find(s => s.slug === appSlug);
+  if (!src) throw new Error('No support inbox for ' + appSlug);
+  await q(src.close, [reopen ? 'open' : 'closed', Number(id)]);
+  return true;
+}
+
+/* ------------------------------------------------------------- health --- */
+/* The checklist the Scheduler's own console used to show, for this service
+   instead: what is configured, what is still on a default, and what that
+   means in practice. Nothing here reveals a secret — only whether one is set. */
+function healthChecks() {
+  const set = v => Boolean(v && String(v).trim());
+  const secretish = process.env.CODE_SECRET || '';
+  return [
+    { key: 'DATABASE_URL', label: 'Database',
+      ok: set(connectionString),
+      warn: 'Not set — no customers, plans or accounts can be stored.' },
+    { key: 'APP_PASSWORD', label: 'Password for this console',
+      ok: set(process.env.APP_PASSWORD),
+      warn: 'Not set — nobody can sign in here, including you.' },
+    { key: 'CODE_SECRET', label: 'Code signing key',
+      ok: secretish.length >= 16,
+      warn: secretish ? 'Shorter than 16 characters — codes are easier to forge.'
+                      : 'Not set — upgrade codes cannot be generated or checked.' },
+    { key: 'RESEND_KEY', label: 'Email (password resets)',
+      ok: mailEnabled(),
+      warn: 'Not set — people who forget a password have to ask you to reset it.' },
+    { key: 'OWNER_EMAIL', label: 'Owner account',
+      ok: set(process.env.OWNER_EMAIL),
+      warn: 'Not set — no account is marked as the owner of every app.' },
+    { key: 'PUBLIC_URL', label: 'Public address',
+      ok: set(process.env.PUBLIC_URL),
+      warn: 'Not set — reset links are built from the address of the request, which is usually right but not always.' },
+    { key: 'TRIAL_DAYS', label: 'Free trial',
+      ok: true,
+      note: `${TRIAL_DAYS} days for every new customer.` },
+  ];
+}
+
+/* Send a test email to prove the mail settings work before relying on them. */
+async function testEmail(to) {
+  const mail = String(to || '').trim().toLowerCase();
+  if (!EMAIL_RE.test(mail)) return { ok: false, error: 'Enter a valid email address' };
+  if (!mailEnabled()) {
+    return { ok: false, error: 'No mail service is configured — set RESEND_KEY and EMAIL_FROM.' };
+  }
+  const out = await sendMail({
+    to: mail,
+    subject: 'My Apps — test message',
+    html: `<div style="font:15px/1.6 -apple-system,'Segoe UI',Roboto,Arial,sans-serif">
+      <p>This is a test from My Apps. If you are reading it, password reset
+         emails will reach your customers.</p></div>`
+  });
+  return out.sent ? { ok: true } : { ok: false, error: 'Could not send it — ' + out.reason };
+}
+
 /* What the operator is shown at a glance: who is new, whose trial is nearly up.
    Deliberately short — a list of twenty things nobody reads is not an alert. */
 function tenantAlerts(list) {
@@ -851,9 +960,31 @@ async function redeemForTenant({ slug, secret, tenant, tenantName, code }) {
   const { rows: rev } = await q('SELECT 1 FROM ma_revoked_codes WHERE code=$1', [parsed.code]);
   if (rev.length) return { ok: false, status: 410, error: 'That code has been revoked' };
 
-  const expires = new Date();
+  /* Days are added to whatever is left, not counted from today.
+   *
+   * Handing someone a month while they still have twelve days of trial should
+   * leave them forty-two, not thirty. Counted from today, a generous gesture
+   * would quietly take ten days off them — which is the opposite of what
+   * anyone means by giving out an extension.
+   *
+   * A plan already paid for with no end date has nothing to add to, so it is
+   * left alone and the code is refused rather than silently spent. */
+  const { rows: held } = await q(
+    'SELECT plan, expires_on FROM ma_tenant_plans WHERE app_id=$1 AND tenant_key=$2', [app.id, key]);
+  const current = held[0];
+  if (current && current.plan === 'pro' && !current.expires_on) {
+    return { ok: false, status: 409,
+             error: 'This account is already on a paid plan with no end date — the code has not been used.' };
+  }
+
+  const today = new Date(new Date().toDateString());
+  const standing = current && current.plan === 'pro' && current.expires_on
+    ? new Date(current.expires_on) : null;
+  const from = standing && standing > today ? standing : today;
+  const expires = new Date(from);
   expires.setDate(expires.getDate() + parsed.days);
   const expiresOn = expires.toISOString().slice(0, 10);
+  const added = standing && standing > today;
 
   try {
     await q(`INSERT INTO ma_redemptions (code, app_id, account, days, expires_on)
@@ -871,7 +1002,8 @@ async function redeemForTenant({ slug, secret, tenant, tenantName, code }) {
                  updated_at=NOW()`,
     [app.id, key, tenantName || null, expiresOn]);
 
-  return { ok: true, plan: 'pro', days: parsed.days, expires_on: expiresOn, app: app.slug };
+  return { ok: true, plan: 'pro', days: parsed.days, expires_on: expiresOn,
+           days_left: daysLeft(expiresOn), added_to_existing: !!added, app: app.slug };
 }
 
 module.exports = {
@@ -881,6 +1013,7 @@ module.exports = {
   createUser, setUserRole,
   tenants, tenantAlerts, tenantKpis, setTenantPlan, tenantPlan, redeemForTenant,
   startTrial, TRIAL_DAYS, daysLeft,
+  supportInbox, closeSupport, healthChecks, testEmail,
   requestReset, resetWithToken, mailEnabled,
   hashPassword, checkPassword
 };

@@ -13,7 +13,7 @@ const crypto = require('crypto');
 const store = require('./store');
 
 const PORT = process.env.PORT || 3000;
-const BUILD = '2026-08-31.6';
+const BUILD = '2026-09-02.9';
 const PASSWORD = process.env.APP_PASSWORD || '';
 const RENDER_KEY = process.env.RENDER_API_KEY || '';
 const SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
@@ -52,7 +52,50 @@ async function render(path) {
 // The list endpoints wrap each row: [{ cursor, service: {...} }]
 const unwrap = (rows, key) => (Array.isArray(rows) ? rows : []).map(r => r[key] || r).filter(Boolean);
 
-let cache = { at: 0, data: null };
+let cache = { at: 0, data: null, error: null };
+
+/* Hosting figures come from Render's API: a list of services, a list of
+ * databases, and then one call per service for its last deploy. On a good day
+ * that is a second. On a bad one — Render slow, or this service just woken from
+ * a free-plan nap with a cold connection — it is a minute of serial requests.
+ *
+ * The console must not wait for it either way. Everything that matters here —
+ * customers, plans, trials, support — comes from the database, which is fast
+ * and always reachable. Hosting is the least important panel on the page and
+ * was the one thing capable of making the whole thing hang, or come back blank
+ * when the browser gave up first.
+ *
+ * So: the page is drawn from whatever was last collected, and a refresh runs in
+ * the background. One at a time, and never awaited by a request.            */
+let refreshing = null;
+
+function refreshHosting() {
+  if (refreshing) return refreshing;
+  refreshing = collect()
+    .then(d => { cache.error = null; return d; })
+    .catch(e => {
+      cache.error = e.message;
+      console.error('collect failed:', e.message);
+      return null;
+    })
+    .finally(() => { refreshing = null; });
+  return refreshing;
+}
+
+/* What the page gets: instant, always. Stale is fine and says so; empty is
+   fine and says that too. */
+function hostingNow() {
+  const stale = !cache.data || Date.now() - cache.at >= CACHE_MS;
+  if (stale && RENDER_KEY) refreshHosting();          // fire and forget
+  /* "Loading" only until the first attempt has finished. After that, if it
+     failed and there is still nothing to show, say what went wrong rather than
+     leaving somebody watching a message that will never change. */
+  return {
+    data: cache.data,
+    error: cache.error,
+    loading: !cache.data && !cache.error && Boolean(RENDER_KEY)
+  };
+}
 
 async function collect() {
   if (cache.data && Date.now() - cache.at < CACHE_MS) return cache.data;
@@ -267,6 +310,40 @@ const page = (title, body) => `<!doctype html><html lang="en"><head><meta charse
 ${INSTALL_CSS}</style></head>
 <body>${body}<script>${INSTALL_JS}</script></body></html>`;
 
+/* Forgotten passwords are handled here rather than in each app, because this is
+   where passwords live. Every app links to these two pages. Both are public —
+   the whole point is that they work for somebody who cannot get in. */
+const noticePage = (heading, body) => page('My Apps', `<div class="login">
+  <div class="card">
+    <h1 style="margin-top:0;font-size:22px">${esc(heading)}</h1>
+    ${body}
+  </div></div>`);
+
+const forgotPage = (msg, email, app) => noticePage('Reset your password', `
+  <p style="color:var(--muted);font-size:14px;margin:0 0 14px">
+    One password covers ${esc(app || 'all of your apps')}. Enter the email you sign in with
+    and we'll send you a link.</p>
+  <form method="POST" action="/forgot">
+    <input name="email" type="email" placeholder="you@example.com" autocomplete="email"
+           required autofocus value="${esc(email || '')}">
+    ${app ? `<input type="hidden" name="app" value="${esc(app)}">` : ''}
+    <button style="margin-top:10px;width:100%">Send me a link</button>
+    ${msg ? `<div class="err">${esc(msg)}</div>` : ''}
+  </form>`);
+
+const resetPage = (token, msg) => noticePage('Choose a new password', `
+  <form method="POST" action="/reset">
+    <input type="hidden" name="token" value="${esc(token)}">
+    <input name="password" type="password" placeholder="New password" autocomplete="new-password"
+           required autofocus minlength="8">
+    <input name="confirm" type="password" placeholder="Type it again" autocomplete="new-password"
+           required minlength="8" style="margin-top:8px">
+    <button style="margin-top:10px;width:100%">Save my new password</button>
+    ${msg ? `<div class="err">${esc(msg)}</div>` : ''}
+    <div style="margin-top:12px;font-size:12.5px;color:var(--muted)">
+      At least 8 characters. This changes your password in every app at once.</div>
+  </form>`);
+
 const loginPage = err => page('My Apps', `<div class="login">
   <div class="card">
     <h1 style="margin-top:0">My Apps</h1>
@@ -292,7 +369,67 @@ const launcher = apps => !apps.length ? '' : `
       </div>
     </div>`;
 
-function dashboard(data, error, apps = [], tenants = [], tenantAlerts = [], kpis = {}, tenantProblems = [], minted = null) {
+/* Messages customers send from inside the apps. They used to be readable only
+   in the Scheduler's own console; this is the one place now. */
+function supportPanel(support) {
+  if (!support) return '';
+  const { messages = [], open = 0, problems = [] } = support;
+  if (!messages.length) {
+    return `<div class="card"><h2>Support</h2>
+      <div class="sub">No messages. When somebody asks for help from inside an app, it lands here.</div>
+      ${problems.length ? `<div class="al warn" style="margin-top:10px">Could not read:
+        ${problems.map(esc).join('; ')}</div>` : ''}</div>`;
+  }
+  return `<div class="card">
+    <h2>Support <span class="sub">${open} open${messages.length > open ? ` · ${messages.length - open} closed` : ''}</span></h2>
+    ${messages.slice(0, 40).map(m => `
+      <div class="al ${m.status === 'open' ? 'warn' : ''}" style="display:flex;gap:10px;align-items:flex-start">
+        <div style="flex:1">
+          <b>${esc(m.tenant)}</b>
+          <span class="sub">${esc(m.fromName || m.fromEmail || 'someone')}${
+            m.fromEmail ? ` · <a class="link" href="mailto:${esc(m.fromEmail)}">${esc(m.fromEmail)}</a>` : ''}
+            · ${esc(m.created)}</span>
+          <div style="margin-top:4px;white-space:pre-wrap">${esc(m.message)}</div>
+        </div>
+        <form method="POST" action="/support/close">
+          <input type="hidden" name="app" value="${esc(m.app)}">
+          <input type="hidden" name="id" value="${esc(String(m.id))}">
+          ${m.status === 'open' ? '' : '<input type="hidden" name="reopen" value="1">'}
+          <button style="padding:5px 10px;font-size:12px">${m.status === 'open' ? 'Done' : 'Reopen'}</button>
+        </form>
+      </div>`).join('')}
+    ${problems.length ? `<div class="al warn">Could not read: ${problems.map(esc).join('; ')}</div>` : ''}
+  </div>`;
+}
+
+/* What is configured and what is still on a default. The Scheduler used to
+   show this for itself; it belongs with everything else now. */
+function healthPanel(health, notice) {
+  if (!health.length) return '';
+  const bad = health.filter(c => !c.ok);
+  return `<div class="card">
+    <h2>Settings <span class="sub">${bad.length ? bad.length + ' need attention' : 'all set'}</span></h2>
+    <table>
+      ${health.map(c => `<tr>
+        <td style="width:26px">${c.ok ? '<span class="pill ok">ok</span>' : '<span class="pill warn">!</span>'}</td>
+        <td><b>${esc(c.label)}</b><div class="sub">${esc(c.ok ? (c.note || c.key) : c.warn)}</div></td>
+      </tr>`).join('')}
+    </table>
+    <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
+      <label class="sub">Send a test email</label>
+      <form method="POST" action="/email/test" style="display:flex;gap:8px;margin-top:5px">
+        <input name="to" type="email" placeholder="you@example.com" style="flex:1">
+        <button>Send</button>
+      </form>
+      <div class="sub" style="margin-top:6px">Proves password-reset emails will actually arrive.</div>
+      ${notice ? `<div class="al ${notice.bad ? 'bad' : 'ok'}" style="margin-top:10px">${esc(notice.text)}</div>` : ''}
+    </div>
+  </div>`;
+}
+
+function dashboard(data, error, apps = [], tenants = [], tenantAlerts = [], kpis = {},
+                   tenantProblems = [], minted = null, support = null, health = [], notice = null,
+                   hostingLoading = false) {
   const items = data ? data.items : [];
   const alerts = alertsFor(items);
   const services = items.filter(i => i.kind === 'service');
@@ -404,9 +541,11 @@ function dashboard(data, error, apps = [], tenants = [], tenantAlerts = [], kpis
            ${tenantProblems.map(esc).join('; ')}</div>` : ''}</div>`}
 
     <div class="card">
-      <h2>Give someone a trial</h2>
-      <div class="sub" style="margin-bottom:10px">Generates signed codes. They are not stored — copy
-        them now. Whoever redeems one puts their school or company on Pro for that many days.</div>
+      <h2>Give someone free time</h2>
+      <div class="sub" style="margin-bottom:10px">Generates signed codes. They are not stored, so copy
+        them now. Whoever redeems one gets that many days of the full app — and the days are
+        <b>added to whatever they have left</b>, so an extension never shortens a trial that is
+        still running.</div>
       <form method="POST" action="/codes/mint">
         <div class="grid">
           <div><label class="sub">App</label>
@@ -423,16 +562,23 @@ function dashboard(data, error, apps = [], tenants = [], tenantAlerts = [], kpis
         ${minted.codes.map(esc).join('<br>')}</div></div>` : ''}
     </div>
 
+    ${supportPanel(support)}
+
+    ${healthPanel(health, notice)}
+
     <div class="card">
       <h2>Hosting <span class="sub">your four apps</span></h2>
-      ${error ? `<div class="al bad"><b>Couldn't reach Render</b>${esc(error)}</div>` : ''}
+      ${hostingLoading
+        ? `<div class="sub">Fetching this from Render in the background — reload in a moment.
+             Nothing else on this page waits for it.</div>`
+        : error ? `<div class="al warn"><b>Couldn't reach Render</b> ${esc(error)}${
+            data ? ' — showing what was last collected.' : ''}</div>` : ''}
       ${oursTrouble.length ? oursTrouble.map(i =>
         `<div class="al bad"><b>${esc(i.name)}</b> ${esc(i.suspended ? 'suspended' : i.deploy.status)}</div>`).join('')
-        : '<div class="sub">All running.</div>'}
+        : (data ? '<div class="sub">All running.</div>' : '')}
       <div class="grid" style="margin-top:10px">${ours.map(card).join('')}</div>
-      <div class="sub" style="margin-top:8px">~$${oursSpend}/mo across these.
-        Data ${data ? 'from ' + esc(ago(data.fetchedAt)) : 'unavailable'} ·
-        <a class="link" href="/?refresh=1">refresh</a></div>
+      <div class="sub" style="margin-top:8px">${data ? `~$${oursSpend}/mo across these.
+        Data from ${esc(ago(data.fetchedAt))} · ` : ''}<a class="link" href="/?refresh=1">refresh</a></div>
     </div>
   </div>`);
 }
@@ -619,6 +765,7 @@ const server = http.createServer(async (req, res) => {
   const AUTH = {
     '/api/v1/auth/register': store.register,
     '/api/v1/plan': store.tenantPlan,
+    '/api/v1/trial': store.startTrial,
     '/api/v1/redeem-tenant': store.redeemForTenant,
     '/api/v1/auth/login': store.login,
     '/api/v1/auth/change-password': store.changePassword,
@@ -686,6 +833,70 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === '/logout') {
     return send(res, 302, '', { Location: '/', 'Set-Cookie': 'ma=; Path=/; Max-Age=0' });
+  }
+
+  /* ---- forgotten passwords, for everybody -----------------------------
+     These sit above the owner password gate on purpose: somebody locked out
+     of an app has no way through it. Nothing here reveals whether an address
+     is known, and the reset link is never shown to the browser that asked. */
+  const publicBase = () => {
+    const proto = (req.headers['x-forwarded-proto'] || 'https').split(',')[0].trim();
+    const host = (req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+    return process.env.PUBLIC_URL || (host ? `${proto}://${host}` : '');
+  };
+
+  if (url.pathname === '/forgot') {
+    if (req.method === 'GET') {
+      return send(res, 200, forgotPage('', url.searchParams.get('email') || '',
+                                       url.searchParams.get('app') || ''));
+    }
+    if (req.method === 'POST') {
+      const f = new URLSearchParams(await readBody(req));
+      const email = (f.get('email') || '').trim();
+      let out = { mail_configured: store.mailEnabled() };
+      try {
+        out = await store.requestReset({ email, appName: f.get('app') || 'My Apps', baseUrl: publicBase() });
+      } catch (e) {
+        console.error('Password reset request failed:', e.message);
+      }
+      /* The same answer whether or not that address has an account. The one
+         thing worth saying plainly is when no mail service is set up, because
+         then no amount of waiting will produce an email. */
+      return send(res, 200, noticePage(
+        out.mail_configured ? 'Check your email' : 'Ask the operator',
+        out.mail_configured
+          ? `<p style="color:var(--muted);font-size:14px">If <b>${esc(email)}</b> has an account,
+               a link is on its way. It works once and lasts an hour.</p>
+             <p style="font-size:13px;color:var(--muted)">Nothing yet? Look in spam, or
+               <a href="/forgot">try again</a>.</p>`
+          : `<p style="color:var(--muted);font-size:14px">This service can't send email yet, so a
+               reset link can't be mailed to you. Contact
+               <a href="mailto:steve.smith@buddyrents.com">steve.smith@buddyrents.com</a> and
+               your password will be reset for you.</p>`));
+    }
+  }
+
+  if (url.pathname === '/reset') {
+    if (req.method === 'GET') {
+      const token = url.searchParams.get('token') || '';
+      if (!token) return send(res, 200, forgotPage('That link is incomplete — ask for a new one.', ''));
+      return send(res, 200, resetPage(token, ''));
+    }
+    if (req.method === 'POST') {
+      const f = new URLSearchParams(await readBody(req));
+      const token = f.get('token') || '';
+      const pw = f.get('password') || '';
+      if (pw !== (f.get('confirm') || '')) {
+        return send(res, 200, resetPage(token, "Those two didn't match."));
+      }
+      let out;
+      try { out = await store.resetWithToken({ token, newPassword: pw }); }
+      catch (e) { out = { ok: false, error: 'Something went wrong. Ask for a new link.' }; }
+      if (!out.ok) return send(res, 200, resetPage(token, out.error));
+      return send(res, 200, noticePage('Password changed', `
+        <p style="color:var(--muted);font-size:14px">You can sign in with your new password now —
+          in every app, not just the one you came from.</p>`));
+    }
   }
 
   /* Anything else under /api/ is not a route. Say so in JSON: an app that gets
@@ -778,6 +989,34 @@ const server = http.createServer(async (req, res) => {
 
   /* Codes are signed, not stored, so they are shown once and then gone. They
      are held in memory only long enough to render the page that displays them. */
+  /* Support messages, closed or reopened from here rather than from inside the
+     app they came from. */
+  if (url.pathname === '/support/close' && req.method === 'POST') {
+    const b = new URLSearchParams(await readBody(req));
+    let notice = null;
+    try {
+      await store.closeSupport(b.get('app'), b.get('id'), b.get('reopen') === '1');
+    } catch (e) {
+      notice = { bad: true, text: 'Could not update that message: ' + e.message };
+    }
+    return renderConsole(res, null, notice);
+  }
+
+  if (url.pathname === '/email/test' && req.method === 'POST') {
+    const b = new URLSearchParams(await readBody(req));
+    const to = b.get('to') || '';
+    let notice;
+    try {
+      const out = await store.testEmail(to);
+      notice = out.ok
+        ? { text: `Sent to ${to}. If it does not arrive in a minute, look in spam.` }
+        : { bad: true, text: out.error };
+    } catch (e) {
+      notice = { bad: true, text: 'Could not send it: ' + e.message };
+    }
+    return renderConsole(res, null, notice);
+  }
+
   if (url.pathname === '/codes/mint' && req.method === 'POST') {
     const b = new URLSearchParams(await readBody(req));
     const days = Math.max(1, Math.min(3650, Number(b.get('days')) || 30));
@@ -795,7 +1034,18 @@ const server = http.createServer(async (req, res) => {
     return renderConsole(res, minted);
   }
 
-  if (url.searchParams.get('refresh')) cache.at = 0;
+  /* Clicking refresh should show new figures if they arrive quickly, but must
+     not hang the page if Render is slow. Three seconds, then draw regardless —
+     the refresh carries on in the background either way. */
+  if (url.searchParams.get('refresh')) {
+    cache.at = 0;
+    if (RENDER_KEY) {
+      await Promise.race([
+        refreshHosting(),
+        new Promise(r => setTimeout(r, 3000))
+      ]).catch(() => {});
+    }
+  }
 
   return renderConsole(res, null);
 });
@@ -804,7 +1054,7 @@ const server = http.createServer(async (req, res) => {
    list still renders when Render's API is down, and the hosting panel still
    renders when the database is. A console that goes blank when one thing
    breaks is a console you stop trusting. */
-async function renderConsole(res, minted) {
+async function renderConsole(res, minted, notice) {
   let apps = [];
   try { apps = await store.listApps(); } catch (e) { /* db down: no launcher */ }
 
@@ -820,11 +1070,22 @@ async function renderConsole(res, minted) {
     console.error('tenants failed:', e.message);
   }
 
-  let data = null, error = null;
-  try { data = await collect(); }
-  catch (e) { data = cache.data; error = e.message; console.error('collect failed:', e.message); }
+  /* Each of these is wrapped on its own so one broken panel cannot take the
+     whole console down with it — the same rule the tenant list follows. */
+  let support = null;
+  try { support = await store.supportInbox(); }
+  catch (e) { console.error('support inbox failed:', e.message); }
 
-  send(res, 200, dashboard(data, error, apps, tenants, alerts, kpis, problems, minted));
+  let health = [];
+  try { health = store.healthChecks(); }
+  catch (e) { console.error('health checks failed:', e.message); }
+
+  /* Never awaited — see hostingNow(). The page goes out now with whatever
+     hosting figures exist, and the refresh lands in time for the next load. */
+  const hosting = hostingNow();
+
+  send(res, 200, dashboard(hosting.data, hosting.error, apps, tenants, alerts, kpis, problems,
+                           minted, support, health, notice, hosting.loading));
 }
 
 store.init().catch(e => console.error('store init failed:', e.message));
