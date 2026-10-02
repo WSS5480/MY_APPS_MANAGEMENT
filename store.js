@@ -124,8 +124,13 @@ CREATE INDEX IF NOT EXISTS ma_resets_email_idx ON ma_password_resets (email);
 const DEFAULT_APPS = [
   ['servetrack', 'SRV', 'ServeTrack', 'https://servetrack.onrender.com'],
   ['scheduler', 'SCH', 'After School Scheduler', 'https://intalsoft-scheduler.onrender.com'],
-  ['dealengine', 'DEA', 'Deal Finder', 'https://deal-finder-z4ms.onrender.com']
+  ['dealengine', 'DEA', 'Deal Finder', 'https://deal-finder-z4ms.onrender.com'],
+  // Karaoke sign-up for bars and DJs (Stemo Enterprises). Its address comes from KARAOKE_URL.
+  ['karaoke', 'KAR', 'Karaoke Sign-Up', (process.env.KARAOKE_URL || 'https://the-dive-karaoke.onrender.com').replace(/\/$/, '')]
 ];
+/* Free-trial length per app. Karaoke's is 14 days; the others use TRIAL_DAYS.
+   TRIAL_DAYS_<SLUG> in the environment overrides either. */
+const APP_TRIAL_DAYS = { karaoke: 14 };
 
 async function init() {
   if (!pool) { console.log('WARNING: DATABASE_URL not set — subscriptions disabled.'); return false; }
@@ -137,6 +142,13 @@ async function init() {
         [slug, prefix, name, url, crypto.randomBytes(24).toString('hex')]);
     }
     console.log('Seeded app registry.');
+  }
+  /* Apps added to the list later (Karaoke) are registered on the next start,
+     without touching the secrets of apps already there. */
+  for (const [slug, prefix, name, url] of DEFAULT_APPS) {
+    const { rows: added } = await q('INSERT INTO ma_apps (slug,prefix,name,url,secret) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (slug) DO NOTHING RETURNING slug',
+      [slug, prefix, name, url, crypto.randomBytes(24).toString('hex')]);
+    if (added.length) console.log(`Registered new app: ${name}`);
   }
 
   /* Names and addresses follow this file, so a moved app (Deal Finder used to
@@ -665,6 +677,14 @@ const TENANT_SOURCES = [
   },
 ];
 
+/* Postgres hands DATE columns back as Date objects; the console wants YYYY-MM-DD. */
+const isoDay = d => {
+  if (!d) return null;
+  if (typeof d === 'string') return d.slice(0, 10);
+  const x = new Date(d);
+  return isNaN(x) ? null : `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+};
+
 async function tenants() {
   const { rows: apps } = await q('SELECT id, slug, name, prefix FROM ma_apps');
   const bySlug = Object.fromEntries(apps.map(a => [a.slug, a]));
@@ -687,10 +707,33 @@ async function tenants() {
         kind: src.label, key, id: r.id, name: r.name,
         created: r.created, people: r.people, work: r.work, workLabel: src.workLabel,
         adminEmail: r.admin_email, adminName: r.admin_name,
-        plan: p.plan || 'free', expires_on: p.expires_on || null,
+        plan: p.plan || 'free', expires_on: isoDay(p.expires_on),
         source: p.source || null, note: p.note || '',
       });
     }
+  }
+  /* Apps with their own database (Karaoke runs in a separate Render workspace)
+     are asked over HTTPS instead of read with SQL. */
+  const kar = bySlug.karaoke;
+  if (kar && process.env.KARAOKE_URL) {
+    try {
+      const { rows: ks } = await q('SELECT secret FROM ma_apps WHERE id=$1', [kar.id]);
+      const r = await fetch(process.env.KARAOKE_URL.replace(/\/$/, '') + '/api/platform/bars',
+        { headers: { 'x-platform-key': ks[0].secret }, signal: AbortSignal.timeout(20000) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'HTTP ' + r.status);
+      for (const b of j.bars || []) {
+        const p = planFor(kar.id, b.key) || {};
+        out.push({
+          app: kar.slug, appName: kar.name, prefix: kar.prefix,
+          kind: 'Bar / DJ', key: b.key, id: b.slug, name: b.name + (b.type === 'dj' ? ' (DJ)' : '') + (b.disabled ? ' — turned off' : ''),
+          created: String(b.created || '').slice(0, 10), people: b.hosts, work: b.songs, workLabel: 'songs',
+          adminEmail: b.email, adminName: b.city, link: b.kj,
+          plan: p.plan || (b.plan && b.plan.active ? 'pro' : 'free'), expires_on: isoDay(p.expires_on || b.plan.expires_on),
+          source: p.source || null, note: p.note || '', paidByCard: !!(b.plan && b.plan.paid), disabled: !!b.disabled,
+        });
+      }
+    } catch (e) { problems.push('karaoke: ' + e.message); }
   }
   out.sort((a, b) => String(b.created || '').localeCompare(String(a.created || '')));
   return { tenants: out, problems };
@@ -866,10 +909,12 @@ async function startTrial({ slug, secret, tenant, tenantName }) {
   if (error) return error;
   const key = String(tenant || '').trim();
   if (!key) return { ok: false, status: 400, error: 'No tenant given' };
-  if (!TRIAL_DAYS) return { ok: true, started: false, plan: 'free', expires_on: null, days_left: null };
+  const envDays = process.env['TRIAL_DAYS_' + String(app.slug).toUpperCase()];
+  const trialDays = Math.max(0, Number(envDays != null ? envDays : (APP_TRIAL_DAYS[app.slug] != null ? APP_TRIAL_DAYS[app.slug] : TRIAL_DAYS)));
+  if (!trialDays) return { ok: true, started: false, plan: 'free', expires_on: null, days_left: null };
 
   const end = new Date();
-  end.setDate(end.getDate() + TRIAL_DAYS);
+  end.setDate(end.getDate() + trialDays);
   const expiresOn = end.toISOString().slice(0, 10);
 
   /* DO NOTHING on conflict is the whole guarantee. A second call returns no
@@ -882,9 +927,9 @@ async function startTrial({ slug, secret, tenant, tenantName }) {
     [app.id, key, tenantName || null, expiresOn]);
 
   if (rows.length) {
-    console.log(`Trial started: ${tenantName || key} on ${app.name} — ${TRIAL_DAYS} days, until ${expiresOn}`);
+    console.log(`Trial started: ${tenantName || key} on ${app.name} — ${trialDays} days, until ${expiresOn}`);
     return { ok: true, started: true, plan: 'pro', source: 'trial',
-             expires_on: expiresOn, days_left: TRIAL_DAYS, trial: true };
+             expires_on: expiresOn, days_left: trialDays, trial: true };
   }
   const current = await tenantPlan({ slug, secret, tenant: key });
   return Object.assign({ started: false }, current);
@@ -937,6 +982,23 @@ async function tenantPlan({ slug, secret, tenant }) {
   return { ok: true, plan: s.plan, expires_on: s.expires_on, source: s.source,
            days_left: s.plan === 'pro' ? daysLeft(s.expires_on) : null,
            trial: s.plan === 'pro' && s.source === 'trial' };
+}
+
+/* An app that takes card payments itself (Karaoke, through Stripe) reports a
+   tenant's subscription here so the console shows who is paying. active=true
+   is a paid plan with no end date; false drops them to free. */
+async function tenantPaid({ slug, secret, tenant, tenantName, active }) {
+  const { app, error } = await appFromCredentials(slug, secret);
+  if (error) return error;
+  const key = String(tenant || '').trim();
+  if (!key) return { ok: false, status: 400, error: 'No tenant given' };
+  await q(`INSERT INTO ma_tenant_plans (app_id, tenant_key, tenant_name, plan, source, expires_on, note)
+           VALUES ($1,$2,$3,$4,'stripe',NULL,'card subscription')
+           ON CONFLICT (app_id, tenant_key) DO UPDATE
+             SET plan=EXCLUDED.plan, source='stripe', expires_on=NULL,
+                 tenant_name=COALESCE(EXCLUDED.tenant_name, ma_tenant_plans.tenant_name), updated_at=NOW()`,
+    [app.id, key, tenantName || null, active ? 'pro' : 'free']);
+  return { ok: true, plan: active ? 'pro' : 'free' };
 }
 
 /* Redeeming a code against a tenant rather than a person. Same signed codes,
@@ -1007,6 +1069,7 @@ async function redeemForTenant({ slug, secret, tenant, tenantName, code }) {
 }
 
 module.exports = {
+  tenantPaid,
   init, q, pool, listApps, issue, listSubscriptions, listRedemptions,
   redeem, status, revokeCode, setPlan, applyStripe, mintCode, parseCode, sign,
   register, login, changePassword, adminSetPassword, listUsers, setUserPassword, toggleUser,

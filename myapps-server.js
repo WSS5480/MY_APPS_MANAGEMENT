@@ -511,7 +511,13 @@ function dashboard(data, error, apps = [], tenants = [], tenantAlerts = [], kpis
           <tr><th>${esc(list[0].kind)}</th><th>Plan</th><th class="num">People</th>
               <th class="num">${esc(list[0].workLabel)}</th><th>Administrator</th><th>Since</th><th></th></tr>
           ${list.map(t => `<tr>
-            <td><b>${esc(t.name)}</b></td>
+            <td><b>${esc(t.name)}</b>${t.link ? `<div class="sub"><a href="${esc(t.link)}" target="_blank" rel="noopener">open host page ↗</a>${t.paidByCard ? ' · paid by card' : ''}</div>` : ''}
+              ${t.app === 'karaoke' ? `<form method="POST" action="/karaoke/bar" style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap">
+                <input type="hidden" name="bar" value="${esc(t.id)}">
+                <input name="pin" placeholder="new PIN" inputmode="numeric" style="width:76px;padding:3px;border:1px solid var(--line);border-radius:7px;font-size:12px">
+                <button name="action" value="pin" style="padding:3px 8px;font-size:12px">Reset PIN</button>
+                <button name="action" value="${t.disabled ? 'enable' : 'disable'}" style="padding:3px 8px;font-size:12px">${t.disabled ? 'Turn on' : 'Turn off'}</button>
+              </form>` : ''}</td>
             <td>${planPill(t)}${t.expires_on ? `<div class="sub">to ${esc(String(t.expires_on).slice(0, 10))}</div>` : ''}</td>
             <td class="num">${t.people}</td>
             <td class="num">${t.work}</td>
@@ -730,6 +736,22 @@ function subsPage({ apps, subs, redemptions, users = [], minted, dbError, notice
   </div>`);
 }
 
+/* ------------------------------------------------------------- karaoke --- */
+/* Karaoke runs in its own Render workspace with its own database, so changes
+   to a bar are sent to it over HTTPS, signed with Karaoke's app secret. */
+async function karaokeBar(slug, body) {
+  const base = (process.env.KARAOKE_URL || '').replace(/\/$/, '');
+  if (!base || !slug) return null;
+  const app = (await store.listApps()).find(a => a.slug === 'karaoke');
+  if (!app) return null;
+  const r = await fetch(base + '/api/platform/bars/' + encodeURIComponent(slug), {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'x-platform-key': app.secret },
+    body: JSON.stringify(body), signal: AbortSignal.timeout(20000) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || 'Karaoke said ' + r.status);
+  return j;
+}
+
 /* -------------------------------------------------------------- server --- */
 
 const send = (res, code, body, headers = {}) => {
@@ -767,6 +789,7 @@ const server = http.createServer(async (req, res) => {
     '/api/v1/plan': store.tenantPlan,
     '/api/v1/trial': store.startTrial,
     '/api/v1/redeem-tenant': store.redeemForTenant,
+    '/api/v1/tenant-paid': store.tenantPaid,
     '/api/v1/auth/login': store.login,
     '/api/v1/auth/change-password': store.changePassword,
     '/api/v1/auth/admin-set-password': store.adminSetPassword
@@ -979,11 +1002,25 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/tenant/plan' && req.method === 'POST') {
     const b = new URLSearchParams(await readBody(req));
     try {
-      await store.setTenantPlan({
+      const row = await store.setTenantPlan({
         slug: b.get('slug'), tenantKey: b.get('tenant'), tenantName: b.get('name'),
         plan: b.get('plan'), days: b.get('days'), note: ''
       });
+      // Karaoke keeps its own copy of each bar's plan: tell it right away
+      if (b.get('slug') === 'karaoke' && row) {
+        await karaokeBar(String(b.get('tenant')).replace(/^bar:/, ''), {
+          action: 'plan', plan: row.plan, source: 'manual',
+          expires_on: row.expires_on ? new Date(row.expires_on).toISOString().slice(0, 10) : null });
+      }
     } catch (e) { console.error('set plan:', e.message); }
+    return send(res, 302, '', { Location: '/' });
+  }
+
+  /* Karaoke bars and DJs: turn one off or on, or reset its owner PIN. */
+  if (url.pathname === '/karaoke/bar' && req.method === 'POST') {
+    const b = new URLSearchParams(await readBody(req));
+    try { await karaokeBar(b.get('bar'), { action: b.get('action'), pin: b.get('pin') }); }
+    catch (e) { console.error('karaoke bar:', e.message); }
     return send(res, 302, '', { Location: '/' });
   }
 
