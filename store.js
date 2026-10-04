@@ -728,7 +728,7 @@ async function tenants() {
           app: kar.slug, appName: kar.name, prefix: kar.prefix,
           kind: 'Bar / DJ', key: b.key, id: b.slug, name: b.name + (b.type === 'dj' ? ' (DJ)' : '') + (b.disabled ? ' — turned off' : ''),
           created: String(b.created || '').slice(0, 10), people: b.hosts, work: b.songs, workLabel: 'songs',
-          adminEmail: b.email, adminName: b.city, link: b.kj,
+          adminEmail: b.email, adminName: b.city, link: b.kj, barLink: b.bar || null,
           plan: p.plan || (b.plan && b.plan.active ? 'pro' : 'free'), expires_on: isoDay(p.expires_on || b.plan.expires_on),
           source: p.source || null, note: p.note || '', paidByCard: !!(b.plan && b.plan.paid), disabled: !!b.disabled,
         });

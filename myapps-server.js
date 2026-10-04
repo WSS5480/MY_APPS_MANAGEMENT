@@ -506,12 +506,12 @@ function dashboard(data, error, apps = [], tenants = [], tenantAlerts = [], kpis
     </div>` : '<div class="card"><h2>Needs you</h2><div class="sub">Nothing right now.</div></div>'}
 
     ${Object.keys(byApp).length ? Object.entries(byApp).map(([appName, list]) => `
-      <div class="card"><h2>${esc(appName)} <span class="sub">${list.length} customer${list.length === 1 ? '' : 's'}</span></h2>
+      <div class="card"><h2>${esc(appName)} <span class="sub">${list.length} customer${list.length === 1 ? '' : 's'}</span>${list[0].app === 'karaoke' && process.env.KARAOKE_URL ? ` <a class="sub" href="${esc(process.env.KARAOKE_URL.replace(/\/$/, '') + '/start')}" target="_blank" rel="noopener">+ sign up a bar or DJ ↗</a>` : ''}</h2>
         <table>
           <tr><th>${esc(list[0].kind)}</th><th>Plan</th><th class="num">People</th>
               <th class="num">${esc(list[0].workLabel)}</th><th>Administrator</th><th>Since</th><th></th></tr>
           ${list.map(t => `<tr>
-            <td><b>${esc(t.name)}</b>${t.link ? `<div class="sub"><a href="${esc(t.link)}" target="_blank" rel="noopener">open host page ↗</a>${t.paidByCard ? ' · paid by card' : ''}</div>` : ''}
+            <td><b>${esc(t.name)}</b>${t.link ? `<div class="sub"><a href="${esc(t.link)}" target="_blank" rel="noopener">open host page ↗</a>${t.barLink ? ` · <a href="${esc(t.barLink)}" target="_blank" rel="noopener">bar owner ↗</a>` : ''}${t.paidByCard ? ' · paid by card' : ''}</div>` : ''}
               ${t.app === 'karaoke' ? `<form method="POST" action="/karaoke/bar" style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap">
                 <input type="hidden" name="bar" value="${esc(t.id)}">
                 <input name="pin" placeholder="new PIN" inputmode="numeric" style="width:76px;padding:3px;border:1px solid var(--line);border-radius:7px;font-size:12px">
