@@ -446,10 +446,14 @@ function healthPanel(health, notice) {
    the code as text too, so it works even where the box is not pre-filled. */
 const TERM_CHOICES = [[7,'1 week'],[14,'2 weeks'],[30,'30 days'],[60,'60 days'],[90,'90 days'],[180,'6 months'],[365,'1 year']];
 const SIGNUP_PATH = { dealengine: '/signup', scheduler: '/signup', karaoke: '/start' };
+/* by code prefix too, because the slug an app registered under is not always
+   the one listed in DEFAULT_APPS */
+const SIGNUP_BY_PREFIX = { DEA: '/signup', SCH: '/signup', KAR: '/start' };
 const inviteLink = (app, code) => {
   const base = String((app && app.url) || '').replace(/\/+$/, '');
   if (!base) return '';
-  return base + (SIGNUP_PATH[app.slug] || '') + '?code=' + encodeURIComponent(code);
+  const path = SIGNUP_PATH[app.slug] || SIGNUP_BY_PREFIX[String(app.prefix || code.split('-')[0]).toUpperCase()] || '';
+  return base + path + '?code=' + encodeURIComponent(code);
 };
 const inviteMsg = (app, days, code) => {
   const link = inviteLink(app, code);
