@@ -432,6 +432,7 @@ function healthPanel(health, notice) {
    19-character code. The link takes them straight to sign-up with the code
    already in the box (apps that read ?code=), and the copied message carries
    the code as text too, so it works even where the box is not pre-filled. */
+const TERM_CHOICES = [[7,'1 week'],[14,'2 weeks'],[30,'30 days'],[60,'60 days'],[90,'90 days'],[180,'6 months'],[365,'1 year']];
 const SIGNUP_PATH = { dealengine: '/signup', scheduler: '/signup', karaoke: '/start' };
 const inviteLink = (app, code) => {
   const base = String((app && app.url) || '').replace(/\/+$/, '');
@@ -589,19 +590,26 @@ function dashboard(data, error, apps = [], tenants = [], tenantAlerts = [], kpis
         them now. Whoever redeems one gets that many days of the full app — and the days are
         <b>added to whatever they have left</b>, so an extension never shortens a trial that is
         still running.</div>
-      <form method="POST" action="/codes/mint">
+      <form method="POST" action="/codes/mint" autocomplete="off">
         <div class="grid">
           <div><label class="sub">App</label>
-            <select name="slug" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:9px">
+            <select name="slug" required autocomplete="off" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:9px">
+              <option value="" selected disabled>Pick an app…</option>
               ${apps.map(a => `<option value="${esc(a.slug)}">${esc(a.name)}</option>`).join('')}
             </select></div>
-          <div><label class="sub">Days</label><input name="days" value="30"></div>
-          <div><label class="sub">How many</label><input name="count" value="5"></div>
+          <div><label class="sub">How long</label>
+            <select name="days" autocomplete="off" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:9px">
+              ${TERM_CHOICES.map(([d, l]) => `<option value="${d}"${d === 30 ? ' selected' : ''}>${l}</option>`).join('')}
+            </select></div>
+          <div><label class="sub">How many</label>
+            <select name="count" autocomplete="off" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:9px">
+              ${[1, 2, 3, 5, 10].map(n => `<option value="${n}"${n === 1 ? ' selected' : ''}>${n}</option>`).join('')}
+            </select></div>
         </div>
         <button style="margin-top:10px">Generate codes</button>
       </form>
-      ${minted ? `<div class="al" style="margin-top:12px"><b>${minted.days}-day codes${minted.app ? ' for ' + esc(minted.app.name) : ''}</b>
-        <div class="sub">Tap <b>Copy message</b> and paste it into a text or email — it has the link and the code.</div>
+      ${minted ? `<div class="al" style="margin-top:12px"><b>${minted.codes.length} code${minted.codes.length === 1 ? '' : 's'}${minted.app ? ' for ' + esc(minted.app.name) : ''} · ${esc((TERM_CHOICES.find(t => t[0] === minted.days) || [0, minted.days + ' days'])[1])} each</b>
+        <div class="sub">Tap <span style="font-weight:700">Copy message</span> and paste it into a text or email — it has the link and the code.</div>
         ${minted.app ? inviteList(minted.app, minted.days, minted.codes)
           : `<div style="font-family:ui-monospace,Menlo,monospace;font-size:13px;line-height:1.8;margin-top:6px">${minted.codes.map(esc).join('<br>')}</div>`}
         </div>` : ''}
@@ -684,7 +692,10 @@ function subsPage({ apps, subs, redemptions, users = [], minted, dbError, notice
             <select name="app_id" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:9px">
               ${apps.map(a => `<option value="${a.id}">${esc(a.name)} (${esc(a.prefix)})</option>`).join('')}
             </select></div>
-          <div><label class="sub">Days of Pro</label><input name="days" type="number" min="1" max="3650" value="30"></div>
+          <div><label class="sub">How long</label>
+            <select name="days" autocomplete="off" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:9px">
+              ${TERM_CHOICES.map(([d, l]) => `<option value="${d}"${d === 30 ? ' selected' : ''}>${l}</option>`).join('')}
+            </select></div>
           <div><label class="sub">How many codes</label><input name="count" type="number" min="1" max="100" value="1"></div>
         </div>
         <button style="margin-top:12px">Generate</button>
@@ -1097,8 +1108,9 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/codes/mint' && req.method === 'POST') {
     const b = new URLSearchParams(await readBody(req));
     const days = Math.max(1, Math.min(3650, Number(b.get('days')) || 30));
-    const count = Math.max(1, Math.min(50, Number(b.get('count')) || 5));
+    const count = Math.max(1, Math.min(50, Number(b.get('count')) || 1));
     let minted = null;
+    if (!b.get('slug')) return renderConsole(res, null, { bad: true, text: 'Pick which app the code is for, then generate.' });
     try {
       const apps = await store.listApps();
       const app = apps.find(a => a.slug === b.get('slug'));
