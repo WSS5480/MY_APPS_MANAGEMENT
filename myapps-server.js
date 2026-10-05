@@ -289,6 +289,18 @@ input{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:9p
 .login{max-width:340px;margin:12vh auto;padding:0 16px}
 .err{color:var(--bad);font-size:13px;margin-top:8px}
 table{width:100%;border-collapse:collapse;font-size:13.5px}
+.card{overflow-x:auto}
+/* Customer tables become stacked rows on a phone — seven columns never fit in
+   390px, and the plan controls were hanging off the right edge of the card. */
+@media (max-width:720px){
+  table.cust,table.cust tbody,table.cust tr,table.cust td{display:block;width:auto}
+  table.cust tr:first-child{display:none}
+  table.cust tr{border-bottom:1px solid var(--line);padding:10px 0}
+  table.cust td{border:0;padding:3px 0;text-align:left}
+  table.cust td[data-l]{display:flex;gap:8px}
+  table.cust td[data-l]::before{content:attr(data-l);min-width:74px;color:var(--muted);font-size:12px}
+  table.cust td.setplan{margin-top:6px}
+}
 th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);
   padding:6px;border-bottom:1px solid var(--line)}
 td{padding:8px 6px;border-bottom:1px solid var(--line)}
@@ -545,7 +557,7 @@ function dashboard(data, error, apps = [], tenants = [], tenantAlerts = [], kpis
 
     ${Object.keys(byApp).length ? Object.entries(byApp).map(([appName, list]) => `
       <div class="card"><h2>${esc(appName)} <span class="sub">${list.length} customer${list.length === 1 ? '' : 's'}</span>${list[0].app === 'karaoke' && process.env.KARAOKE_URL ? ` <a class="sub" href="${esc(process.env.KARAOKE_URL.replace(/\/$/, '') + '/start')}" target="_blank" rel="noopener">+ sign up a bar or DJ ↗</a>` : ''}</h2>
-        <table>
+        <table class="cust">
           <tr><th>${esc(list[0].kind)}</th><th>Plan</th><th class="num">People</th>
               <th class="num">${esc(list[0].workLabel)}</th><th>Administrator</th><th>Since</th><th></th></tr>
           ${list.map(t => `<tr>
@@ -557,12 +569,12 @@ function dashboard(data, error, apps = [], tenants = [], tenantAlerts = [], kpis
                 <button name="action" value="${t.disabled ? 'enable' : 'disable'}" style="padding:3px 8px;font-size:12px">${t.disabled ? 'Turn on' : 'Turn off'}</button>
               </form>` : ''}</td>
             <td>${planPill(t)}${t.expires_on ? `<div class="sub">to ${esc(String(t.expires_on).slice(0, 10))}</div>` : ''}</td>
-            <td class="num">${t.people}</td>
-            <td class="num">${t.work}</td>
-            <td>${t.adminEmail ? `${esc(t.adminName || '')}<div class="sub">${esc(t.adminEmail)}</div>` : '<span class="sub">none yet</span>'}</td>
-            <td class="sub">${esc(String(t.created || '').slice(0, 10))}</td>
-            <td class="num">
-              <form method="POST" action="/tenant/plan" style="display:inline">
+            <td class="num" data-l="People">${t.people}</td>
+            <td class="num" data-l="${esc(list[0].workLabel)}">${t.work}</td>
+            <td data-l="Admin"><span>${t.adminEmail ? `${esc(t.adminName || '')}<div class="sub">${esc(t.adminEmail)}</div>` : '<span class="sub">none yet</span>'}</span></td>
+            <td class="sub" data-l="Since">${esc(String(t.created || '').slice(0, 10))}</td>
+            <td class="num setplan">
+              <form method="POST" action="/tenant/plan" style="display:inline-flex;gap:4px;align-items:center;flex-wrap:wrap">
                 <input type="hidden" name="slug" value="${esc(t.app)}">
                 <input type="hidden" name="tenant" value="${esc(t.key)}">
                 <input type="hidden" name="name" value="${esc(t.name)}">
