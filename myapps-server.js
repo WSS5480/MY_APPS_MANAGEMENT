@@ -427,6 +427,43 @@ function healthPanel(health, notice) {
   </div>`;
 }
 
+/* ---- invite links ----------------------------------------------------------
+   A code on its own makes the person find the app, find sign-up, then type a
+   19-character code. The link takes them straight to sign-up with the code
+   already in the box (apps that read ?code=), and the copied message carries
+   the code as text too, so it works even where the box is not pre-filled. */
+const SIGNUP_PATH = { dealengine: '/signup', scheduler: '/signup', karaoke: '/start' };
+const inviteLink = (app, code) => {
+  const base = String((app && app.url) || '').replace(/\/+$/, '');
+  if (!base) return '';
+  return base + (SIGNUP_PATH[app.slug] || '') + '?code=' + encodeURIComponent(code);
+};
+const inviteMsg = (app, days, code) => {
+  const link = inviteLink(app, code);
+  return `Here's ${days} days free on ${(app && app.name) || 'the app'}.` +
+    (link ? ` Sign up here: ${link}` : '') + ` — your code is ${code}`;
+};
+const COPY_JS = `function maCopy(b){var t=b.getAttribute('data-copy');
+  var done=function(){var o=b.textContent;b.textContent='Copied \u2713';setTimeout(function(){b.textContent=o},1400)};
+  if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(t).then(done,function(){fb()})}else fb();
+  function fb(){var a=document.createElement('textarea');a.value=t;a.style.position='fixed';a.style.opacity='0';
+    document.body.appendChild(a);a.select();try{document.execCommand('copy');done()}catch(e){prompt('Copy this:',t)}a.remove()}}
+function maShare(b){var t=b.getAttribute('data-copy');
+  if(navigator.share){navigator.share({text:t}).catch(function(){})}else maCopy(b)}`;
+function inviteList(app, days, codes) {
+  return `<div style="margin-top:8px">${codes.map(c => {
+    const link = inviteLink(app, c), msg = inviteMsg(app, days, c);
+    return `<div style="border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:8px">
+      <div style="font-family:ui-monospace,Menlo,monospace;font-size:13px">${esc(c)}</div>
+      ${link ? `<div class="sub" style="word-break:break-all;margin-top:4px">${esc(link)}</div>` : ''}
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+        ${link ? `<button type="button" onclick="maCopy(this)" data-copy="${esc(link)}">Copy link</button>` : ''}
+        <button type="button" onclick="maCopy(this)" data-copy="${esc(msg)}">Copy message</button>
+        <button type="button" onclick="maShare(this)" data-copy="${esc(msg)}">Share…</button>
+      </div></div>`;
+  }).join('')}</div><script>${COPY_JS}</script>`;
+}
+
 function dashboard(data, error, apps = [], tenants = [], tenantAlerts = [], kpis = {},
                    tenantProblems = [], minted = null, support = null, health = [], notice = null,
                    hostingLoading = false) {
@@ -563,9 +600,11 @@ function dashboard(data, error, apps = [], tenants = [], tenantAlerts = [], kpis
         </div>
         <button style="margin-top:10px">Generate codes</button>
       </form>
-      ${minted ? `<div class="al" style="margin-top:12px"><b>${minted.days}-day codes</b>
-        <div style="font-family:ui-monospace,Menlo,monospace;font-size:13px;line-height:1.8;margin-top:6px">
-        ${minted.codes.map(esc).join('<br>')}</div></div>` : ''}
+      ${minted ? `<div class="al" style="margin-top:12px"><b>${minted.days}-day codes${minted.app ? ' for ' + esc(minted.app.name) : ''}</b>
+        <div class="sub">Tap <b>Copy message</b> and paste it into a text or email — it has the link and the code.</div>
+        ${minted.app ? inviteList(minted.app, minted.days, minted.codes)
+          : `<div style="font-family:ui-monospace,Menlo,monospace;font-size:13px;line-height:1.8;margin-top:6px">${minted.codes.map(esc).join('<br>')}</div>`}
+        </div>` : ''}
     </div>
 
     ${supportPanel(support)}
@@ -634,7 +673,8 @@ function subsPage({ apps, subs, redemptions, users = [], minted, dbError, notice
         They work until redeemed or revoked.</p>
       <textarea readonly style="width:100%;height:${Math.min(220, 28 + minted.codes.length * 20)}px;
         font:13px/1.6 monospace;padding:10px;border:1px solid var(--line);border-radius:9px"
-      >${esc(minted.codes.join('\n'))}</textarea></div>` : ''}
+      >${esc(minted.codes.join('\n'))}</textarea>
+      ${inviteList(minted.app, minted.days, minted.codes)}</div>` : ''}
 
     <div class="card">
       <h2>Issue codes <span class="sub">signed, not stored — mint as many as you like</span></h2>
@@ -1065,7 +1105,7 @@ const server = http.createServer(async (req, res) => {
       if (app) {
         const codes = [];
         for (let i = 0; i < count; i++) codes.push(store.mintCode(app.prefix, days));
-        minted = { days, codes };
+        minted = { days, codes, app };
       }
     } catch (e) { console.error('mint:', e.message); }
     return renderConsole(res, minted);
