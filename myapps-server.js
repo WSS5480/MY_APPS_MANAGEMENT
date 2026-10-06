@@ -308,6 +308,49 @@ td.num,th.num{text-align:right}
 `;
 
 const INSTALL_CSS = "/* The install bar. Sits on the bottom edge, out of the way of the thumb. */\n#a2hs{position:fixed;left:10px;right:10px;bottom:calc(16px + env(safe-area-inset-bottom));z-index:90;\n  display:none;align-items:center;gap:10px;background:var(--card,#fff);\n  border:1px solid var(--line,#DBE4F2);border-radius:14px;padding:10px 12px;\n  box-shadow:0 8px 26px rgba(11,40,90,.16)}\n#a2hs.on{display:flex}\n#a2hs .ai{width:34px;height:34px;border-radius:9px;flex:none}\n#a2hs .at{flex:1;min-width:0;font-size:12.5px;line-height:1.45;color:var(--muted,#5A6A80)}\n#a2hs .at b{color:var(--ink,#101822);display:block;font-size:13px;margin-bottom:1px}\n#a2hs button{background:var(--accent,#F2660D);color:#fff;border:0;border-radius:999px;\n  padding:8px 14px;font-weight:700;font-size:13px;cursor:pointer}\n#a2hs .x{background:none;color:var(--muted,#8894A6);font-size:19px;padding:0 4px;font-weight:600}\n@media all and (display-mode:standalone){#a2hs{display:none!important}}\n";
+/* Pull down to refresh. A form result (/codes/mint, /tenant/plan…) must not be
+   re-posted, so refresh goes to the page the result belongs to. */
+const PTR_JS = `window.ptrRefresh=function(){var p=location.pathname;
+  var to=(p==='/'||p==='/subscriptions')?p:(/^\\/(codes\\/issue|users\\/)/.test(p)?'/subscriptions':'/');
+  location.replace(to+(to==='/'?'?refresh=1':''))};
+/* pull-to-refresh: a home-screen app has no browser bar, so no built-in pull-down */
+(function(){
+  if(window.__ptr) return; window.__ptr=1;
+  var y0=null, d=0, on=false, el=null, TH=70;
+  function bar(){
+    if(el) return el;
+    el=document.createElement("div");
+    el.setAttribute("aria-hidden","true");
+    el.style.cssText="position:fixed;left:50%;top:0;z-index:99999;width:38px;height:38px;margin-left:-19px;"+
+      "border-radius:50%;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.18);display:flex;align-items:center;"+
+      "justify-content:center;font:20px/1 system-ui;color:#0B4FD3;transform:translateY(-50px);opacity:0;pointer-events:none";
+    el.textContent="↻"; document.body.appendChild(el); return el;
+  }
+  function busy(t){ return t&&t.closest&&t.closest("input,textarea,select,[contenteditable],.noptr") }
+  addEventListener("touchstart",function(e){
+    if(window.scrollY>0||e.touches.length!==1||busy(e.target)){ y0=null; return }
+    y0=e.touches[0].clientY; d=0; on=false;
+  },{passive:true});
+  addEventListener("touchmove",function(e){
+    if(y0===null) return;
+    d=e.touches[0].clientY-y0;
+    if(d<=0||window.scrollY>0){ if(el){el.style.opacity=0;el.style.transform="translateY(-50px)"} return }
+    on=true; var b=bar(), p=Math.min(1,d/TH);
+    b.style.transition="none"; b.style.opacity=String(p);
+    b.style.transform="translateY("+(Math.min(d,TH*1.4)*0.7-40)+"px) rotate("+(p*270)+"deg)";
+    b.style.color=p>=1?"#12785a":"#0B4FD3";
+  },{passive:true});
+  addEventListener("touchend",function(){
+    if(y0===null||!on){ y0=null; return }
+    var b=bar(); y0=null;
+    if(d>=TH){
+      b.style.transition="transform .2s"; b.style.transform="translateY(20px)";
+      b.animate&&b.animate([{rotate:"0deg"},{rotate:"360deg"}],{duration:700,iterations:Infinity});
+      setTimeout(function(){ (window.ptrRefresh||function(){location.reload()})() },120);
+    }else{ b.style.transition="transform .2s,opacity .2s"; b.style.transform="translateY(-50px)"; b.style.opacity=0 }
+  });
+})();
+`;
 const INSTALL_JS = "/* ---- installable app -------------------------------------------------------\n   A service worker plus a manifest is the whole difference between a web page\n   and something that lives on the home screen with its own icon and no browser\n   bars. No store, no review, no developer account.\n\n   The bar waits a couple of seconds so it never lands on top of what someone\n   is reading, and once dismissed it stays dismissed on that device.          */\n(function () {\n  if ('serviceWorker' in navigator) {\n    window.addEventListener('load', function () {\n      navigator.serviceWorker.register('/sw.js').catch(function () {});\n    });\n  }\n  var standalone = window.matchMedia('(display-mode: standalone)').matches\n                || window.navigator.standalone === true;\n  if (standalone) return;\n\n  var KEY = 'ma_a2hs';\n  try { if (localStorage.getItem(KEY) === '1') return; } catch (e) {}\n\n  var ios = /iphone|ipad|ipod/i.test(navigator.userAgent);\n  var bar = null, deferred = null;\n\n  function build(html) {\n    bar = document.createElement('div');\n    bar.id = 'a2hs';\n    bar.innerHTML = '<img class=\"ai\" src=\"/icon-192.png\" alt=\"\">' + html +\n      '<button class=\"x\" aria-label=\"Dismiss\">&times;</button>';\n    document.body.appendChild(bar);\n    bar.querySelector('.x').onclick = function () {\n      bar.classList.remove('on');\n      try { localStorage.setItem(KEY, '1'); } catch (e) {}\n    };\n    setTimeout(function () { bar.classList.add('on'); }, 2600);\n  }\n\n  if (ios) {\n    build('<div class=\"at\"><b>Put My Apps on your home screen</b>' +\n          'Tap Share, then <b style=\"display:inline\">Add to Home Screen</b>.</div>');\n  } else {\n    window.addEventListener('beforeinstallprompt', function (ev) {\n      ev.preventDefault();\n      deferred = ev;\n      if (bar) return;\n      build('<div class=\"at\"><b>Install My Apps</b>Runs full screen, opens straight to your work.</div>' +\n            '<button id=\"a2hsGo\">Install</button>');\n      var go = document.getElementById('a2hsGo');\n      if (go) go.onclick = function () {\n        bar.classList.remove('on');\n        deferred.prompt();\n        deferred = null;\n        try { localStorage.setItem(KEY, '1'); } catch (e) {}\n      };\n    });\n  }\n})();\n";
 
 const page = (title, body) => `<!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -320,7 +363,7 @@ const page = (title, body) => `<!doctype html><html lang="en"><head><meta charse
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <style>${CSS}
 ${INSTALL_CSS}</style></head>
-<body>${body}<script>${INSTALL_JS}</script></body></html>`;
+<body>${body}<script>${INSTALL_JS}</script><script>${PTR_JS}</script></body></html>`;
 
 /* Forgotten passwords are handled here rather than in each app, because this is
    where passwords live. Every app links to these two pages. Both are public —
