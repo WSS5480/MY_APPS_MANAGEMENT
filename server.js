@@ -311,7 +311,7 @@ function pageFile(name) {
 function fill(html, vars) {
   return html.replace(/\{\{\{(\w+)\}\}\}/g, (m, k) => (vars[k] ?? "")).replace(/\{\{(\w+)\}\}/g, (m, k) => esc(vars[k] ?? ""));
 }
-const baseVars = req => ({ PRODUCT, COMPANY, SUPPORT, PRICE: PRICE_TEXT, TRIAL_DAYS: String(TRIAL_DAYS), SITE: siteUrl(req) });
+const baseVars = req => ({ PRODUCT, COMPANY, SUPPORT, PRICE: PRICE_TEXT, TRIAL_DAYS: String(TRIAL_DAYS), SITE: siteUrl(req), HOST: siteUrl(req).replace(/^https?:\/\//, "") });
 const simplePage = (title, body) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title>
 <style>body{margin:0;background:#0c0b10;color:#f1eef7;font-family:system-ui,-apple-system,sans-serif;display:grid;place-items:center;min-height:100vh;padding:24px;box-sizing:border-box;text-align:center}main{max-width:420px}h1{font-size:26px;margin:16px 0 6px}p{color:#a8a3b8;line-height:1.5}a{color:#ffb347}</style></head><body><main>${body}</main></body></html>`;
 function sendHtml(res, html) { res.type("html").set("Cache-Control", "no-cache").send(html); }

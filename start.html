@@ -38,8 +38,8 @@ button.go:disabled{opacity:.5}
 .chk{display:flex;gap:10px;align-items:flex-start;font-size:14px;color:var(--ink);margin:0}
 .chk input{width:20px;height:20px;flex:none;accent-color:var(--accent);margin-top:2px}
 .web{display:flex;align-items:center;gap:0;background:var(--wall);border:1px solid var(--line);border-radius:10px;padding-left:12px}
-.web span{color:var(--ink-2);font-size:14px;white-space:nowrap}
-.web input{border:0;background:transparent;padding-left:4px}
+.web span{color:var(--ink-2);font-size:14px;white-space:nowrap;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;direction:rtl}
+.web input{border:0;background:transparent;padding-left:4px;flex:1 1 55%;min-width:130px}
 a{color:var(--accent)}
 footer{color:var(--ink-2);font-size:13px;text-align:center}
 </style>
@@ -60,7 +60,7 @@ footer{color:var(--ink-2);font-size:13px;text-align:center}
     <div><label for="name">Band name</label><input id="name" maxlength="50" autocomplete="organization" placeholder="The Rockers"></div>
     <div>
       <label for="slug">Your web name</label>
-      <div class="web"><span id="site">{{SITE}}/</span><input id="slug" maxlength="38" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="the-rockers"></div>
+      <div class="web"><span id="site">{{HOST}}/</span><input id="slug" maxlength="38" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="the-rockers"></div>
       <p class="hint" id="slugState">This is the link on your QR code. Letters, numbers and dashes.</p>
     </div>
     <div class="two">
