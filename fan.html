@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>{{NAME}} · Tip &amp; follow</title>
+<meta name="description" content="{{TAGLINE}}">
+<meta property="og:title" content="{{NAME}} · Tip the band">
+<meta property="og:description" content="{{TAGLINE}}">
+<meta property="og:image" content="{{LOGO}}">
+<meta property="og:url" content="{{URL}}">
+<meta name="theme-color" content="#0c0b10">
+<link rel="icon" href="{{LOGO}}">
+<link rel="apple-touch-icon" href="{{LOGO}}">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@400;500;600;700&display=swap">
+<style>
+:root{--wall:#0c0b10;--panel:#16141d;--panel-2:#1e1b27;--line:#2b2735;--ink:#f1eef7;--ink-2:#a8a3b8;--accent:{{ACCENT}};--warn:#ff6b6b;--ok:#5fd36e;
+--disp:"Bebas Neue","Oswald",Impact,"Arial Narrow",sans-serif;--body:"Outfit",system-ui,-apple-system,"Segoe UI",sans-serif;color-scheme:dark}
+*{box-sizing:border-box}[hidden]{display:none!important}
+html{background:var(--wall)}
+body{margin:0;background:radial-gradient(900px 480px at 50% -120px,color-mix(in srgb,var(--accent) 28%,transparent),transparent 70%),var(--wall);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.5;padding:env(safe-area-inset-top,0px) 16px calc(32px + env(safe-area-inset-bottom,0px))}
+main{max-width:480px;margin:0 auto;display:flex;flex-direction:column;gap:14px;padding-top:22px}
+.hero{text-align:center;display:flex;flex-direction:column;align-items:center;gap:8px}
+.hero img{width:132px;height:132px;border-radius:28px;object-fit:cover;background:#000;border:2px solid color-mix(in srgb,var(--accent) 60%,var(--line));box-shadow:0 12px 40px rgba(0,0,0,.55)}
+h1{font-family:var(--disp);font-weight:400;font-size:46px;line-height:1;letter-spacing:.03em;margin:6px 0 0;text-wrap:balance}
+.tag{margin:0;color:var(--ink-2);font-size:16px;text-wrap:balance}
+.tonight{display:inline-flex;gap:6px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:6px 14px;font-size:14px;color:var(--ink-2)}
+.tonight b{color:var(--ink)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:16px;display:flex;flex-direction:column;gap:12px}
+h2{font-family:var(--disp);font-weight:400;font-size:26px;letter-spacing:.04em;color:var(--accent);margin:0;line-height:1}
+h2 small{font-family:var(--body);font-size:13px;letter-spacing:0;color:var(--ink-2);margin-left:8px}
+.amts{display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:8px}
+.amts button{font:inherit;font-weight:700;font-size:20px;border-radius:14px;padding:14px 6px;border:1px solid var(--line);background:var(--panel-2);color:var(--ink);cursor:pointer}
+.amts button[aria-pressed="true"]{background:var(--accent);color:#141015;border-color:var(--accent)}
+input,textarea{width:100%;background:var(--wall);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:12px;font:inherit;font-size:16px}
+textarea{resize:vertical;min-height:64px}
+input:focus-visible,textarea:focus-visible,button:focus-visible,a:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+label{display:block;font-size:13px;color:var(--ink-2);margin-bottom:4px}
+.pay{display:grid;grid-template-columns:1fr;gap:8px}
+.pay button{font:inherit;font-weight:700;font-size:17px;border-radius:14px;padding:14px;border:0;color:#fff;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+.pay button span{font-weight:500;font-size:14px;opacity:.9}
+.pay .venmo{background:#008CFF}.pay .cashapp{background:#00C244;color:#06210f}.pay .paypal{background:#0070BA}.pay .zelle{background:#6D1ED4}.pay .apple{background:#1c1c1e;border:1px solid #3a3a3c}
+.hint{font-size:13px;color:var(--ink-2);margin:0}
+.err{color:var(--warn);margin:0;font-size:14px;min-height:0}
+.ok{color:var(--ok);margin:0;font-weight:600}
+button.go{width:100%;background:var(--accent);color:#141015;border:0;border-radius:999px;padding:14px;font:inherit;font-weight:800;font-size:17px;cursor:pointer}
+button.sm{font:inherit;font-weight:600;font-size:14px;border-radius:999px;padding:8px 14px;border:1px solid var(--line);background:var(--panel-2);color:var(--ink);cursor:pointer}
+button.linkbtn{background:none;border:0;color:var(--ink-2);font:inherit;font-size:14px;text-decoration:underline;cursor:pointer;padding:4px}
+.handle{display:flex;gap:10px;align-items:center;justify-content:space-between;background:var(--wall);border:1px solid var(--line);border-radius:12px;padding:12px}
+.handle b{font-size:18px;overflow-wrap:anywhere}
+.social{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.social a{display:flex;align-items:center;justify-content:center;gap:6px;border-radius:14px;padding:14px 10px;font-weight:700;font-size:16px;color:#fff;text-decoration:none;border:1px solid transparent}
+.social .instagram{background:linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888)}.social .tiktok{background:#000;border-color:#333}.social .facebook{background:#1877F2}.social .youtube{background:#FF0000}.social .spotify{background:#1DB954;color:#062b14}.social .applemusic{background:#FA243C}.social .website{background:var(--panel-2);border-color:var(--line)}
+.thanks{border-color:var(--accent);text-align:center}
+.thanks b{font-family:var(--disp);font-weight:400;font-size:30px;letter-spacing:.04em;color:var(--accent);display:block}
+.paused{text-align:center;color:var(--ink-2)}
+footer{text-align:center;color:var(--ink-2);font-size:13px;padding-top:8px}
+footer a{color:var(--ink-2)}
+.scan{position:fixed;left:0;right:0;bottom:0;background:var(--accent);color:#141015;text-align:center;font-weight:700;font-size:14px;padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));z-index:9}
+</style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <img src="{{LOGO}}" alt="" id="logo">
+    <h1 id="bandName">{{NAME}}</h1>
+    <p class="tag" id="tagline">{{TAGLINE}}</p>
+    <div class="tonight" id="tonight" hidden>🎸 Tonight at <b id="tonightAt"></b></div>
+  </header>
+
+  <section class="card paused" id="pausedCard" hidden>
+    <h2>Taking a break</h2>
+    <p style="margin:0">This band's tip page is paused right now. Catch them at the show!</p>
+  </section>
+
+  <section class="card thanks" id="thanks" hidden>
+    <b>🙌 Thank you!</b>
+    <div id="thanksText">Your tip means a lot. Now follow us so you never miss a show 👇</div>
+  </section>
+
+  <section class="card" id="tipCard">
+    <h2>Tip the band</h2>
+    <div class="amts" id="amts" role="group" aria-label="Tip amount"></div>
+    <input id="other" inputmode="decimal" placeholder="Other amount ($)" aria-label="Other amount in dollars">
+    <input id="name" maxlength="30" autocomplete="nickname" placeholder="Your name (optional)" aria-label="Your name">
+    <input id="note" maxlength="140" placeholder="Say something · a song request, a shout-out (optional)" aria-label="Message to the band">
+    <div class="pay" id="pay" role="group" aria-label="Pay with"></div>
+    <p class="err" id="tipErr" role="alert"></p>
+    <p class="hint">Your tip goes straight to the band through the app you pick. {{PRODUCT}} never touches the money and never sees your payment info.</p>
+  </section>
+
+  <section class="card" id="handoff" hidden>
+    <h2 id="handTitle">Send your tip</h2>
+    <p id="handHow" style="margin:0"></p>
+    <div class="handle"><b id="handTo"></b><button class="sm" id="handCopy" type="button">Copy</button></div>
+    <button class="go" id="handSms" type="button" hidden>Open Messages</button>
+    <p class="hint">When you're done, come back here and follow the band 👇</p>
+    <button class="linkbtn" id="handClose" type="button">Done</button>
+  </section>
+
+  <section class="card" id="followCard">
+    <h2>Follow us</h2>
+    <div class="social" id="social"></div>
+  </section>
+
+  <section class="card" id="noteCard">
+    <h2>Shout-out <small>or a song request</small></h2>
+    <textarea id="msg" maxlength="140" placeholder="Play Free Bird! 🎸"></textarea>
+    <input id="msgName" maxlength="30" placeholder="Your name (optional)" aria-label="Your name">
+    <button class="go" id="msgSend" type="button" style="background:var(--panel-2);color:var(--ink);border:1px solid var(--line)">Send to the band</button>
+    <p class="ok" id="msgOk" hidden>Sent to the band 🎸</p>
+    <p class="err" id="msgErr" role="alert"></p>
+  </section>
+
+  <footer>Powered by {{PRODUCT}} · <a href="/start">Get this for your band</a> · <a href="/terms">Terms</a></footer>
+</main>
+<script>
+const BAND = {{{BAND_JSON}}};
+const $ = id => document.getElementById(id);
+const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
+let amount = null;
+if(BAND.tonight){ $("tonightAt").textContent = BAND.tonight; $("tonight").hidden = false; }
+if(BAND.thanks) $("thanksText").textContent = BAND.thanks;
+if(BAND.paused){ $("pausedCard").hidden = false; $("tipCard").hidden = true; $("followCard").hidden = true; $("noteCard").hidden = true; }
+if(!BAND.notes) $("noteCard").hidden = true;
+if(!BAND.social.length) $("followCard").hidden = true;
+
+/* amounts */
+const amts = BAND.amounts;
+amount = amts[Math.min(1, amts.length - 1)];
+amts.forEach(a => {
+  const b = document.createElement("button"); b.type = "button"; b.textContent = "$" + a; b.setAttribute("aria-pressed", a === amount);
+  b.addEventListener("click", () => { amount = a; $("other").value = ""; paintAmts(); }); $("amts").appendChild(b);
+});
+function paintAmts(){ [...$("amts").children].forEach((b, i) => b.setAttribute("aria-pressed", amts[i] === amount && !$("other").value)); }
+$("other").addEventListener("input", () => { paintAmts(); });
+
+/* pay buttons */
+if(!BAND.pay.length){ $("tipCard").querySelector("h2").insertAdjacentHTML("afterend", '<p class="hint">The band hasn\'t added a way to tip yet. Tell them at the merch table!</p>'); $("amts").hidden = true; $("other").hidden = true; $("name").hidden = true; $("note").hidden = true; }
+BAND.pay.forEach(p => {
+  const b = document.createElement("button"); b.type = "button"; b.className = p.key; b.innerHTML = "<span>Pay with</span>" + p.name + "<span>→</span>";
+  b.addEventListener("click", () => sendTip(p.key, p.name)); $("pay").appendChild(b);
+});
+let busy = false;
+async function sendTip(method, methodName){
+  if(busy) return; $("tipErr").textContent = "";
+  let amt = amount; const o = $("other").value.trim(); if(o){ amt = Math.round(Number(o.replace(/[$,]/g, "")) * 100) / 100; }
+  if(!(amt >= 1 && amt <= 500)){ $("tipErr").textContent = "Tip between $1 and $500."; return; }
+  busy = true;
+  let d;
+  try{
+    const r = await fetch("/" + BAND.slug + "/api/tip", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ amount: amt, method, name: $("name").value, note: $("note").value }) });
+    d = await r.json(); if(!r.ok) throw new Error(d.error || "Couldn't send. Try again.");
+  }catch(e){ $("tipErr").textContent = e.message; busy = false; return; }
+  busy = false;
+  try{ sessionStorage.setItem("bt_tipped_" + BAND.slug, String(Date.now())); }catch(e){}
+  const memo = "Tip for " + BAND.name + " 🎸" + ($("note").value.trim() ? " – " + $("note").value.trim() : "");
+  const to = d.to;
+  if(method === "cashapp"){ location.href = "https://cash.app/$" + encodeURIComponent(to) + "/" + d.amount; return; }
+  if(method === "venmo"){ location.href = "https://venmo.com/?txn=pay&recipients=" + encodeURIComponent(to) + "&amount=" + d.amount + "&note=" + encodeURIComponent(memo); return; }
+  if(method === "paypal"){ location.href = "https://www.paypal.me/" + encodeURIComponent(to) + "/" + d.amount + "USD"; return; }
+  // Zelle and Apple Cash: nothing to open, so show who to send it to
+  $("handTitle").textContent = "Send $" + d.amount + " with " + methodName;
+  $("handTo").textContent = /^\+1\d{10}$/.test(to) ? "(" + to.slice(2, 5) + ") " + to.slice(5, 8) + "-" + to.slice(8) : to;
+  $("handHow").textContent = method === "zelle" ? "Open your bank app → Zelle → send $" + d.amount + " to:" : "In Messages, tap the Apple Cash button and send $" + d.amount + " to:";
+  $("handSms").hidden = !(method === "apple" && ios && /^\+/.test(to));
+  $("handSms").onclick = () => { location.href = "sms:" + to + "&body=" + encodeURIComponent(memo); };
+  $("handCopy").onclick = async () => { try{ await navigator.clipboard.writeText(to); $("handCopy").textContent = "Copied ✓"; }catch(e){ $("handCopy").textContent = "Press and hold to copy"; } setTimeout(() => $("handCopy").textContent = "Copy", 1800); };
+  $("tipCard").hidden = true; $("handoff").hidden = false; $("handoff").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+$("handClose").addEventListener("click", () => { $("handoff").hidden = true; showThanks(); });
+
+/* coming back from Venmo / Cash App / PayPal */
+function showThanks(){ $("thanks").hidden = false; $("tipCard").hidden = true; $("followCard").hidden = !BAND.social.length; try{ sessionStorage.removeItem("bt_tipped_" + BAND.slug); }catch(e){} $("thanks").scrollIntoView({ behavior: "smooth", block: "start" }); }
+function checkBack(){ let t = 0; try{ t = Number(sessionStorage.getItem("bt_tipped_" + BAND.slug) || 0); }catch(e){} if(t && Date.now() - t < 30 * 60000 && Date.now() - t > 1500) showThanks(); }
+window.addEventListener("pageshow", checkBack);
+document.addEventListener("visibilitychange", () => { if(document.visibilityState === "visible") checkBack(); });
+checkBack();
+
+/* follow */
+BAND.social.forEach(s => { const a = document.createElement("a"); a.className = s.key; a.href = s.url; a.target = "_blank"; a.rel = "noopener"; a.textContent = s.name; $("social").appendChild(a); });
+
+/* shout-out */
+$("msgSend").addEventListener("click", async () => {
+  $("msgErr").textContent = ""; const note = $("msg").value.trim(); if(!note){ $("msgErr").textContent = "Type your message first."; return; }
+  try{
+    const r = await fetch("/" + BAND.slug + "/api/note", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ note, name: $("msgName").value }) });
+    const d = await r.json(); if(!r.ok) throw new Error(d.error || "Couldn't send. Try again.");
+    $("msg").value = ""; $("msgOk").hidden = false; setTimeout(() => $("msgOk").hidden = true, 4000);
+  }catch(e){ $("msgErr").textContent = e.message; }
+});
+</script>
+</body>
+</html>

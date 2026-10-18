@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{NAME}} · Tip &amp; follow poster</title>
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@400;600;700&display=swap">
+<style>
+:root{--accent:{{ACCENT}}}
+*{box-sizing:border-box}
+html,body{margin:0;background:#3a3a3a}
+body{font-family:"Outfit",system-ui,sans-serif;color:#111;display:flex;flex-direction:column;align-items:center;gap:16px;padding:16px}
+.bar{display:flex;gap:10px;align-items:center;color:#fff;font-size:14px}
+.bar button,.bar a{font:inherit;font-weight:700;border-radius:999px;padding:9px 16px;border:0;background:var(--accent);color:#141015;cursor:pointer;text-decoration:none}
+.sheet{background:#fff;width:8.5in;height:11in;padding:.6in;display:flex;flex-direction:column;align-items:center;justify-content:space-between;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.4)}
+.sheet img.logo{width:2.2in;height:2.2in;border-radius:.4in;object-fit:cover;border:4px solid var(--accent)}
+h1{font-family:"Bebas Neue",Impact,sans-serif;font-weight:400;font-size:1in;line-height:.95;margin:.15in 0 0;letter-spacing:.02em}
+.tag{font-size:.26in;color:#444;margin:.08in 0 0}
+.big{font-family:"Bebas Neue",Impact,sans-serif;font-weight:400;font-size:.62in;letter-spacing:.04em;line-height:1;color:var(--accent);-webkit-text-stroke:1px #111;margin:0}
+.qr{width:3.6in;height:3.6in;border:6px solid #111;border-radius:.3in;padding:.1in;background:#fff}
+.qr svg{width:100%;height:100%;display:block}
+.scan{font-size:.28in;font-weight:700;margin:0}
+.pay{font-size:.2in;color:#444;margin:.05in 0 0}
+.url{font-size:.22in;color:#111;font-weight:600;margin:0;word-break:break-all}
+.tiny{font-size:.14in;color:#888;margin:0}
+@media print{body{background:#fff;padding:0;gap:0}.bar{display:none}.sheet{box-shadow:none;width:100%;height:100vh;padding:.5in}@page{size:letter portrait;margin:0}}
+</style>
+</head>
+<body>
+<div class="bar"><button type="button" onclick="print()">🖨 Print</button><a href="/{{SLUG}}/setup">← Back to setup</a><span>Letter size. Tape it to the stage, the tip jar, the merch table.</span></div>
+<div class="sheet">
+  <div>
+    <img class="logo" src="{{LOGO}}" alt="">
+    <h1>{{NAME}}</h1>
+    <p class="tag">{{TAGLINE}}</p>
+  </div>
+  <p class="big">Tip the band · Follow us</p>
+  <div class="qr">{{{QR}}}</div>
+  <div>
+    <p class="scan">Scan with your phone camera</p>
+    <p class="pay">{{PAY}}</p>
+    <p class="url">{{URL}}</p>
+  </div>
+  <p class="tiny">{{PRODUCT}} · tips go straight to the band</p>
+</div>
+</body>
+</html>

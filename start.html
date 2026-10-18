@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>{{PRODUCT}} · Tip jar + follow page for bands</title>
+<meta name="description" content="One QR code on the stage. Fans tip your band straight to your Venmo, Cash App or PayPal, follow you on every social, and send song requests. {{TRIAL_DAYS}}-day free trial.">
+<link rel="icon" href="/default-logo.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@400;500;600;700&display=swap">
+<style>
+:root{--wall:#0c0b10;--panel:#16141d;--panel-2:#1e1b27;--line:#2b2735;--ink:#f1eef7;--ink-2:#a8a3b8;--accent:#ffb347;--warn:#ff6b6b;--ok:#5fd36e;
+--disp:"Bebas Neue","Oswald",Impact,"Arial Narrow",sans-serif;--body:"Outfit",system-ui,-apple-system,"Segoe UI",sans-serif;color-scheme:dark}
+*{box-sizing:border-box}[hidden]{display:none!important}
+body{margin:0;background:radial-gradient(900px 480px at 50% -120px,rgba(255,179,71,.22),transparent 70%),var(--wall);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.5;padding:env(safe-area-inset-top,0px) 16px calc(32px + env(safe-area-inset-bottom,0px))}
+main{max-width:620px;margin:0 auto;display:flex;flex-direction:column;gap:16px;padding-top:24px}
+h1{font-family:var(--disp);font-weight:400;font-size:48px;line-height:1;letter-spacing:.03em;margin:0;text-wrap:balance}
+h1 span{color:var(--accent)}
+.lead{color:var(--ink-2);margin:0;font-size:17px}
+.price{display:flex;gap:10px;flex-wrap:wrap}
+.price span{border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:14px;background:var(--panel)}
+.price b{color:var(--accent)}
+.how{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+@media (max-width:520px){.how{grid-template-columns:1fr}}
+.how div{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px}
+.how b{display:block;font-family:var(--disp);font-weight:400;font-size:22px;letter-spacing:.04em;color:var(--accent)}
+.how span{font-size:14px;color:var(--ink-2)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px}
+h2{font-family:var(--disp);font-weight:400;font-size:24px;letter-spacing:.04em;color:var(--accent);margin:0;line-height:1}
+label{display:block;font-size:13px;color:var(--ink-2);margin-bottom:4px}
+input{width:100%;background:var(--wall);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:11px 12px;font:inherit;font-size:17px}
+input:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+@media (max-width:480px){.two{grid-template-columns:minmax(0,1fr)}}
+button.go{width:100%;background:var(--accent);color:#141015;border:0;border-radius:999px;padding:15px;font:inherit;font-weight:800;font-size:18px;cursor:pointer}
+button.go:disabled{opacity:.5}
+.hint{font-size:13px;color:var(--ink-2);margin:4px 0 0}
+.ok{color:var(--ok)}.err{color:var(--warn);min-height:20px;margin:0;font-size:14px}
+.chk{display:flex;gap:10px;align-items:flex-start;font-size:14px;color:var(--ink);margin:0}
+.chk input{width:20px;height:20px;flex:none;accent-color:var(--accent);margin-top:2px}
+.web{display:flex;align-items:center;gap:0;background:var(--wall);border:1px solid var(--line);border-radius:10px;padding-left:12px}
+.web span{color:var(--ink-2);font-size:14px;white-space:nowrap}
+.web input{border:0;background:transparent;padding-left:4px}
+a{color:var(--accent)}
+footer{color:var(--ink-2);font-size:13px;text-align:center}
+</style>
+</head>
+<body>
+<main>
+  <h1>Your band's <span>tip jar</span>, on every phone in the room</h1>
+  <p class="lead">One QR code on the stage. Fans tip you straight to your own Venmo, Cash App, PayPal, Zelle or Apple Cash, follow you on every social, and send song requests and shout-outs. Your logo, your name. No app store.</p>
+  <div class="price"><span><b>{{TRIAL_DAYS}}-day free trial</b>, no card</span><span><b>{{PRICE}}</b> after</span><span>Tips are 100% yours</span></div>
+  <div class="how">
+    <div><b>1. Set up</b><span>Add your logo, your payment handles and your socials. Two minutes.</span></div>
+    <div><b>2. Print the poster</b><span>Put the QR code on the stage, the tip jar, the merch table.</span></div>
+    <div><b>3. Play</b><span>Fans scan, tip and follow. You see tonight's tips and requests on your phone.</span></div>
+  </div>
+
+  <form class="card" id="form" novalidate>
+    <h2>Start your band's page</h2>
+    <div><label for="name">Band name</label><input id="name" maxlength="50" autocomplete="organization" placeholder="The Rockers"></div>
+    <div>
+      <label for="slug">Your web name</label>
+      <div class="web"><span id="site">{{SITE}}/</span><input id="slug" maxlength="38" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="the-rockers"></div>
+      <p class="hint" id="slugState">This is the link on your QR code. Letters, numbers and dashes.</p>
+    </div>
+    <div class="two">
+      <div><label for="email">Your email</label><input id="email" type="email" autocomplete="email" placeholder="band@example.com"></div>
+      <div><label for="pin">Band PIN (4–8 digits)</label><input id="pin" inputmode="numeric" maxlength="8" autocomplete="new-password" placeholder="Only you know it"></div>
+    </div>
+    <p class="hint">The PIN opens your band's setup page, where you see tips and change things. Share it with the band, not with fans.</p>
+    <div><label for="code">Have a code from {{COMPANY}}? <span style="color:var(--ink-2)">(optional)</span></label><input id="code" autocomplete="off" autocapitalize="characters" placeholder="BND-30D-XXXX-XXXXXX"></div>
+    <label class="chk"><input type="checkbox" id="agree"><span>I agree to the <a href="/terms" target="_blank">service terms</a>. {{PRODUCT}} never handles money: tips go straight from fans to the band's own payment apps.</span></label>
+    <p class="err" id="err" role="alert"></p>
+    <button class="go" id="go" type="submit">Start my free trial</button>
+  </form>
+
+  <div class="card" id="done" hidden>
+    <h2>You're on! 🎸</h2>
+    <p style="margin:0" id="doneNote"></p>
+    <p style="margin:0">Next: add your payment handles and socials on your setup page, then print the poster.</p>
+    <a class="go" id="doneLink" style="display:block;text-align:center;text-decoration:none;background:var(--accent);color:#141015;border-radius:999px;padding:15px;font-weight:800;font-size:18px">Open my setup page →</a>
+  </div>
+
+  <footer>{{PRODUCT}} by {{COMPANY}} · <a href="/terms">Terms</a> · questions: <a href="mailto:{{SUPPORT}}">{{SUPPORT}}</a></footer>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const q = new URLSearchParams(location.search); if(q.get("code")) $("code").value = q.get("code");
+const slugify = s => String(s || "").toLowerCase().replace(/['’]/g, "").normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 38);
+let slugTouched = false, checkT = null, slugOk = false;
+$("name").addEventListener("input", () => { if(!slugTouched){ $("slug").value = slugify($("name").value); checkSlug(); } });
+$("slug").addEventListener("input", () => { slugTouched = !!$("slug").value; checkSlug(); });
+function checkSlug(){
+  clearTimeout(checkT); slugOk = false; const s = slugify($("slug").value);
+  if(s.length < 3){ $("slugState").textContent = "Use at least 3 letters or numbers."; $("slugState").className = "hint"; return; }
+  $("slugState").textContent = "Checking…"; $("slugState").className = "hint";
+  checkT = setTimeout(async () => {
+    try{ const r = await fetch("/api/start/check?slug=" + encodeURIComponent(s)); const d = await r.json();
+      if(d.ok){ slugOk = true; $("slugState").textContent = "✓ " + location.host + "/" + d.slug + " is yours"; $("slugState").className = "hint ok"; }
+      else { $("slugState").textContent = d.error; $("slugState").className = "hint err"; }
+    }catch(e){ $("slugState").textContent = "Couldn't check right now."; }
+  }, 350);
+}
+$("form").addEventListener("submit", async e => {
+  e.preventDefault(); $("err").textContent = "";
+  const body = { name: $("name").value, slug: slugify($("slug").value), email: $("email").value, pin: $("pin").value, code: $("code").value, agree: $("agree").checked };
+  $("go").disabled = true;
+  try{
+    const r = await fetch("/api/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const d = await r.json(); if(!r.ok) throw new Error(d.error || "Couldn't sign up. Try again.");
+    try{ sessionStorage.setItem("bt_pin_" + d.slug, $("pin").value.replace(/\D/g, "")); }catch(x){}
+    $("doneNote").textContent = d.note + " Your page: " + d.url;
+    $("doneLink").href = "/" + d.slug + "/setup?welcome=1";
+    $("form").hidden = true; $("done").hidden = false; window.scrollTo(0, 0);
+  }catch(x){ $("err").textContent = x.message; $("go").disabled = false; }
+});
+</script>
+</body>
+</html>

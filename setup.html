@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>{{NAME}} · Setup · {{PRODUCT}}</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="/{{SLUG}}/logo.png">
+<link rel="apple-touch-icon" href="/{{SLUG}}/logo.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@400;500;600;700&display=swap">
+<style>
+:root{--wall:#0c0b10;--panel:#16141d;--panel-2:#1e1b27;--line:#2b2735;--ink:#f1eef7;--ink-2:#a8a3b8;--accent:#ffb347;--warn:#ff6b6b;--ok:#5fd36e;
+--disp:"Bebas Neue","Oswald",Impact,"Arial Narrow",sans-serif;--body:"Outfit",system-ui,-apple-system,"Segoe UI",sans-serif;color-scheme:dark}
+*{box-sizing:border-box}[hidden]{display:none!important}
+body{margin:0;background:var(--wall);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.5;padding:env(safe-area-inset-top,0px) 16px calc(40px + env(safe-area-inset-bottom,0px))}
+main{max-width:620px;margin:0 auto;display:flex;flex-direction:column;gap:14px;padding-top:18px}
+h1{font-family:var(--disp);font-weight:400;font-size:40px;line-height:1;letter-spacing:.03em;margin:0}
+h2{font-family:var(--disp);font-weight:400;font-size:24px;letter-spacing:.04em;color:var(--accent);margin:0;line-height:1;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+h2 span{font-family:var(--body);font-size:13px;letter-spacing:0;color:var(--ink-2);font-weight:400;text-align:right}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:12px}
+label{display:block;font-size:13px;color:var(--ink-2);margin-bottom:4px}
+input,select,textarea{width:100%;background:var(--wall);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:11px 12px;font:inherit;font-size:16px}
+input[type=color]{padding:4px;height:46px;width:80px}
+input:focus-visible,button:focus-visible,select:focus-visible,a:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+@media (max-width:480px){.two{grid-template-columns:minmax(0,1fr)}}
+button.go{width:100%;background:var(--accent);color:#141015;border:0;border-radius:999px;padding:14px;font:inherit;font-weight:800;font-size:17px;cursor:pointer}
+button.go:disabled{opacity:.5}
+button.sm,a.sm{font:inherit;font-weight:600;font-size:14px;border-radius:999px;padding:8px 14px;border:1px solid var(--line);background:var(--panel-2);color:var(--ink);cursor:pointer;text-decoration:none;display:inline-block}
+button.linkbtn{background:none;border:0;color:var(--ink-2);font:inherit;font-size:14px;text-decoration:underline;cursor:pointer;padding:4px}
+.hint{font-size:13px;color:var(--ink-2);margin:0}
+.ok{color:var(--ok);margin:0}.err{color:var(--warn);min-height:0;margin:0;font-size:14px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.pill{display:inline-block;border-radius:999px;padding:4px 10px;font-size:13px;font-weight:700;background:var(--panel-2);border:1px solid var(--line)}
+.pill.on{background:#173a1d;border-color:var(--ok);color:var(--ok)}.pill.off{background:#3a1717;border-color:var(--warn);color:var(--warn)}.pill.warn{background:#3a2e12;border-color:var(--accent);color:var(--accent)}
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.tile{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:10px;text-align:center}
+.tile b{display:block;font-family:var(--disp);font-weight:400;font-size:30px;letter-spacing:.03em;color:var(--accent);line-height:1}
+.tile span{font-size:12px;color:var(--ink-2)}
+.feed{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.feed li{display:flex;gap:10px;padding:9px 0;border-top:1px solid var(--line);align-items:flex-start}
+.feed li:first-child{border-top:0}
+.feed .amt{font-family:var(--disp);font-size:24px;letter-spacing:.03em;color:var(--accent);min-width:54px;line-height:1.1}
+.feed .amt.note{color:var(--ink-2);font-family:var(--body);font-size:18px}
+.feed .t{flex:1;min-width:0}
+.feed .t b{font-size:15px}
+.feed .t span{display:block;font-size:14px;color:var(--ink-2)}
+.feed .t i{display:block;font-style:normal;font-size:15px;margin-top:2px}
+.feed time{font-size:12px;color:var(--ink-2);white-space:nowrap}
+.empty{color:var(--ink-2);text-align:center;padding:10px 0}
+.logo{display:flex;gap:12px;align-items:center}
+.logo img{width:84px;height:84px;border-radius:18px;object-fit:cover;background:#000;border:1px solid var(--line)}
+.link{display:flex;justify-content:space-between;gap:10px;background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:12px;align-items:center}
+.link b{font-size:15px;overflow-wrap:anywhere}
+.qr{display:flex;gap:14px;align-items:center}
+.qr img{width:120px;height:120px;border-radius:10px;background:#fff;padding:4px}
+.chk{display:flex;gap:10px;align-items:center;font-size:15px;margin:0}
+.chk input{width:22px;height:22px;flex:none;accent-color:var(--accent)}
+.welcome{border-color:var(--accent)}
+.welcome ol{margin:0;padding-left:20px;color:var(--ink-2)}
+.welcome li b{color:var(--ink)}
+.top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+a{color:var(--accent)}
+.saved{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ok);color:#06210f;font-weight:800;border-radius:999px;padding:10px 18px;box-shadow:0 8px 24px rgba(0,0,0,.5);z-index:9}
+</style>
+</head>
+<body>
+<main>
+  <section class="card" id="login">
+    <h1>{{NAME}}</h1>
+    <p class="hint">Enter the band PIN to open your page. It's the PIN you picked when you signed up.</p>
+    <form id="pinForm">
+      <input id="pin" type="password" inputmode="numeric" maxlength="8" autocomplete="current-password" placeholder="Band PIN" aria-label="Band PIN">
+      <p class="err" id="pinErr" role="alert"></p>
+      <button class="go" type="submit" style="margin-top:8px">Open</button>
+    </form>
+    <p class="hint">Forgot the PIN? Email <a href="mailto:{{SUPPORT}}">{{SUPPORT}}</a> and {{COMPANY}} will reset it.</p>
+  </section>
+
+  <div id="panel" hidden style="display:flex;flex-direction:column;gap:14px">
+    <div class="top"><h1 id="title">{{NAME}}</h1><span class="pill" id="planPill"></span></div>
+
+    <section class="card welcome" id="welcome" hidden>
+      <h2>Welcome! Three things to do</h2>
+      <ol><li><b>Get paid:</b> add at least one payment handle (Venmo, Cash App…).</li><li><b>Follow links:</b> add your socials.</li><li><b>Print the poster</b> and put the QR code where fans can see it.</li></ol>
+      <button class="linkbtn" id="welcomeX" type="button">Got it</button>
+    </section>
+
+    <section class="card">
+      <h2>Tonight <span id="tzNote"></span></h2>
+      <div class="tiles"><div class="tile"><b id="tTip">$0</b><span>tipped tonight</span></div><div class="tile"><b id="tCount">0</b><span>tips</span></div><div class="tile"><b id="tNotes">0</b><span>shout-outs</span></div></div>
+      <p class="hint" id="byMethod"></p>
+      <ul class="feed" id="feed"></ul>
+      <p class="hint" id="ever"></p>
+      <p class="hint">Tips show up here when a fan taps a pay button. The money goes straight to your own payment app; check it there.</p>
+    </section>
+
+    <section class="card">
+      <h2>Share your page</h2>
+      <div class="link"><b id="pageLink"></b><div class="row" style="flex-wrap:nowrap"><button class="sm" id="copyLink" type="button">Copy</button><button class="sm" id="shareLink" type="button">Share</button></div></div>
+      <div class="qr"><img id="qrImg" alt="Your QR code"><div><p class="hint" style="margin-bottom:8px">Fans scan this with their phone camera.</p><div class="row"><a class="sm" id="posterLink" target="_blank" rel="noopener">🖨 Print poster</a><a class="sm" id="openPage" target="_blank" rel="noopener">Open page ↗</a></div></div></div>
+      <p class="hint">Put the link in your Instagram bio and on your merch table too.</p>
+    </section>
+
+    <section class="card">
+      <h2>Get paid <span>fans see only the ones you fill in</span></h2>
+      <div class="two">
+        <div><label for="venmo">Venmo username</label><input id="venmo" placeholder="@The-Rockers" autocapitalize="none"></div>
+        <div><label for="cashapp">Cash App $cashtag</label><input id="cashapp" placeholder="$TheRockers" autocapitalize="none"></div>
+        <div><label for="paypal">PayPal.me name</label><input id="paypal" placeholder="TheRockers" autocapitalize="none"></div>
+        <div><label for="zelle">Zelle (phone or email)</label><input id="zelle" placeholder="(956) 555-0100" autocapitalize="none"></div>
+        <div><label for="apple">Apple Cash (phone or email)</label><input id="apple" placeholder="(956) 555-0100" autocapitalize="none"></div>
+      </div>
+      <p class="hint">Venmo, Cash App and PayPal open the fan's app with the amount already filled in. Zelle and Apple Cash show the fan where to send it.</p>
+      <p class="err" id="payErr" role="alert"></p>
+      <button class="go" id="savePay" type="button">Save</button>
+    </section>
+
+    <section class="card">
+      <h2>Follow links</h2>
+      <div class="two">
+        <div><label for="instagram">Instagram</label><input id="instagram" placeholder="@therockers" autocapitalize="none"></div>
+        <div><label for="tiktok">TikTok</label><input id="tiktok" placeholder="@therockers" autocapitalize="none"></div>
+        <div><label for="facebook">Facebook page</label><input id="facebook" placeholder="TheRockersBand or the link" autocapitalize="none"></div>
+        <div><label for="youtube">YouTube</label><input id="youtube" placeholder="@therockers or the link" autocapitalize="none"></div>
+        <div><label for="spotify">Spotify artist link</label><input id="spotify" placeholder="https://open.spotify.com/artist/…" autocapitalize="none"></div>
+        <div><label for="applemusic">Apple Music link</label><input id="applemusic" placeholder="https://music.apple.com/…" autocapitalize="none"></div>
+        <div><label for="website">Website</label><input id="website" placeholder="https://therockers.band" autocapitalize="none"></div>
+      </div>
+      <p class="err" id="socialErr" role="alert"></p>
+      <button class="go" id="saveSocial" type="button">Save</button>
+    </section>
+
+    <section class="card">
+      <h2>Your page</h2>
+      <div class="logo"><img id="logoPrev" alt=""><div class="row"><button class="sm" id="logoBtn" type="button">Upload logo</button><button class="sm" id="logoDel" type="button">Remove</button><input type="file" id="logoIn" accept="image/*" hidden></div></div>
+      <div class="two">
+        <div><label for="name">Band name</label><input id="name" maxlength="50"></div>
+        <div><label for="tagline">Tagline</label><input id="tagline" maxlength="90" placeholder="Rock & country covers · McAllen, TX"></div>
+        <div><label for="tonight">Playing tonight at</label><input id="tonight" maxlength="80" placeholder="The Dive on 495 (leave blank to hide)"></div>
+        <div><label for="amounts">Tip buttons (dollars)</label><input id="amounts" placeholder="5, 10, 20"></div>
+        <div><label for="thanks">Thank-you message after a tip</label><input id="thanks" maxlength="140" placeholder="You rock! Follow us so you never miss a show 👇"></div>
+        <div><label for="email">Your email</label><input id="email" type="email" autocomplete="email"></div>
+        <div><label for="accent">Accent color</label><div class="row"><input type="color" id="accent" value="#ffb347"><button class="sm" id="accentReset" type="button">Default</button></div></div>
+        <div><label for="tz">Your time zone</label><select id="tz"><option value="America/Chicago">Central</option><option value="America/New_York">Eastern</option><option value="America/Denver">Mountain</option><option value="America/Phoenix">Arizona</option><option value="America/Los_Angeles">Pacific</option><option value="America/Anchorage">Alaska</option><option value="Pacific/Honolulu">Hawaii</option></select></div>
+      </div>
+      <label class="chk"><input type="checkbox" id="notes" checked><span>Let fans send shout-outs and song requests without tipping</span></label>
+      <p class="err" id="pageErr" role="alert"></p>
+      <button class="go" id="savePage" type="button">Save</button>
+    </section>
+
+    <section class="card">
+      <h2>Your plan <span id="price"></span></h2>
+      <div class="row"><span class="pill" id="planPill2"></span><span class="hint" id="planNote"></span></div>
+      <p class="ok" id="paidMsg" hidden>Thanks! Your card subscription is set up. It can take a minute to show here.</p>
+      <div class="row"><input id="code" placeholder="Code from {{COMPANY}}" autocapitalize="characters" style="flex:1;min-width:160px"><button class="sm" id="codeBtn" type="button">Apply code</button></div>
+      <div class="row"><button class="sm" id="cardBtn" type="button" hidden>💳 Pay by card</button><button class="sm" id="portalBtn" type="button" hidden>Manage billing</button></div>
+      <p class="hint" id="cardNote"></p>
+      <p class="err" id="planErr" role="alert"></p>
+    </section>
+
+    <section class="card">
+      <h2>Band PIN</h2>
+      <div class="row"><input id="newPin" type="password" inputmode="numeric" maxlength="8" autocomplete="new-password" placeholder="New PIN (4–8 digits)" style="flex:1;min-width:160px"><button class="sm" id="pinBtn" type="button">Change PIN</button></div>
+      <p class="err" id="pinErr2" role="alert"></p>
+      <button class="linkbtn" id="signout" type="button">Sign out of this page</button>
+    </section>
+    <p class="hint" style="text-align:center">{{PRODUCT}} by {{COMPANY}} · <a href="/terms">Terms</a> · <a href="mailto:{{SUPPORT}}">{{SUPPORT}}</a></p>
+  </div>
+</main>
+<div class="saved" id="saved" hidden>Saved ✓</div>
+<script>
+const SLUG = "{{SLUG}}", $ = id => document.getElementById(id), KEY = "bt_pin_" + SLUG;
+let pin = ""; try{ pin = sessionStorage.getItem(KEY) || ""; }catch(e){}
+let me = null, logo = undefined, feedTimer = null;
+const api = async (p, body) => { const r = await fetch("/" + SLUG + "/api/" + p, { method: "POST", headers: { "Content-Type": "application/json", "x-band-pin": pin }, body: JSON.stringify(body || {}) }); const d = await r.json().catch(() => ({})); if(!r.ok) throw new Error(d.error || "Something went wrong."); return d; };
+const usd = v => "$" + (Number.isInteger(v) ? v.toLocaleString() : v.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+const tm = d => new Date(d).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+function toast(){ $("saved").hidden = false; setTimeout(() => $("saved").hidden = true, 1600); }
+
+function paint(d){
+  me = d; document.documentElement.style.setProperty("--accent", d.accent || "#ffb347");
+  $("title").textContent = d.name; document.title = d.name + " · Setup";
+  const pl = d.plan, cls = pl.active ? (pl.trial || pl.code || (pl.days_left != null && pl.days_left <= 5) ? "warn" : "on") : "off";
+  for(const id of ["planPill", "planPill2"]){ $(id).textContent = pl.label; $(id).className = "pill " + cls; }
+  $("planNote").textContent = pl.active ? (pl.expires_on ? "Through " + new Date(pl.expires_on + "T12:00:00").toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }) + ". " : "") + (pl.paid ? "Thanks for subscribing." : "")
+    : "Your page is paused: fans can't tip until the plan is active. Enter a code or pay by card.";
+  $("price").textContent = d.price; $("cardBtn").hidden = !d.cardReady || d.paid; $("portalBtn").hidden = !d.paid;
+  $("cardNote").textContent = d.cardReady ? "" : "Card payments aren't turned on yet. Ask " + d.company + " for a code.";
+  // tonight
+  $("tTip").textContent = usd(d.totals.tonight.amount); $("tCount").textContent = d.totals.tonight.tips; $("tNotes").textContent = d.totals.notesTonight;
+  const bm = Object.entries(d.totals.byMethod); $("byMethod").textContent = bm.length ? bm.map(([k, v]) => ({ venmo: "Venmo", cashapp: "Cash App", paypal: "PayPal", zelle: "Zelle", apple: "Apple Cash" }[k] || k) + " " + usd(v)).join(" · ") : "";
+  $("ever").textContent = "All time: " + usd(d.totals.ever.amount) + " in " + d.totals.ever.tips + (d.totals.ever.tips === 1 ? " tip" : " tips") + ".";
+  $("tzNote").textContent = "since 6 AM";
+  const f = $("feed"); f.innerHTML = "";
+  if(!d.feed.length){ const li = document.createElement("li"); li.className = "empty"; li.textContent = "Nothing yet tonight. Put the QR code where fans can see it."; f.appendChild(li); }
+  d.feed.forEach(r => {
+    const li = document.createElement("li"); const a = document.createElement("span"); a.className = "amt" + (r.kind === "note" ? " note" : ""); a.textContent = r.kind === "note" ? "💬" : usd(r.amount);
+    const t = document.createElement("div"); t.className = "t"; const b = document.createElement("b"); b.textContent = r.name || "Someone"; const s = document.createElement("span"); s.textContent = r.kind === "note" ? "shout-out" : "via " + r.methodName; t.append(b, s);
+    if(r.note){ const i = document.createElement("i"); i.textContent = "“" + r.note + "”"; t.appendChild(i); }
+    const tt = document.createElement("time"); tt.textContent = tm(r.at); li.append(a, t, tt); f.appendChild(li);
+  });
+  // share
+  $("pageLink").textContent = d.links.page.replace(/^https?:\/\//, ""); $("qrImg").src = d.links.qr; $("posterLink").href = d.links.poster; $("openPage").href = d.links.page;
+  // fields
+  $("name").value = d.name; $("tagline").value = d.tagline; $("tonight").value = d.tonight; $("thanks").value = d.thanks; $("email").value = d.email; $("amounts").value = d.amounts.join(", "); $("accent").value = d.accent || "#ffb347"; $("tz").value = d.tz; $("notes").checked = d.notes;
+  for(const k of ["venmo", "cashapp", "paypal", "zelle", "apple"]) $(k).value = d.pay[k] ? (k === "venmo" ? "@" : k === "cashapp" ? "$" : "") + d.pay[k] : "";
+  for(const k of ["instagram", "tiktok", "facebook", "youtube", "spotify", "applemusic", "website"]) $(k).value = d.social[k] || "";
+  $("logoPrev").src = d.hasLogo ? "/" + SLUG + "/logo.png?v=" + d.v : "/default-logo.png"; logo = undefined;
+}
+async function open(){
+  const d = await api("me"); try{ sessionStorage.setItem(KEY, pin); }catch(e){}
+  $("login").hidden = true; $("panel").hidden = false; paint(d);
+  if(/welcome=1/.test(location.search) && !(me.pay && Object.keys(me.pay).length)) $("welcome").hidden = false;
+  clearInterval(feedTimer); feedTimer = setInterval(() => { if(document.visibilityState === "visible") api("me").then(paintFeedOnly).catch(() => {}); }, 10000);
+}
+function paintFeedOnly(d){ const keep = { logo }; const vals = {}; ["name", "tagline", "tonight", "thanks", "email", "amounts", "accent", "tz", "venmo", "cashapp", "paypal", "zelle", "apple", "instagram", "tiktok", "facebook", "youtube", "spotify", "applemusic", "website"].forEach(k => vals[k] = $(k).value); const notes = $("notes").checked, src = $("logoPrev").src;
+  paint(d); Object.entries(vals).forEach(([k, v]) => $(k).value = v); $("notes").checked = notes; $("logoPrev").src = src; logo = keep.logo; }
+$("pinForm").addEventListener("submit", async e => { e.preventDefault(); pin = $("pin").value.replace(/\D/g, ""); $("pinErr").textContent = ""; try{ await open(); }catch(x){ $("pinErr").textContent = x.message; } });
+if(pin) open().catch(() => { pin = ""; });
+if(/paid=1/.test(location.search)) $("paidMsg").hidden = false;
+$("welcomeX").addEventListener("click", () => $("welcome").hidden = true);
+
+async function save(fields, errId){
+  $(errId).textContent = "";
+  try{ const d = await api("save", fields); paint(d); toast(); }catch(x){ $(errId).textContent = x.message; }
+}
+$("savePay").addEventListener("click", () => save({ pay: { venmo: $("venmo").value, cashapp: $("cashapp").value, paypal: $("paypal").value, zelle: $("zelle").value, apple: $("apple").value } }, "payErr"));
+$("saveSocial").addEventListener("click", () => save({ social: { instagram: $("instagram").value, tiktok: $("tiktok").value, facebook: $("facebook").value, youtube: $("youtube").value, spotify: $("spotify").value, applemusic: $("applemusic").value, website: $("website").value } }, "socialErr"));
+$("savePage").addEventListener("click", () => { const f = { name: $("name").value, tagline: $("tagline").value, tonight: $("tonight").value, thanks: $("thanks").value, email: $("email").value, amounts: $("amounts").value, accent: $("accent").value, tz: $("tz").value, notes: $("notes").checked }; if(logo !== undefined) f.logo = logo; save(f, "pageErr"); });
+$("accentReset").addEventListener("click", () => { $("accent").value = "#ffb347"; });
+$("logoBtn").addEventListener("click", () => { $("logoIn").value = ""; $("logoIn").click(); });
+$("logoDel").addEventListener("click", () => { logo = ""; $("logoPrev").src = "/default-logo.png"; });
+$("logoIn").addEventListener("change", async () => {
+  const f = $("logoIn").files && $("logoIn").files[0]; if(!f) return;
+  try{
+    const bmp = await createImageBitmap(f), side = Math.min(bmp.width, bmp.height), k = Math.min(1, 512 / side);
+    const c = document.createElement("canvas"); c.width = c.height = Math.round(side * k);
+    c.getContext("2d").drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, c.width, c.height);   // square, from the middle
+    logo = c.toDataURL("image/png"); if(logo.length > 550000) logo = c.toDataURL("image/jpeg", 0.85);
+    $("logoPrev").src = logo;
+  }catch(e){ $("pageErr").textContent = "That picture didn't work. Try a PNG or JPG."; }
+});
+$("copyLink").addEventListener("click", async () => { try{ await navigator.clipboard.writeText(me.links.page); $("copyLink").textContent = "Copied ✓"; }catch(e){ $("copyLink").textContent = "Press and hold"; } setTimeout(() => $("copyLink").textContent = "Copy", 1600); });
+$("shareLink").addEventListener("click", async () => { const text = "Tip " + me.name + " and follow us: " + me.links.page; if(navigator.share){ try{ await navigator.share({ title: me.name, text, url: me.links.page }); }catch(e){} } else { try{ await navigator.clipboard.writeText(text); $("shareLink").textContent = "Copied ✓"; setTimeout(() => $("shareLink").textContent = "Share", 1600); }catch(e){} } });
+$("codeBtn").addEventListener("click", async () => { $("planErr").textContent = ""; try{ const d = await api("code", { code: $("code").value }); paint(d); $("code").value = ""; $("planNote").textContent = d.message + " " + $("planNote").textContent; toast(); }catch(x){ $("planErr").textContent = x.message; } });
+$("cardBtn").addEventListener("click", async () => { $("planErr").textContent = ""; try{ const d = await api("checkout"); location.href = d.url; }catch(x){ $("planErr").textContent = x.message; } });
+$("portalBtn").addEventListener("click", async () => { $("planErr").textContent = ""; try{ const d = await api("portal"); location.href = d.url; }catch(x){ $("planErr").textContent = x.message; } });
+$("pinBtn").addEventListener("click", async () => { $("pinErr2").textContent = ""; const p = $("newPin").value.replace(/\D/g, ""); if(p.length < 4 || p.length > 8){ $("pinErr2").textContent = "New PIN must be 4 to 8 digits."; return; } try{ await api("save", { newPin: p }); pin = p; try{ sessionStorage.setItem(KEY, pin); }catch(e){} $("newPin").value = ""; toast(); }catch(x){ $("pinErr2").textContent = x.message; } });
+$("signout").addEventListener("click", () => { try{ sessionStorage.removeItem(KEY); }catch(e){} location.reload(); });
+</script>
+</body>
+</html>
