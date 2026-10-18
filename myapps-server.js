@@ -488,10 +488,10 @@ function healthPanel(health, notice) {
    already in the box (apps that read ?code=), and the copied message carries
    the code as text too, so it works even where the box is not pre-filled. */
 const TERM_CHOICES = [[7,'1 week'],[14,'2 weeks'],[30,'30 days'],[60,'60 days'],[90,'90 days'],[180,'6 months'],[365,'1 year']];
-const SIGNUP_PATH = { dealengine: '/signup', scheduler: '/signup', karaoke: '/start' };
+const SIGNUP_PATH = { dealengine: '/signup', scheduler: '/signup', karaoke: '/start', bands: '/start' };
 /* by code prefix too, because the slug an app registered under is not always
    the one listed in DEFAULT_APPS */
-const SIGNUP_BY_PREFIX = { DEA: '/signup', SCH: '/signup', KAR: '/start' };
+const SIGNUP_BY_PREFIX = { DEA: '/signup', SCH: '/signup', KAR: '/start', BND: '/start' };
 const inviteLink = (app, code) => {
   const base = String((app && app.url) || '').replace(/\/+$/, '');
   if (!base) return '';
@@ -603,14 +603,14 @@ function dashboard(data, error, apps = [], tenants = [], tenantAlerts = [], kpis
     </div>` : '<div class="card"><h2>Needs you</h2><div class="sub">Nothing right now.</div></div>'}
 
     ${Object.keys(byApp).length ? Object.entries(byApp).map(([appName, list]) => `
-      <div class="card"><h2>${esc(appName)} <span class="sub">${list.length} customer${list.length === 1 ? '' : 's'}</span>${list[0].app === 'karaoke' && process.env.KARAOKE_URL ? ` <a class="sub" href="${esc(process.env.KARAOKE_URL.replace(/\/$/, '') + '/start')}" target="_blank" rel="noopener">+ sign up a bar or DJ ↗</a>` : ''}</h2>
+      <div class="card"><h2>${esc(appName)} <span class="sub">${list.length} customer${list.length === 1 ? '' : 's'}</span>${signupLink(list[0].app) ? ` <a class="sub" href="${esc(signupLink(list[0].app))}" target="_blank" rel="noopener">+ sign up ${list[0].app === 'bands' ? 'a band' : 'a bar or DJ'} ↗</a>` : ''}</h2>
         <table class="cust">
           <tr><th>${esc(list[0].kind)}</th><th>Plan</th><th class="num">People</th>
               <th class="num">${esc(list[0].workLabel)}</th><th>Administrator</th><th>Since</th><th></th></tr>
           ${list.map(t => `<tr>
-            <td><b>${esc(t.name)}</b>${t.link ? `<div class="sub"><a href="${esc(t.link)}" target="_blank" rel="noopener">open host page ↗</a>${t.barLink ? ` · <a href="${esc(t.barLink)}" target="_blank" rel="noopener">bar owner ↗</a>` : ''}${t.paidByCard ? ' · paid by card' : ''}</div>` : ''}
-              ${t.app === 'karaoke' ? `<form method="POST" action="/karaoke/bar" style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap">
-                <input type="hidden" name="bar" value="${esc(t.id)}">
+            <td><b>${esc(t.name)}</b>${t.link ? `<div class="sub"><a href="${esc(t.link)}" target="_blank" rel="noopener">${esc(t.linkLabel || 'open host page ↗')}</a>${t.barLink ? ` · <a href="${esc(t.barLink)}" target="_blank" rel="noopener">${esc(t.barLabel || 'bar owner ↗')}</a>` : ''}${t.paidByCard ? ' · paid by card' : ''}</div>` : ''}
+              ${PLATFORM[t.app] ? `<form method="POST" action="/tenant/action" style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap">
+                <input type="hidden" name="slug" value="${esc(t.app)}"><input type="hidden" name="id" value="${esc(t.id)}">
                 <input name="pin" placeholder="new PIN" inputmode="numeric" style="width:76px;padding:3px;border:1px solid var(--line);border-radius:7px;font-size:12px">
                 <button name="action" value="pin" style="padding:3px 8px;font-size:12px">Reset PIN</button>
                 <button name="action" value="${t.disabled ? 'enable' : 'disable'}" style="padding:3px 8px;font-size:12px">${t.disabled ? 'Turn on' : 'Turn off'}</button>
@@ -848,19 +848,29 @@ function subsPage({ apps, subs, redemptions, users = [], minted, dbError, notice
 
 /* ------------------------------------------------------------- karaoke --- */
 /* Karaoke runs in its own Render workspace with its own database, so changes
-   to a bar are sent to it over HTTPS, signed with Karaoke's app secret. */
-async function karaokeBar(slug, body) {
-  const base = (process.env.KARAOKE_URL || '').replace(/\/$/, '');
-  if (!base || !slug) return null;
-  const app = (await store.listApps()).find(a => a.slug === 'karaoke');
+   to a bar are sent to it over HTTPS, signed with Karaoke's app secret.
+   Band Tips has its own service too; same arrangement, different address. */
+const PLATFORM = {
+  karaoke: { env: 'KARAOKE_URL', path: '/api/platform/bars/' },
+  bands:   { env: 'BANDS_URL',   path: '/api/platform/bands/' },
+};
+async function platformPush(slug, id, body) {
+  const p = PLATFORM[slug];
+  const base = p ? (process.env[p.env] || '').replace(/\/$/, '') : '';
+  if (!base || !id) return null;
+  const app = (await store.listApps()).find(a => a.slug === slug);
   if (!app) return null;
-  const r = await fetch(base + '/api/platform/bars/' + encodeURIComponent(slug), {
+  const r = await fetch(base + p.path + encodeURIComponent(id), {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'x-platform-key': app.secret },
     body: JSON.stringify(body), signal: AbortSignal.timeout(20000) });
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error || 'Karaoke said ' + r.status);
+  if (!r.ok) throw new Error(j.error || app.name + ' said ' + r.status);
   return j;
 }
+const signupLink = slug => {
+  const p = PLATFORM[slug], base = p ? (process.env[p.env] || '').replace(/\/$/, '') : '';
+  return base ? base + '/start' : '';
+};
 
 /* -------------------------------------------------------------- server --- */
 
@@ -900,6 +910,7 @@ const server = http.createServer(async (req, res) => {
     '/api/v1/trial': store.startTrial,
     '/api/v1/redeem-tenant': store.redeemForTenant,
     '/api/v1/tenant-paid': store.tenantPaid,
+    '/api/v1/shared-db': store.sharedDb,
     '/api/v1/auth/login': store.login,
     '/api/v1/auth/change-password': store.changePassword,
     '/api/v1/auth/admin-set-password': store.adminSetPassword
@@ -1116,9 +1127,9 @@ const server = http.createServer(async (req, res) => {
         slug: b.get('slug'), tenantKey: b.get('tenant'), tenantName: b.get('name'),
         plan: b.get('plan'), days: b.get('days'), note: ''
       });
-      // Karaoke keeps its own copy of each bar's plan: tell it right away
-      if (b.get('slug') === 'karaoke' && row) {
-        await karaokeBar(String(b.get('tenant')).replace(/^bar:/, ''), {
+      // Karaoke and Band Tips keep their own copy of each customer's plan: tell them right away
+      if (PLATFORM[b.get('slug')] && row) {
+        await platformPush(b.get('slug'), String(b.get('tenant')).replace(/^(bar|band):/, ''), {
           action: 'plan', plan: row.plan, source: 'manual',
           expires_on: row.expires_on ? new Date(row.expires_on).toISOString().slice(0, 10) : null });
       }
@@ -1126,11 +1137,11 @@ const server = http.createServer(async (req, res) => {
     return send(res, 302, '', { Location: '/' });
   }
 
-  /* Karaoke bars and DJs: turn one off or on, or reset its owner PIN. */
-  if (url.pathname === '/karaoke/bar' && req.method === 'POST') {
+  /* Karaoke bars and DJs, and bands: turn one off or on, or reset its owner PIN. */
+  if ((url.pathname === '/karaoke/bar' || url.pathname === '/tenant/action') && req.method === 'POST') {
     const b = new URLSearchParams(await readBody(req));
-    try { await karaokeBar(b.get('bar'), { action: b.get('action'), pin: b.get('pin') }); }
-    catch (e) { console.error('karaoke bar:', e.message); }
+    try { await platformPush(b.get('slug') || 'karaoke', b.get('bar') || b.get('id'), { action: b.get('action'), pin: b.get('pin') }); }
+    catch (e) { console.error('tenant action:', e.message); }
     return send(res, 302, '', { Location: '/' });
   }
 

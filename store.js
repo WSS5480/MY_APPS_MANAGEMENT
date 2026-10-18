@@ -126,11 +126,13 @@ const DEFAULT_APPS = [
   ['scheduler', 'SCH', 'After School Scheduler', 'https://intalsoft-scheduler.onrender.com'],
   ['dealengine', 'DEA', 'Deal Finder', 'https://deal-finder-z4ms.onrender.com'],
   // Karaoke sign-up for bars and DJs (Stemo Enterprises). Its address comes from KARAOKE_URL.
-  ['karaoke', 'KAR', 'Karaoke Sign-Up', (process.env.KARAOKE_URL || 'https://the-dive-karaoke.onrender.com').replace(/\/$/, '')]
+  ['karaoke', 'KAR', 'Karaoke Sign-Up', (process.env.KARAOKE_URL || 'https://the-dive-karaoke.onrender.com').replace(/\/$/, '')],
+  // Band Tips: tip jar + follow page for bands (Stemo Enterprises). Its address comes from BANDS_URL.
+  ['bands', 'BND', 'Band Tips', (process.env.BANDS_URL || 'https://band-tips.onrender.com').replace(/\/$/, '')]
 ];
 /* Free-trial length per app. Karaoke's is 14 days; the others use TRIAL_DAYS.
    TRIAL_DAYS_<SLUG> in the environment overrides either. */
-const APP_TRIAL_DAYS = { karaoke: 14 };
+const APP_TRIAL_DAYS = { karaoke: 14, bands: 14 };
 
 async function init() {
   if (!pool) { console.log('WARNING: DATABASE_URL not set — subscriptions disabled.'); return false; }
@@ -735,6 +737,27 @@ async function tenants() {
       }
     } catch (e) { problems.push('karaoke: ' + e.message); }
   }
+  const bnd = bySlug.bands;
+  if (bnd && process.env.BANDS_URL) {
+    try {
+      const { rows: bs } = await q('SELECT secret FROM ma_apps WHERE id=$1', [bnd.id]);
+      const r = await fetch(process.env.BANDS_URL.replace(/\/$/, '') + '/api/platform/bands',
+        { headers: { 'x-platform-key': bs[0].secret }, signal: AbortSignal.timeout(20000) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'HTTP ' + r.status);
+      for (const b of j.bands || []) {
+        const p = planFor(bnd.id, b.key) || {};
+        out.push({
+          app: bnd.slug, appName: bnd.name, prefix: bnd.prefix,
+          kind: 'Band', key: b.key, id: b.slug, name: b.name + (b.disabled ? ' — turned off' : ''),
+          created: String(b.created || '').slice(0, 10), people: b.tips, work: '$' + Number(b.tipped || 0).toLocaleString(), workLabel: 'tipped',
+          adminEmail: b.email, adminName: '', link: b.setup, barLink: b.url, linkLabel: 'open setup page ↗', barLabel: 'fan page ↗',
+          plan: p.plan || (b.plan && b.plan.active ? 'pro' : 'free'), expires_on: isoDay(p.expires_on || (b.plan || {}).expires_on),
+          source: p.source || null, note: p.note || '', paidByCard: !!(b.plan && b.plan.paid), disabled: !!b.disabled,
+        });
+      }
+    } catch (e) { problems.push('bands: ' + e.message); }
+  }
   out.sort((a, b) => String(b.created || '').localeCompare(String(a.created || '')));
   return { tenants: out, problems };
 }
@@ -984,6 +1007,18 @@ async function tenantPlan({ slug, secret, tenant }) {
            trial: s.plan === 'pro' && s.source === 'trial' };
 }
 
+/* Apps that share this service's database (SHARED_DB_APPS=bands,…) ask for it at
+   start-up with their slug and secret, so the connection string never has to be
+   copied from one Render service to another by hand. */
+async function sharedDb({ slug, secret }) {
+  const { app, error } = await appFromCredentials(slug, secret);
+  if (error) return error;
+  const allowed = String(process.env.SHARED_DB_APPS || '').split(',').map(x => x.trim()).filter(Boolean);
+  if (!allowed.includes(app.slug)) return { ok: false, status: 403, error: app.name + ' is not on the shared database list (SHARED_DB_APPS)' };
+  if (!connectionString) return { ok: false, status: 503, error: 'This service has no DATABASE_URL' };
+  return { ok: true, url: connectionString };
+}
+
 /* An app that takes card payments itself (Karaoke, through Stripe) reports a
    tenant's subscription here so the console shows who is paying. active=true
    is a paid plan with no end date; false drops them to free. */
@@ -1069,7 +1104,7 @@ async function redeemForTenant({ slug, secret, tenant, tenantName, code }) {
 }
 
 module.exports = {
-  tenantPaid,
+  tenantPaid, sharedDb,
   init, q, pool, listApps, issue, listSubscriptions, listRedemptions,
   redeem, status, revokeCode, setPlan, applyStripe, mintCode, parseCode, sign,
   register, login, changePassword, adminSetPassword, listUsers, setUserPassword, toggleUser,
