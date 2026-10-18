@@ -114,16 +114,16 @@ function pgDb(url) {
 }
 const DB_OK = u => /^postgres(ql)?:\/\/[^\s]+@[^\s/]+\/\S+$/.test(u || "");
 async function sharedDbUrl() {
-  // My Apps hands out the shared database to the apps it manages (SHARED_DB_APPS on that service)
+  // My Apps hands out the shared database to the apps it manages (SHARED_DB_APPS on that service).
+  // Keep asking for a couple of minutes: right after a deploy My Apps may still be coming up.
   if (!MYAPPS.url || !MYAPPS.secret) return "";
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < 24; i++) {
     try {
       const r = await fetch(MYAPPS.url + "/api/v1/shared-db", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slug: MYAPPS.slug, secret: MYAPPS.secret }), signal: AbortSignal.timeout(10000) });
       const j = await r.json().catch(() => ({}));
       if (r.ok && DB_OK(j.url)) return j.url;
-      console.error("My Apps shared database: " + (j.error || "HTTP " + r.status) + (r.status === 404 || r.status === 403 ? " (nothing to retry)" : ""));
-      if (r.status === 404 || r.status === 403 || r.status === 401) return "";
-    } catch (e) { console.error("My Apps unreachable for the database: " + e.message); }
+      console.error("My Apps shared database: " + (j.error || "HTTP " + r.status) + " (trying again)");
+    } catch (e) { console.error("My Apps unreachable for the database: " + e.message + " (trying again)"); }
     await new Promise(r => setTimeout(r, 5000));
   }
   return "";
@@ -131,11 +131,18 @@ async function sharedDbUrl() {
 async function openDb() {
   let url = (process.env.DATABASE_URL || "").trim();
   if (url && !DB_OK(url)) { console.error(`DATABASE_URL doesn't look like a Postgres link (it should start with postgresql://). Ignoring it.`); url = ""; }
+  const wanted = !!(url || (MYAPPS.url && MYAPPS.secret));   // a database was configured one way or the other
   if (!url) url = await sharedDbUrl();
-  if (!url) { console.error("No database: running in memory. Bands and tips will be lost on restart. Set DATABASE_URL, or SHARED_DB_APPS on My Apps."); return memoryDb(); }
-  const d = pgDb(url);
-  try { await d.init(); console.log("Database ready" + (process.env.DATABASE_URL ? "" : " (shared, from My Apps)")); return d; }
-  catch (e) { console.error("Database failed, running in memory: " + e.message); return memoryDb(); }
+  if (url) {
+    const d = pgDb(url);
+    try { await d.init(); console.log("Database ready" + (process.env.DATABASE_URL ? "" : " (shared, from My Apps)")); return d; }
+    catch (e) { console.error("Database failed: " + e.message); }
+  }
+  // Running without a database would quietly lose every band on the next restart, so when one was
+  // configured and can't be reached we stop here and let Render restart us (the last good deploy stays up).
+  if (wanted && process.env.ALLOW_MEMORY !== "1") { console.error("No database available. Stopping so this doesn't run on memory. Check SHARED_DB_APPS / APP_SECRET_BANDS on My Apps, or set DATABASE_URL."); process.exit(1); }
+  console.error("No database: running in memory. Bands and tips will be lost on restart.");
+  return memoryDb();
 }
 
 /* ---------- bands (tenants) ---------- */
