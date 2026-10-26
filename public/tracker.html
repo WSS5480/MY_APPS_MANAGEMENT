@@ -179,7 +179,7 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
       </div>
 
       <section class="card" id="sec-comm">
-        <h2>Estimated commissions · <span class="mname"></span> · <span class="vname"></span></h2>
+        <div class="cardhead"><h2>Estimated commissions · <span class="mname"></span> · <span class="vname"></span></h2><button class="btn small" id="btn-statement" type="button">Commission statement</button></div>
         <p class="note">Estimates from the cases logged here, month to date, under each rep's plan. Final commissions are calculated by 360 Medical from invoiced net sales under the written plan; where the two differ, the written plan governs.</p>
         <div id="comm-rep" hidden>
           <div class="cstats" id="comm-stats"></div>
@@ -191,6 +191,8 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
         </div>
       </section>
 
+      <section class="card" id="sec-billing" hidden></section>
+      <section class="card" id="sec-upcoming"></section>
       <section class="card" id="sec-sim" hidden>
         <div class="cardhead"><h2>SIM Lab events · <span class="qname"></span></h2><span class="pill mute" id="sim-count"></span></div>
         <p class="note">SIM360 quota: <span id="sim-quota"></span> in the quarter. Log each event here when it happens; it saves automatically.</p>
@@ -235,6 +237,10 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
         </div>
       </section>
 
+      <section class="card" id="sec-visits"></section>
+      <section class="card" id="sec-pref"></section>
+      <section class="card" id="sec-cred"></section>
+      <section class="card" id="sec-notify"></section>
       <section class="card" id="sec-surgeons">
         <h2>Surgeon activity · <span class="mname"></span> · <span class="vname"></span></h2>
         <p class="note">Who is producing this month, ranked by net sales.</p>
@@ -255,31 +261,40 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
         <div class="editor" id="editor" hidden>
           <h3 id="ed-title">Case details</h3>
           <div class="form">
+            <div class="full x-lock" id="ce-lock" hidden></div>
             <label>Date<input class="field" id="ce-date" type="date"></label>
+            <label>Time (optional)<input class="field" id="ce-time" type="time"></label>
             <label>Rep<select class="field" id="ce-rep"></select></label>
             <label>Surgeon<input class="field" id="ce-surgeon" list="dl-surgeons" placeholder="Dr. Last name" autocomplete="off"></label>
             <label>Facility<input class="field" id="ce-facility" list="dl-facilities" autocomplete="off"></label>
             <label>Service line<select class="field" id="ce-service"></select></label>
+            <div class="full x-pref" id="ce-pref" hidden></div>
+            <label class="full">Scan product barcode (UDI)<span class="x-scanrow"><input class="field" id="ce-udi" placeholder="Scan, or type/paste the barcode" autocomplete="off"><button class="btn" id="ce-scan" type="button">📷 Scan</button></span><span class="x-scanmsg" id="ce-scanmsg"></span></label>
             <label>Product<input class="field" id="ce-product" list="dl-products" autocomplete="off"></label>
+            <label>Lot #<input class="field" id="ce-lot" autocomplete="off"></label>
+            <label>Expiration<input class="field" id="ce-exp" type="date"></label>
             <label>Units<input class="field" id="ce-units" type="number" min="0" step="1" inputmode="numeric"></label>
-            <label>Net sales ($)<input class="field" id="ce-sales" type="number" min="0" step="0.01" inputmode="decimal"></label>
+            <label>Net sales ($)<input class="field" id="ce-sales" type="number" min="0" step="0.01" inputmode="decimal"><span class="x-price" id="ce-price"></span></label>
             <label>Surgeon type<select class="field" id="ce-type"><option>New</option><option>Legacy</option></select></label>
-            <label>Status<select class="field" id="ce-status"><option>Scheduled</option><option>Completed</option><option>Invoiced</option><option>Cancelled</option></select></label>
+            <label>Status<select class="field" id="ce-status"><option>Scheduled</option><option>Completed</option><option>PO received</option><option>Invoiced</option><option>Paid</option><option>Cancelled</option></select></label>
             <label>PO / Invoice #<input class="field" id="ce-po" autocomplete="off"></label>
             <label class="full">Notes (no patient identifiers)<textarea class="field" id="ce-notes"></textarea></label>
+            <div class="full x-att"><span class="x-lab">PO / sticker sheet photos</span><div class="x-thumbs" id="ce-att"></div></div>
+            <div class="full x-checks" id="ce-checks" hidden></div>
           </div>
           <div class="edfoot">
             <span class="hint">Saves as you type. Never enter patient names, MRNs or dates of birth.</span>
-            <span class="tools"><button class="btn danger" id="ed-delete" type="button">Delete case</button><button class="btn primary" id="ed-done" type="button">Done</button></span>
+            <span class="tools"><button class="btn" id="ed-history" type="button">History</button><button class="btn danger" id="ed-delete" type="button">Delete case</button><button class="btn primary" id="ed-done" type="button">Done</button></span>
           </div>
         </div>
+        <div class="x-history" id="ed-hist" hidden></div>
         <div class="scroll"><table id="log"><thead><tr><th>Date</th><th class="col-rep">Rep</th><th>Surgeon</th><th>Facility</th><th>Product</th><th class="r">Units</th><th class="r">Net sales</th><th>Type</th><th>Status</th><th>Notes</th></tr></thead><tbody></tbody></table></div>
         <div class="empty" id="log-empty" hidden></div>
         <datalist id="dl-surgeons"></datalist><datalist id="dl-facilities"></datalist><datalist id="dl-products"></datalist>
       </section>
 
       <footer class="foot">
-        <strong>How the numbers work.</strong> Completed and Invoiced cases count toward quota; Scheduled cases show as booked ahead; Cancelled cases count nowhere. Run rate = month-to-date actual ÷ business days elapsed × business days in the month (Monday to Friday, holidays not removed, today counted as elapsed). New-business-only, legacy-only and product-specific quotas only count matching cases. Draw plan (Brandon, Felipe): $3,000 monthly draw against a $20,000 monthly quota; a month that finishes under quota carries the shortfall into the next month's target for the rest of the quarter, and a month over quota banks nothing. Commission plans: Brandon 15% and Felipe 10% on new-business sales above a $20,000 monthly floor (the floor rises by any carried shortfall), with a $3,000 monthly draw; Abraham 10% on all sales above a $35,000 monthly floor, with a $5,417 monthly base salary; Preston 12% on Skeletal Dynamics sales from the first dollar, with a $6,000 monthly base salary and a SIM360 quota of 2 SIM Lab events per quarter. Commission figures are month-to-date estimates. Company quota is the team quotas plus rep quotas in territories with no team quota.<br>
+        <strong>How the numbers work.</strong> Completed, PO received, Invoiced and Paid cases count toward quota; Scheduled cases show as booked ahead; Cancelled cases count nowhere. Run rate = month-to-date actual ÷ business days elapsed × business days in the month (Monday to Friday, holidays not removed, today counted as elapsed). New-business-only, legacy-only and product-specific quotas only count matching cases. Draw plan (Brandon, Felipe): $3,000 monthly draw against a $20,000 monthly quota; a month that finishes under quota carries the shortfall into the next month's target for the rest of the quarter, and a month over quota banks nothing. Commission plans: Brandon 15% and Felipe 10% on new-business sales above a $20,000 monthly floor (the floor rises by any carried shortfall), with a $3,000 monthly draw; Abraham 10% on all sales above a $35,000 monthly floor, with a $5,417 monthly base salary; Preston 12% on Skeletal Dynamics sales from the first dollar, with a $6,000 monthly base salary and a SIM360 quota of 2 SIM Lab events per quarter. Commission figures are month-to-date estimates. Company quota is the team quotas plus rep quotas in territories with no team quota.<br>
         <strong>Compliance.</strong> Never enter patient names, MRNs, dates of birth or other patient identifiers. Confidential: 360 Medical internal sales data, not for distribution outside the company.
       </footer>
     </div>
@@ -288,6 +303,7 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
 <script src="/shim.js"></script>
+<link rel="stylesheet" href="/plus.css">
 <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function () {});</script>
 <script>
 (function () {
@@ -478,6 +494,7 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
     var noSales = ledger.filter(function (c) { return c.done && c.net_sales == null; }).length;
     if (noSales) add('warn', noSales + (noSales === 1 ? ' completed case is' : ' completed cases are') + ' missing net sales.');
     if (!repFilter) { var orphans = S.cases.filter(function (c) { return !c.rep || !c.date; }).length; if (orphans) add('warn', orphans + (orphans === 1 ? ' logged case has' : ' logged cases have') + ' no rep or no date, so ' + (orphans === 1 ? 'it is' : 'they are') + ' not counted yet. Open ' + (orphans === 1 ? 'it' : 'them') + ' in the case log to finish.'); }
+    if (window.SCTX) out = out.concat(SCTX.alerts(M, tstatus, repFilter) || []);
     var order = { bad: 0, warn: 1, info: 2, ok: 3 };
     return out.sort(function (a, b) { return order[a.level] - order[b.level]; });
   }
@@ -818,6 +835,7 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
     onNames.forEach(function (n) { delete offNames[n.toLowerCase()]; });
     fillList('#dl-products', (S.products.length ? onNames : PRODUCTS).concat(S.cases.map(function (c) { return c.product; })).filter(function (n) { return n && !offNames[String(n).toLowerCase()]; }));
 
+    if (window.SCTX) SCTX.render(M, { viewRep: viewRep, month: month, lead: lead, tstatus: tstatus, loaded: loaded });
     if (S.editId && !pendingNew[S.editId] && !timers['case:' + S.editId] && !S.cases.some(function (c) { return c.id === S.editId; })) closeEditor();
   }
 
@@ -877,10 +895,10 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
   }
 
   /* ---------- Case editor ---------- */
-  var ED = { date: '#ce-date', rep: '#ce-rep', surgeon: '#ce-surgeon', facility: '#ce-facility', service_line: '#ce-service', product: '#ce-product', units: '#ce-units', net_sales: '#ce-sales', surgeon_type: '#ce-type', status: '#ce-status', po: '#ce-po', notes: '#ce-notes' };
+  var ED = { date: '#ce-date', rep: '#ce-rep', surgeon: '#ce-surgeon', facility: '#ce-facility', service_line: '#ce-service', product: '#ce-product', time: '#ce-time', udi: '#ce-udi', lot: '#ce-lot', expiry: '#ce-exp', units: '#ce-units', net_sales: '#ce-sales', surgeon_type: '#ce-type', status: '#ce-status', po: '#ce-po', notes: '#ce-notes' };
   function readEditor() {
     var d = {}; Object.keys(ED).forEach(function (k) { d[k] = $(ED[k]).value.trim(); });
-    d.units = numOrNull(d.units); d.net_sales = numOrNull(d.net_sales); d.updated_at = new Date().toISOString(); return d;
+    d.units = numOrNull(d.units); d.net_sales = numOrNull(d.net_sales); d.updated_at = new Date().toISOString(); if (window.SCTX) SCTX.augment(d); return d;
   }
   function openEditor(id) {
     var c = S.cases.find(function (x) { return x.id === id; }); if (!c) return;
@@ -897,8 +915,9 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
     resetDelete();
     $('#editor').hidden = false; drawLog();
     $('#editor').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    if (window.SCTX) SCTX.openEditor(c);
   }
-  function closeEditor() { if (S.editId) flush('case:' + S.editId); S.editId = null; $('#editor').hidden = true; drawLog(); }
+  function closeEditor() { if (S.editId) flush('case:' + S.editId); S.editId = null; $('#editor').hidden = true; if (window.SCTX) SCTX.closeEditor(); drawLog(); }
   function editorChanged(ms) {
     var id = S.editId; if (!id || !S.db) return;
     var data = readEditor(), ref = S.db.doc('cases/' + id);
@@ -956,7 +975,7 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
   $('#targets tbody').addEventListener('change', function (e) {
     var id = e.target.dataset.targetId; if (!id || !S.db) return; var step = Number(e.target.value);
     S.targets = S.targets.map(function (t) { return t.id === id ? Object.assign({}, t, { step: step }) : t; });
-    run('target:' + id, function () { return S.db.doc('targets/' + id).update({ step: step, updated_at: new Date().toISOString() }); }); render();
+    run('target:' + id, function () { return S.db.doc('targets/' + id).update({ step: step, step_changed_at: TODAY, updated_at: new Date().toISOString() }); }); render();
   });
   $('#targets tbody').addEventListener('click', function (e) {
     var b = e.target.closest('button[data-remove-target]'); if (!b || !S.db) return; var id = b.dataset.removeTarget;
@@ -967,7 +986,7 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
   $('#ta-btn').addEventListener('click', function () {
     var surgeon = $('#ta-surgeon').value.trim(); if (!surgeon || !S.db) { $('#ta-surgeon').focus(); return; }
     var rep = isLead() ? $('#ta-rep').value : S.myRep; if (!rep) return;
-    var ref = S.db.collection('targets').doc(), body = { rep: rep, surgeon: surgeon, facility: $('#ta-facility').value.trim(), step: 0, updated_at: new Date().toISOString() };
+    var ref = S.db.collection('targets').doc(), body = { rep: rep, surgeon: surgeon, facility: $('#ta-facility').value.trim(), step: 0, step_changed_at: TODAY, updated_at: new Date().toISOString() };
     S.targets = S.targets.concat([Object.assign({ id: ref.id }, body)]);
     run('target:' + ref.id, function () { return ref.set(body); });
     $('#ta-surgeon').value = ''; $('#ta-facility').value = ''; render();
@@ -1003,7 +1022,7 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
     schedule('notes', 800, function () { return S.db.doc('coonotes/' + month).set(body); });
   });
   $('#btn-export').addEventListener('click', function () {
-    var cols = ['date', 'rep', 'surgeon', 'facility', 'service_line', 'product', 'units', 'net_sales', 'surgeon_type', 'status', 'po', 'notes'];
+    var cols = ['date', 'time', 'rep', 'surgeon', 'facility', 'service_line', 'product', 'udi', 'lot', 'expiry', 'units', 'net_sales', 'contract_price', 'surgeon_type', 'status', 'po', 'po_date', 'invoiced_date', 'paid_date', 'notes'];
     var esc = function (v) { v = v == null ? '' : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
     var rows = visibleCases().slice().reverse();
     if (!rows.length) { setStatus('err', 'Nothing to export for this view'); return; }
@@ -1039,7 +1058,9 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
     }, function () { S.profileLoaded = true; render(); });
     else S.profileLoaded = true;
     subscribeNotes();
+    if (window.SCTX) SCTX.start(db);
   }
+  window.SCT = { S: S, $: $, el: el, render: render, compute: compute, run: run, schedule: schedule, flush: flush, setStatus: setStatus, money: money, count: count, pl: pl, val: val, dayName: dayName, monthName: monthName, mName: mName, qKey: qKey, qLabel: qLabel, bdays: bdays, TODAY: TODAY, CUR: CUR, STEPS: STEPS, currentViewRep: currentViewRep, isLead: isLead, repNames: repNames, openEditor: openEditor, closeEditor: closeEditor, editorChanged: editorChanged, readEditor: readEditor, targetStatus: targetStatus };
   render();
   (async function boot() {
     if (!window.claude || !window.claude.use) { S.unavailable = true; render(); return; }
@@ -1054,5 +1075,6 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
   })();
 })();
 </script>
+<script src="/plus.js"></script>
 
 </body></html>

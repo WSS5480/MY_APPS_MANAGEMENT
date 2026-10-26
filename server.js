@@ -125,7 +125,8 @@ const tries = new Map();
 function throttled(ip) { const t = tries.get(ip) || { n: 0, at: Date.now() }; if (Date.now() - t.at > 15 * 60e3) { t.n = 0; t.at = Date.now(); } tries.set(ip, t); return t; }
 
 /* ---------------- what each user may see / write ---------------- */
-const COLS = ['cases', 'targets', 'simlab'];
+const COLS = ['cases', 'targets', 'simlab', 'visits', 'prefcards', 'credentials'];
+const SHARED_CONFIG = ['config/pricebook', 'config/settings', 'config/closed'];
 function visible(s) {
   const out = {};
   if (s.role === 'owner') {
@@ -137,6 +138,7 @@ function visible(s) {
     if (COLS.includes(col) && p.split('/').length === 2 && d && d.rep === s.rep) out[p] = d;
   }
   for (const [p, d] of docs) if (p.startsWith('products/')) out[p] = d;
+  SHARED_CONFIG.forEach(k => { if (docs.has(k)) out[k] = docs.get(k); });
   out['config/quotas'] = { rows: quotaRows().filter(r => r.rep === s.rep && r.role !== 'Team') };
   out[`data/users/${uidOf(s)}/profile`] = { rep: s.rep };
   return out;
@@ -165,13 +167,15 @@ app.get('/admin', needPage('owner'), page('admin.html'));
 app.get('/download', page('download.html'));
 app.get('/products', needPage(), page('products.html'));
 app.get('/img/:id', (req, res) => {
-  if (!session(req)) return res.status(401).end();
+  const s = session(req);
+  if (!s) return res.status(401).end();
   const d = docs.get('_img/' + req.params.id);
   if (!d) return res.status(404).end();
+  if (d.rep && s.role !== 'owner' && d.rep !== s.rep) return res.status(403).end();
   res.setHeader('Content-Type', d.type || 'image/jpeg'); res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
   res.end(Buffer.from(d.b64, 'base64'));
 });
-app.get(['/logo.png', '/shim.js', '/app.css', '/sw.js', '/favicon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'], (req, res) => { if (req.path === '/sw.js') res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, req.path)); });
+app.get(['/logo.png', '/shim.js', '/plus.js', '/plus.css', '/app.css', '/sw.js', '/favicon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'], (req, res) => { if (req.path === '/sw.js') res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, req.path)); });
 app.get('/manifest.webmanifest', (req, res) => { res.type('application/manifest+json'); res.sendFile(path.join(pub, 'manifest.webmanifest')); });
 
 app.get('/api/login-options', (req, res) => {
@@ -210,12 +214,20 @@ app.post('/api/doc', needApi(), async (req, res) => {
   try {
     if (COLS.includes(col) && parts.length === 2) {
       if (s.role !== 'owner' && prev && prev.rep !== s.rep) return res.status(403).json({ code: 'permission_denied', error: 'Not your record' });
-      if (op === 'delete') { await del(p); return res.json({ ok: true }); }
       if (op === 'update' && !prev) return res.status(404).json({ code: 'not_found' });
-      let next = op === 'update' ? Object.assign({}, prev, clean(req.body.data)) : clean(req.body.data);
-      if (s.role !== 'owner') next.rep = s.rep;
-      if (!prev && !next.created_by) next.created_by = uidOf(s);
-      await put(p, next); return res.json({ ok: true, data: next });
+      let next = op === 'delete' ? null : op === 'update' ? Object.assign({}, prev, clean(req.body.data)) : clean(req.body.data);
+      if (next && s.role !== 'owner') next.rep = s.rep;
+      if (next && !prev && !next.created_by) next.created_by = uidOf(s);
+      if (col === 'cases') {
+        const lock = closedMonth(prev && prev.date) || closedMonth(next && next.date);
+        if (lock) return res.status(423).json({ code: 'failed_precondition', error: monthLabel(lock) + ' is closed. Ask the COO to reopen it to make changes.' });
+      }
+      if (op === 'delete') { await del(p); } else await put(p, next);
+      if (col === 'cases') await audit(parts[1], s, op, prev, next);
+      return res.json(next ? { ok: true, data: next } : { ok: true });
+    }
+    if (SHARED_CONFIG.includes(p) && s.role === 'owner' && op !== 'delete') {
+      await put(p, Object.assign(clean(req.body.data), { updated_at: new Date().toISOString() })); return res.json({ ok: true });
     }
     if (p === 'config/quotas' && s.role === 'owner' && op !== 'delete') {
       const d = clean(req.body.data); const rows = Array.isArray(d.rows) ? d.rows.map(clean) : quotaRows();
@@ -233,7 +245,7 @@ app.post('/api/doc', needApi(), async (req, res) => {
 /* ---------------- admin ---------------- */
 app.get('/api/admin/state', needApi('owner'), (req, res) => {
   const p = pins().reps, counts = {};
-  for (const [k, d] of docs) { const c = k.split('/')[0]; if (COLS.includes(c)) { const r = d.rep || '(none)'; counts[r] = counts[r] || { cases: 0, targets: 0, simlab: 0, last: '' }; counts[r][c]++; if (c === 'cases' && (d.date || '') > counts[r].last) counts[r].last = d.date || ''; } }
+  for (const [k, d] of docs) { const c = k.split('/')[0]; if (COLS.includes(c)) { const r = d.rep || '(none)'; counts[r] = counts[r] || { cases: 0, targets: 0, simlab: 0, visits: 0, prefcards: 0, credentials: 0, last: '' }; counts[r][c]++; if (c === 'cases' && (d.date || '') > counts[r].last) counts[r].last = d.date || ''; } }
   res.json({ rows: quotaRows().map(r => Object.assign({}, r, { pin: p[r.rep] ? p[r.rep].pin : null, active: p[r.rep] ? p[r.rep].active !== false : r.role === 'Team' ? null : false })), counts, db: dbMode, adminPinIsDefault: !docs.has('_auth/admin') && !process.env.ADMIN_PIN, url: (process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`) });
 });
 const num = v => (v === '' || v == null || isNaN(Number(v))) ? null : Number(v);
@@ -288,7 +300,7 @@ app.post('/api/admin/admin-pin', needApi('owner'), async (req, res) => {
   res.json({ ok: true });
 });
 app.get('/api/admin/backup', needApi('owner'), (req, res) => {
-  const out = {}; for (const [k, d] of docs) if (!k.startsWith('_auth/') && !k.startsWith('_seed/')) out[k] = d;
+  const out = {}; for (const [k, d] of docs) if (!k.startsWith('_auth/') && !k.startsWith('_seed/') && !k.startsWith('_push/')) out[k] = d;
   res.setHeader('Content-Disposition', `attachment; filename="360-medical-tracker-backup-${new Date().toISOString().slice(0, 10)}.json"`);
   res.json({ app: '360-medical-surgical-case-tracker', exported_at: new Date().toISOString(), docs: out });
 });
@@ -298,7 +310,7 @@ app.post('/api/admin/restore', needApi('owner'), async (req, res) => {
   let n = 0;
   for (const k of Object.keys(inc)) {
     const parts = k.split('/');
-    if (k.startsWith('_auth/') || !((COLS.includes(parts[0]) && parts.length === 2) || k === 'config/quotas' || ((parts[0] === 'coonotes' || parts[0] === 'products' || parts[0] === '_img') && parts.length === 2))) continue;
+    if (k.startsWith('_auth/') || !((COLS.includes(parts[0]) && parts.length === 2) || k === 'config/quotas' || SHARED_CONFIG.includes(k) || k.startsWith('_audit/') || ((parts[0] === 'coonotes' || parts[0] === 'products' || parts[0] === '_img') && parts.length === 2))) continue;
     await put(k, inc[k]); n++;
   }
   const p = JSON.parse(JSON.stringify(pins()));
@@ -318,7 +330,7 @@ function productFrom(b, prev) {
     description: String(b.description || '').slice(0, 3000), highlights: strList(b.highlights).map(x => x.replace(/^[-•*]\s*/, '')),
     indications: String(b.indications || '').slice(0, 3000), sizes: String(b.sizes || '').slice(0, 3000),
     badges: strList(b.badges), codes: String(b.codes || '').slice(0, 200), case_names: strList(b.case_names),
-    talking_points: String(b.talking_points || '').slice(0, 4000), links, photos,
+    talking_points: String(b.talking_points || '').slice(0, 4000), links, photos, udi_dis: strList(b.udi_dis).map(x => x.replace(/[^0-9A-Za-z]/g, '')).filter(Boolean),
     available: b.available !== false, sort: num(b.sort) != null ? num(b.sort) : (prev && prev.sort) || 9999, updated_at: new Date().toISOString()
   });
 }
@@ -364,6 +376,231 @@ app.delete('/api/admin/images/:id', needApi('owner'), async (req, res) => {
   if (!inUse && docs.has(k)) await del(k);
   res.json({ ok: true });
 });
+
+/* ---------------- month close + audit trail ---------------- */
+function closedMonth(date) { const m = String(date || '').slice(0, 7); const c = (docs.get('config/closed') || {}).months || {}; return /^\d{4}-\d{2}$/.test(m) && c[m] ? m : null; }
+function monthLabel(ym) { const [y, m] = ym.split('-').map(Number); return new Date(Date.UTC(y, m - 1, 1)).toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }); }
+const AUDIT_SKIP = ['updated_at', 'created_at', 'created_by'];
+async function audit(caseId, s, op, prev, next) {
+  const k = '_audit/' + caseId, a = Object.assign({ entries: [] }, docs.get(k) || {});
+  const changes = {}, keys = new Set([...Object.keys(prev || {}), ...Object.keys(next || {})]);
+  keys.forEach(f => {
+    if (AUDIT_SKIP.includes(f)) return;
+    const o = prev ? prev[f] : undefined, n = next ? next[f] : undefined;
+    if (JSON.stringify(o === undefined ? null : o) !== JSON.stringify(n === undefined ? null : n)) changes[f] = [o === undefined ? null : o, n === undefined ? null : n];
+  });
+  if (!Object.keys(changes).length && op !== 'delete') return;
+  const by = s.role === 'owner' ? 'COO' : s.rep, at = new Date().toISOString(), kind = !prev ? 'created' : op === 'delete' ? 'deleted' : 'changed';
+  const entries = (a.entries || []).slice(), last = entries[entries.length - 1];
+  // typing autosaves every second or so: fold rapid edits by the same person into one entry
+  if (last && kind === 'changed' && last.op !== 'deleted' && last.by === by && Date.now() - Date.parse(last.at) < 10 * 60e3) {
+    Object.keys(changes).forEach(f => { last.changes[f] = [last.changes[f] ? last.changes[f][0] : changes[f][0], changes[f][1]]; if (JSON.stringify(last.changes[f][0]) === JSON.stringify(last.changes[f][1]) && last.op !== 'created') delete last.changes[f]; });
+    last.at = at;
+  } else entries.push({ at, by, op: kind, changes: kind === 'created' ? {} : changes });
+  a.entries = entries.slice(-300); a.rep = (next || prev || {}).rep || a.rep || '';
+  await put(k, a);
+}
+app.get('/api/audit/:id', needApi(), (req, res) => {
+  const a = docs.get('_audit/' + req.params.id), c = docs.get('cases/' + req.params.id);
+  const rep = (c && c.rep) || (a && a.rep);
+  if (req.s.role !== 'owner' && rep !== req.s.rep) return res.status(403).json({ error: 'Not your case' });
+  res.json({ entries: (a && a.entries) || [] });
+});
+
+/* ---------------- attachments (PO / sticker sheet photos) ---------------- */
+app.post('/api/upload', needApi(), async (req, res) => {
+  const m = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body.data || ''));
+  if (!m) return res.status(400).json({ error: 'That file is not a JPG, PNG or WebP image.' });
+  if (m[2].length > 4.2e6) return res.status(400).json({ error: 'Photo is too large.' });
+  const id = 'att' + crypto.randomBytes(9).toString('hex');
+  await put('_img/' + id, { type: m[1], b64: m[2], rep: req.s.role === 'owner' ? (String(req.body.rep || '') || null) : req.s.rep, by: uidOf(req.s), at: new Date().toISOString() });
+  res.json({ ok: true, id });
+});
+app.delete('/api/upload/:id', needApi(), async (req, res) => {
+  const k = '_img/' + req.params.id, d = docs.get(k);
+  if (!d || !/^att/.test(req.params.id)) return res.json({ ok: true });
+  if (req.s.role !== 'owner' && d.rep !== req.s.rep) return res.status(403).json({ error: 'Not yours' });
+  await del(k); res.json({ ok: true });
+});
+
+/* ---------------- calendar feed (subscribe from a phone calendar) ---------------- */
+function calToken(s) { return sign({ cal: 1, role: s.role, rep: s.rep || null, v: s.v, exp: Date.now() + 5 * 365 * 864e5 }); }
+function calSession(tok) {
+  const s = unsign(tok); if (!s || !s.cal) return null;
+  if (s.role === 'owner') return s.v === adminV() ? s : null;
+  const p = pins().reps[s.rep]; return p && p.active !== false && p.v === s.v ? s : null;
+}
+app.get('/api/cal-link', needApi(), (req, res) => {
+  const base = (process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
+  res.json({ url: base + '/cal/' + calToken(req.s) + '.ics' });
+});
+const icsEsc = t => String(t || '').replace(/\\/g, '\\\\').replace(/;/g, '\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+const icsDate = d => d.replace(/-/g, '');
+app.get('/cal/:tok', (req, res) => {
+  const s = calSession(String(req.params.tok).replace(/\.ics$/, ''));
+  if (!s) return res.status(404).send('Calendar link expired. Get a new one from the tracker.');
+  const today = new Date(), lo = new Date(today - 45 * 864e5).toISOString().slice(0, 10), hi = new Date(+today + 180 * 864e5).toISOString().slice(0, 10);
+  const mine = d => s.role === 'owner' || d.rep === s.rep;
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//360 Medical//Surgical Case Tracker//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+    'X-WR-CALNAME:' + icsEsc(s.role === 'owner' ? '360 Medical cases (team)' : '360 Medical cases · ' + s.rep), 'X-WR-TIMEZONE:America/Chicago', 'REFRESH-INTERVAL;VALUE=DURATION:PT1H'];
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
+  const ev = (uid, date, time, mins, summary, desc) => {
+    lines.push('BEGIN:VEVENT', 'UID:' + uid + '@360medical-tracker', 'DTSTAMP:' + stamp);
+    if (time && /^\d{2}:\d{2}$/.test(time)) {
+      const [h, m] = time.split(':').map(Number), end = h * 60 + m + mins;
+      lines.push('DTSTART;TZID=America/Chicago:' + icsDate(date) + 'T' + time.replace(':', '') + '00', 'DTEND;TZID=America/Chicago:' + icsDate(date) + 'T' + String(Math.min(23, Math.floor(end / 60))).padStart(2, '0') + String(end >= 1440 ? 59 : end % 60).padStart(2, '0') + '00');
+    } else {
+      const nd = new Date(Date.parse(date + 'T00:00:00Z') + 864e5).toISOString().slice(0, 10);
+      lines.push('DTSTART;VALUE=DATE:' + icsDate(date), 'DTEND;VALUE=DATE:' + icsDate(nd));
+    }
+    lines.push('SUMMARY:' + icsEsc(summary)); if (desc) lines.push('DESCRIPTION:' + icsEsc(desc)); lines.push('END:VEVENT');
+  };
+  for (const [k, d] of docs) {
+    const col = k.split('/')[0];
+    if (!d || !mine(d) || !d.date && !d.next_date && !d.expires) continue;
+    if (col === 'cases' && d.date >= lo && d.date <= hi && String(d.status).toLowerCase() !== 'cancelled')
+      ev(k.replace('/', '-'), d.date, d.time, 90, 'Case: ' + (d.surgeon || 'Surgeon TBD') + (d.product ? ' · ' + d.product : '') + (d.facility ? ' @ ' + d.facility : ''), [s.role === 'owner' ? 'Rep: ' + d.rep : '', 'Status: ' + (d.status || ''), d.service_line ? 'Service line: ' + d.service_line : ''].filter(Boolean).join('\n'));
+    if (col === 'visits' && d.next_date && d.next_date >= lo && d.next_date <= hi)
+      ev(k.replace('/', '-') + '-next', d.next_date, null, 0, 'Next step: ' + (d.surgeon || '') + (d.next_step ? ' · ' + d.next_step : ''), s.role === 'owner' ? 'Rep: ' + d.rep : '');
+    if (col === 'credentials' && d.expires && d.expires >= lo && d.expires <= hi)
+      ev(k.replace('/', '-'), d.expires, null, 0, 'Credential expires: ' + (d.facility || '') + (d.system ? ' (' + d.system + ')' : ''), s.role === 'owner' ? 'Rep: ' + d.rep : 'Renew before this date to keep OR access.');
+  }
+  lines.push('END:VCALENDAR');
+  res.setHeader('Content-Type', 'text/calendar; charset=utf-8'); res.setHeader('Cache-Control', 'no-cache');
+  res.send(lines.map(l => l.length > 74 ? l.match(/.{1,74}/g).join('\r\n ') : l).join('\r\n') + '\r\n');
+});
+
+/* ---------------- UDI lookup (FDA AccessGUDID) ---------------- */
+const udiCache = new Map();
+app.get('/api/udi/:di', needApi(), async (req, res) => {
+  const di = String(req.params.di || '').replace(/[^0-9A-Za-z]/g, '').slice(0, 30);
+  if (!di) return res.status(400).json({ error: 'No device identifier' });
+  const local = [...docs].find(([k, d]) => k.startsWith('products/') && (d.udi_dis || []).includes(di));
+  if (local) return res.json({ found: true, di, product_id: local[0].slice(9), brand: local[1].name, company: local[1].manufacturer, source: 'catalog' });
+  if (udiCache.has(di)) return res.json(udiCache.get(di));
+  try {
+    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 6000);
+    const r = await fetch('https://accessgudid.nlm.nih.gov/api/v3/devices/lookup.json?di=' + encodeURIComponent(di), { signal: ctl.signal });
+    clearTimeout(t);
+    if (!r.ok) { const out = { found: false, di }; udiCache.set(di, out); return res.json(out); }
+    const j = await r.json(), dv = (j.gudid && j.gudid.device) || {};
+    const out = { found: !!dv.brandName || !!dv.companyName, di, brand: dv.brandName || '', company: dv.companyName || '', model: dv.versionModelNumber || '', description: dv.deviceDescription || '', source: 'FDA AccessGUDID' };
+    udiCache.set(di, out); res.json(out);
+  } catch (e) { res.json({ found: false, di, error: 'The FDA lookup did not answer. Pick the product by hand.' }); }
+});
+
+/* ---------------- push notifications + weekly digest ---------------- */
+let webpush = null; try { webpush = require('web-push'); } catch (e) { console.log('web-push not installed; notifications off'); }
+function vapid() {
+  if (!webpush) return null;
+  let v = docs.get('_auth/vapid');
+  if (!v) { v = webpush.generateVAPIDKeys(); docs.set('_auth/vapid', v); persist('_auth/vapid'); }
+  webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'https://www.360medical.net', v.publicKey, v.privateKey);
+  return v;
+}
+const subKey = endpoint => '_push/' + crypto.createHash('sha256').update(String(endpoint)).digest('hex').slice(0, 32);
+app.get('/api/push/key', needApi(), (req, res) => { const v = vapid(); const mine = [...docs].filter(([k, d]) => k.startsWith('_push/') && d.uid === uidOf(req.s)).length; res.json({ enabled: !!v, key: v ? v.publicKey : null, devices: mine }); });
+app.post('/api/push/subscribe', needApi(), async (req, res) => {
+  const sub = req.body && req.body.sub;
+  if (!sub || !/^https:\/\//.test(String(sub.endpoint || '')) || !sub.keys) return res.status(400).json({ error: 'Bad subscription' });
+  await put(subKey(sub.endpoint), { uid: uidOf(req.s), role: req.s.role, rep: req.s.rep || null, v: req.s.v, sub: { endpoint: sub.endpoint, keys: { p256dh: String(sub.keys.p256dh || ''), auth: String(sub.keys.auth || '') } }, at: new Date().toISOString() });
+  res.json({ ok: true });
+});
+app.post('/api/push/unsubscribe', needApi(), async (req, res) => { const k = subKey(req.body && req.body.endpoint); if (docs.has(k)) await del(k); res.json({ ok: true }); });
+
+const chiDate = (d = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+const addDays = (iso, n) => new Date(Date.parse(iso + 'T12:00:00Z') + n * 864e5).toISOString().slice(0, 10);
+function bizDays(ym) { const [y, m] = ym.split('-').map(Number), n = new Date(Date.UTC(y, m, 0)).getUTCDate(), out = []; for (let d = 1; d <= n; d++) { const w = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); if (w && w < 6) out.push(ym + '-' + String(d).padStart(2, '0')); } return out; }
+const isDone = st => { const s = String(st || '').toLowerCase(); return s !== 'scheduled' && s !== 'cancelled'; };
+const fmt$ = v => '$' + Math.round(v).toLocaleString('en-US');
+function allCases() { return [...docs].filter(([k]) => k.startsWith('cases/')).map(([, d]) => d).filter(c => c && c.date && c.rep); }
+function rowActual(row, ym, cases) {
+  const terr = {}; quotaRows().forEach(r => { if (r.role !== 'Team') terr[r.rep] = r.territory; });
+  return cases.filter(c => c.date.slice(0, 7) === ym && isDone(c.status)).filter(c => {
+    const who = row.role === 'Team' ? terr[c.rep] === row.territory : c.rep === row.rep;
+    const type = row.counts === 'New only' ? c.surgeon_type === 'New' : row.counts === 'Legacy only' ? c.surgeon_type === 'Legacy' : true;
+    const prod = !row.product_filter || String(c.product || '').toLowerCase().includes(row.product_filter.toLowerCase());
+    return who && type && prod;
+  }).reduce((t, c) => t + (row.metric === 'Cases' ? 1 : (c.net_sales || 0)), 0);
+}
+function rowTarget(row, ym, cases) {
+  if (!row.quota) return null;
+  if (!row.carry) return row.quota;
+  const [y, m] = ym.split('-').map(Number), q0 = Math.floor((m - 1) / 3) * 3 + 1; let carry = 0;
+  for (let mm = q0; mm < m; mm++) { const k = y + '-' + String(mm).padStart(2, '0'); carry = Math.max(0, row.quota + carry - rowActual(row, k, cases)); }
+  return row.quota + carry;
+}
+function settings() { return Object.assign({ po_alert_days: 3, invoice_alert_days: 7, stuck_step_days: 30, cred_warn_days: 30 }, docs.get('config/settings') || {}); }
+function repDigest(rep, today) {
+  const cases = allCases(), ym = today.slice(0, 7), row = quotaRows().find(r => r.rep === rep && r.role !== 'Team'), st = settings();
+  const parts = [];
+  if (row) {
+    const days = bizDays(ym), left = days.filter(d => d >= today).length, actual = rowActual(row, ym, cases), target = rowTarget(row, ym, cases);
+    const v = n => row.metric === 'Cases' ? Math.round(n * 10) / 10 + ' cases' : fmt$(n);
+    if (target) { const gap = Math.max(0, target - actual); parts.push(v(actual) + ' of ' + v(target) + ' (' + Math.round(actual / target * 100) + '%)' + (gap > 0 && left ? ' · need ' + v(gap / left) + '/day' : gap === 0 ? ' · target hit' : '')); }
+    else parts.push(v(actual) + ' so far this month');
+  }
+  const mine = cases.filter(c => c.rep === rep);
+  const noPO = mine.filter(c => String(c.status) === 'Completed' && c.date <= addDays(today, -st.po_alert_days)).length;
+  const stale = mine.filter(c => String(c.status) === 'Scheduled' && c.date < today).length;
+  const creds = [...docs].filter(([k, d]) => k.startsWith('credentials/') && d.rep === rep && d.expires && d.expires <= addDays(today, st.cred_warn_days)).length;
+  const visits = [...docs].filter(([k, d]) => k.startsWith('visits/') && d.rep === rep).map(([, d]) => d);
+  const due = visits.filter(v => v.next_date && v.next_date <= addDays(today, 6) && !visits.some(w => w.target_id === v.target_id && w.date > v.date)).length;
+  const week = mine.filter(c => c.date >= today && c.date <= addDays(today, 6) && String(c.status) !== 'Cancelled').length;
+  if (week) parts.push(week + ' case' + (week === 1 ? '' : 's') + ' this week');
+  if (noPO) parts.push(noPO + ' waiting on a PO');
+  if (stale) parts.push(stale + ' still marked Scheduled');
+  if (due) parts.push(due + ' next step' + (due === 1 ? '' : 's') + ' due');
+  if (creds) parts.push(creds + ' credential' + (creds === 1 ? '' : 's') + ' expiring');
+  return { title: '360 Medical · your week', body: parts.join(' · ') || 'Nothing to flag this week.', url: '/' };
+}
+function teamDigest(today) {
+  const cases = allCases(), ym = today.slice(0, 7), reps = quotaRows().filter(r => r.role !== 'Team'), st = settings();
+  const total = cases.filter(c => c.date.slice(0, 7) === ym && isDone(c.status)).reduce((t, c) => t + (c.net_sales || 0), 0);
+  const teams = quotaRows().filter(r => r.role === 'Team');
+  const quota = quotaRows().filter(r => r.metric === 'Revenue' && (r.role === 'Team' || !teams.some(t => t.territory === r.territory))).reduce((t, r) => t + (r.quota || 0), 0);
+  const days = bizDays(ym), gone = days.filter(d => d <= today).length / days.length;
+  const behind = reps.filter(r => { const t = rowTarget(r, ym, cases); return t && rowActual(r, ym, cases) < t * gone * 0.8; }).map(r => r.rep);
+  const noPO = cases.filter(c => String(c.status) === 'Completed' && c.date <= addDays(today, -st.po_alert_days)).length;
+  const unpaid = cases.filter(c => String(c.status) === 'Invoiced').length;
+  const parts = [fmt$(total) + (quota ? ' of ' + fmt$(quota) + ' (' + Math.round(total / quota * 100) + '%)' : ' this month')];
+  if (behind.length) parts.push('behind pace: ' + behind.join(', '));
+  if (noPO) parts.push(noPO + ' cases waiting on a PO');
+  if (unpaid) parts.push(unpaid + ' invoiced, not yet paid');
+  return { title: '360 Medical · team week', body: parts.join(' · '), url: '/' };
+}
+async function sendTo(d, msg) {
+  if (!vapid()) return false;
+  try { await webpush.sendNotification(d.sub, JSON.stringify(msg), { TTL: 86400 }); return true; }
+  catch (e) { if (e.statusCode === 404 || e.statusCode === 410) await del(subKey(d.sub.endpoint)); return false; }
+}
+async function sendDigests() {
+  const today = chiDate(); let sent = 0;
+  for (const [k, d] of [...docs]) {
+    if (!k.startsWith('_push/')) continue;
+    if (d.role === 'owner' ? d.v !== adminV() : !(pins().reps[d.rep] && pins().reps[d.rep].active !== false)) continue;
+    if (await sendTo(d, d.role === 'owner' ? teamDigest(today) : repDigest(d.rep, today))) sent++;
+  }
+  await put('_auth/digest', { last: today, sent, at: new Date().toISOString() });
+  return sent;
+}
+app.post('/api/push/test', needApi(), async (req, res) => {
+  const today = chiDate(), msg = req.s.role === 'owner' ? teamDigest(today) : repDigest(req.s.rep, today);
+  let n = 0; for (const [k, d] of [...docs]) if (k.startsWith('_push/') && d.uid === uidOf(req.s) && await sendTo(d, msg)) n++;
+  res.json({ ok: true, sent: n, preview: msg });
+});
+app.get('/api/digest/preview', needApi(), (req, res) => { const today = chiDate(); res.json(req.s.role === 'owner' ? teamDigest(today) : repDigest(req.s.rep, today)); });
+app.post('/api/cron/digest', async (req, res) => {
+  const ok = (process.env.CRON_SECRET && req.get('x-cron-secret') === process.env.CRON_SECRET) || (session(req) || {}).role === 'owner';
+  if (!ok) return res.status(403).json({ error: 'Not allowed' });
+  res.json({ ok: true, sent: await sendDigests() });
+});
+// Monday-morning digest while the service is awake (the Render cron job wakes it up otherwise)
+setInterval(() => {
+  const now = new Date(), today = chiDate(now), hour = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hour: 'numeric', hour12: false }).format(now));
+  const dow = new Date(today + 'T12:00:00Z').getUTCDay();
+  if (dow === 1 && hour >= 8 && hour < 12 && (docs.get('_auth/digest') || {}).last !== today) sendDigests().catch(e => console.error('digest', e.message));
+}, 10 * 60e3).unref();
 
 initStore().then(() => app.listen(PORT, () => console.log(`360 Medical tracker on :${PORT} (storage: ${dbMode})`)))
   .catch(e => { console.error('startup failed', e); process.exit(1); });

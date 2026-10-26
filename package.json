@@ -4,7 +4,15 @@
   "private": true,
   "description": "360 MEDICAL - SURGICAL CASE TRACKER: case log, quota pace, commissions, admin page, installable app",
   "main": "server.js",
-  "scripts": { "start": "node server.js" },
-  "engines": { "node": ">=20" },
-  "dependencies": { "express": "^4.21.2", "pg": "^8.13.1" }
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "pg": "^8.13.1",
+    "web-push": "^3.6.7"
+  }
 }

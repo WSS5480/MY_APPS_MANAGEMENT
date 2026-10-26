@@ -28,3 +28,4 @@ label.f{display:flex;flex-direction:column;gap:5px;font-size:.6875rem;font-weigh
 .pill{display:inline-block;font-size:.75rem;font-weight:600;padding:3px 9px;border-radius:999px;white-space:nowrap}
 .pill.ok{color:var(--ok);background:var(--ok-bg)}.pill.warn{color:var(--warn);background:var(--warn-bg)}.pill.bad{color:var(--bad);background:var(--bad-bg)}.pill.mute{color:var(--muted);background:var(--mute-bg)}
 .foot{font-size:.75rem;color:var(--muted);line-height:1.55;border-top:1px solid var(--line);padding-top:12px}
+.x-offline{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:70;background:#081F33;color:#fff;border:1px solid #079FE9;border-radius:999px;padding:8px 16px;font-size:.8125rem;font-weight:600;box-shadow:0 6px 20px rgba(3,18,31,.3)}

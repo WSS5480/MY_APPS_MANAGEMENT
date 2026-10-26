@@ -108,6 +108,7 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
       <label class="f">Badges · comma separated<input class="field" id="pe-badges" placeholder="Texas exclusive, Now launching"></label>
       <label class="f">Billing code<input class="field" id="pe-codes" maxlength="200" placeholder="Q4316"></label>
       <label class="f">Log cases as · one per line<textarea class="field" id="pe-cn" style="min-height:4rem" placeholder="Clarix 100&#10;Clarix Flo"></textarea></label>
+      <label class="f">Device identifiers (UDI-DI) · one per line<textarea class="field" id="pe-udi" style="min-height:4rem" placeholder="00812345678901"></textarea></label>
       <label class="f">Documents &amp; videos · Label | https://link per line<textarea class="field" id="pe-links" style="min-height:4rem" placeholder="IFU | https://..."></textarea></label>
     </div>
     <label class="chk" style="font-weight:600"><input type="checkbox" id="pe-avail"> Available to reps</label>
@@ -117,6 +118,51 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
       <span class="tools"><button class="btn" type="button" id="pe-cancel">Cancel</button><button class="btn primary" type="button" id="pe-save">Save product</button></span>
     </div>
   </form></dialog>
+
+  <section class="card" id="pricebook">
+    <div class="cardhead">
+      <h2>Price book</h2>
+      <div class="tools"><button class="btn" id="pb-add" type="button">+ Add price</button><button class="btn primary" id="pb-save" type="button" disabled>Save price book</button></div>
+    </div>
+    <p class="note">Contract price per unit. When a rep logs a case, net sales fill in as units × contract price, and any case priced differently is flagged <b>off contract</b>. Leave facility blank for the default price; add a row with a facility name for that facility's contract. Product must match the case-log name.</p>
+    <div class="scroll"><table id="pb"><thead><tr><th>Product (case-log name)</th><th>Facility (blank = all)</th><th>Unit price $</th><th></th></tr></thead><tbody></tbody></table></div>
+    <details style="margin-top:12px"><summary class="note" style="cursor:pointer;margin:0">Paste many prices at once</summary>
+      <p class="note">One per line: <code>product, facility, price</code> (facility can be empty: <code>Clarix Flo,,1250</code>). Existing rows for the same product and facility are replaced.</p>
+      <textarea class="field" id="pb-paste" style="min-height:6rem" placeholder="Clarix Flo,,1250&#10;Clarix Flo,McAllen Medical Center,1180"></textarea>
+      <div class="tools" style="margin-top:8px"><button class="btn" id="pb-import" type="button">Add pasted prices</button></div>
+    </details>
+    <datalist id="pb-names"></datalist>
+    <div class="msg" id="pb-msg" hidden style="margin-top:12px"></div>
+  </section>
+
+  <div class="grid">
+    <section class="card">
+      <h2>Alert settings</h2>
+      <p class="note">When the tracker flags billing, pathway and credential problems.</p>
+      <form class="form" id="st-form" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(10rem,1fr));gap:10px">
+        <label class="f">PO late after (days)<input class="field" id="st-po" type="number" min="1" max="60"></label>
+        <label class="f">Invoice late after PO (days)<input class="field" id="st-inv" type="number" min="1" max="90"></label>
+        <label class="f">Target stuck on a step (days)<input class="field" id="st-stuck" type="number" min="7" max="180"></label>
+        <label class="f">Credential warning (days before)<input class="field" id="st-cred" type="number" min="7" max="120"></label>
+        <button class="btn primary" type="submit">Save settings</button>
+      </form>
+      <div class="msg" id="st-msg" hidden style="margin-top:10px"></div>
+    </section>
+
+    <section class="card">
+      <h2>Close a month</h2>
+      <p class="note">Closing locks that month's cases so commissions can't change after you pay them. Reps see the month as read-only. Reopen to fix something; every change is kept in each case's history.</p>
+      <div id="mc-list"></div>
+      <div class="msg" id="mc-msg" hidden style="margin-top:10px"></div>
+    </section>
+
+    <section class="card">
+      <h2>Weekly digest</h2>
+      <p class="note">Each Monday morning everyone who turned on notifications gets their week: pace to quota, POs to chase, next steps due, credentials expiring. You get the team version. Reps turn it on in the tracker (Weekly digest card).</p>
+      <div class="tools"><button class="btn" id="dg-send" type="button">Send this week's digest now</button></div>
+      <div class="msg" id="dg-msg" hidden style="margin-top:10px"></div>
+    </section>
+  </div>
 
   <div class="grid">
     <section class="card">
@@ -391,6 +437,7 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
     $('#pe-hl').value = (ED.highlights || []).join('\n');
     $('#pe-badges').value = (ED.badges || []).join(', ');
     $('#pe-cn').value = (ED.case_names || []).join('\n');
+    $('#pe-udi').value = (ED.udi_dis || []).join('\n');
     $('#pe-links').value = (ED.links || []).map(function (l) { return (l.label ? l.label + ' | ' : '') + l.url; }).join('\n');
     $('#pe-avail').checked = ED.available !== false;
     $('#pe-err').hidden = true;
@@ -407,7 +454,7 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
     var b = {}; Object.keys(F).forEach(function (k) { b[k] = $(F[k]).value.trim(); });
     if (!b.name) { $('#pe-err').textContent = 'Product name is required.'; $('#pe-err').hidden = false; $('#pe-name').focus(); return; }
     b.id = ED.id; b.photos = ED.photos; b.sort = ED.sort;
-    b.highlights = $('#pe-hl').value.split('\n'); b.case_names = $('#pe-cn').value.split('\n');
+    b.highlights = $('#pe-hl').value.split('\n'); b.case_names = $('#pe-cn').value.split('\n'); b.udi_dis = $('#pe-udi').value.split('\n');
     b.badges = $('#pe-badges').value.split(',');
     b.links = $('#pe-links').value.split('\n').map(function (line) { var i = line.lastIndexOf('|'); return i >= 0 ? { label: line.slice(0, i).trim(), url: line.slice(i + 1).trim() } : { label: '', url: line.trim() }; }).filter(function (l) { return l.url; });
     var badLink = b.links.filter(function (l) { return !/^https?:\/\//i.test(l.url); })[0];
@@ -418,6 +465,86 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
   });
 
   loadProducts().catch(function () {});
+  /* ---------- price book, settings, month close, digest ---------- */
+  var DOCS = {}, PB = [], pbDirty = false;
+  var setDoc = function (path, data) { return api('/api/doc', { op: 'set', path: path, data: data }); };
+  function loadConfig() {
+    return fetch('/api/sync?v=-1').then(function (r) { return r.json(); }).then(function (j) {
+      DOCS = j.docs || {};
+      PB = ((DOCS['config/pricebook'] || {}).rows || []).map(function (r) { return { product: r.product || '', facility: r.facility || '', price: r.price }; });
+      drawPB(); setPB(false);
+      var st = DOCS['config/settings'] || {};
+      $('#st-po').value = st.po_alert_days || 3; $('#st-inv').value = st.invoice_alert_days || 7; $('#st-stuck').value = st.stuck_step_days || 30; $('#st-cred').value = st.cred_warn_days || 30;
+      drawMonths();
+      var names = {}; Object.keys(DOCS).forEach(function (k) { if (k.indexOf('products/') === 0) (DOCS[k].case_names || [DOCS[k].name]).forEach(function (n) { names[n] = 1; }); if (k.indexOf('cases/') === 0 && DOCS[k].product) names[DOCS[k].product] = 1; });
+      var dl = $('#pb-names'); dl.replaceChildren(); Object.keys(names).sort().forEach(function (n) { var o = el('option'); o.value = n; dl.appendChild(o); });
+    });
+  }
+  function setPB(v) { pbDirty = v; $('#pb-save').disabled = !v; }
+  function drawPB() {
+    var b = $('#pb tbody'); b.replaceChildren();
+    if (!PB.length) { var tr0 = el('tr'), td0 = el('td', '', 'No prices yet. Add one, or paste a list below.'); td0.colSpan = 4; td0.className = 'note'; tr0.appendChild(td0); b.appendChild(tr0); }
+    PB.forEach(function (r, i) {
+      var tr = el('tr');
+      var cell = function (k, type, ph, list) { var td = el('td'), inp = el('input', 'field ' + (type === 'number' ? 'w-m' : 'w-l')); inp.type = type; inp.value = r[k] == null ? '' : r[k]; inp.placeholder = ph; if (type === 'number') { inp.min = '0'; inp.step = '0.01'; } if (list) inp.setAttribute('list', list); inp.addEventListener('input', function () { r[k] = type === 'number' ? (inp.value === '' ? null : Number(inp.value)) : inp.value; setPB(true); }); td.appendChild(inp); tr.appendChild(td); };
+      cell('product', 'text', 'Clarix Flo', 'pb-names'); cell('facility', 'text', 'All facilities'); cell('price', 'number', '$');
+      var x = el('td'), rm = el('button', 'btn small danger', 'Remove'); rm.type = 'button'; rm.addEventListener('click', function () { PB.splice(i, 1); setPB(true); drawPB(); }); x.appendChild(rm); tr.appendChild(x);
+      b.appendChild(tr);
+    });
+  }
+  $('#pb-add').addEventListener('click', function () { PB.push({ product: '', facility: '', price: null }); setPB(true); drawPB(); var ins = $('#pb tbody').lastChild.querySelector('input'); if (ins) ins.focus(); });
+  $('#pb-import').addEventListener('click', function () {
+    var added = 0, bad = 0;
+    $('#pb-paste').value.split('\n').forEach(function (line) {
+      if (!line.trim()) return;
+      var p = line.split(/\t|,/).map(function (s) { return s.trim(); }); if (p.length < 2) { bad++; return; }
+      var price = Number(String(p[p.length - 1]).replace(/[$,]/g, '')), product = p[0], facility = p.length > 2 ? p.slice(1, -1).join(', ') : '';
+      if (!product || isNaN(price)) { bad++; return; }
+      PB = PB.filter(function (r) { return !(r.product.toLowerCase() === product.toLowerCase() && (r.facility || '').toLowerCase() === facility.toLowerCase()); });
+      PB.push({ product: product, facility: facility, price: price }); added++;
+    });
+    setPB(added > 0); drawPB(); say('#pb-msg', bad ? 'warn' : 'ok', 'Added ' + added + ' price' + (added === 1 ? '' : 's') + (bad ? '; ' + bad + ' line(s) could not be read' : '') + '. Click Save price book.');
+  });
+  $('#pb-save').addEventListener('click', function () {
+    var rows = PB.filter(function (r) { return r.product.trim() && r.price != null; }).map(function (r) { return { product: r.product.trim(), facility: (r.facility || '').trim(), price: Math.round(Number(r.price) * 100) / 100 }; });
+    var keys = {}, dup = rows.find(function (r) { var k = r.product.toLowerCase() + '|' + r.facility.toLowerCase(); if (keys[k]) return true; keys[k] = 1; });
+    if (dup) return say('#pb-msg', 'err', dup.product + (dup.facility ? ' at ' + dup.facility : '') + ' is listed twice.');
+    setDoc('config/pricebook', { rows: rows }).then(function () { say('#pb-msg', 'ok', 'Price book saved: ' + rows.length + ' price' + (rows.length === 1 ? '' : 's') + '.'); return loadConfig(); }, function (e) { say('#pb-msg', 'err', (e && e.error) || 'Could not save.'); });
+  });
+  $('#st-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var n = function (id, lo, hi, d) { var v = Math.round(Number($(id).value)); return isNaN(v) ? d : Math.min(hi, Math.max(lo, v)); };
+    setDoc('config/settings', { po_alert_days: n('#st-po', 1, 60, 3), invoice_alert_days: n('#st-inv', 1, 90, 7), stuck_step_days: n('#st-stuck', 7, 180, 30), cred_warn_days: n('#st-cred', 7, 120, 30) })
+      .then(function () { say('#st-msg', 'ok', 'Settings saved.'); }, function () { say('#st-msg', 'err', 'Could not save.'); });
+  });
+  function drawMonths() {
+    var box = $('#mc-list'); box.replaceChildren();
+    var closed = (DOCS['config/closed'] || {}).months || {}, now = new Date(), list = [];
+    for (var i = 0; i < 7; i++) { var d = new Date(now.getFullYear(), now.getMonth() - i, 1); list.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')); }
+    Object.keys(closed).forEach(function (m) { if (list.indexOf(m) < 0) list.push(m); });
+    list.sort().reverse();
+    var tb = el('table'), body = el('tbody'); tb.appendChild(body);
+    list.forEach(function (m) {
+      var tr = el('tr'), name = new Date(m + '-15T12:00:00').toLocaleDateString('en-US', { month: 'long', year: 'numeric' }), c = closed[m];
+      tr.appendChild(el('td', 'strong', name));
+      var st = el('td'); st.appendChild(el('span', 'pill ' + (c ? 'mute' : 'ok'), c ? 'Closed ' + new Date(c.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Open')); tr.appendChild(st);
+      var x = el('td'), b = el('button', 'btn small ' + (c ? '' : 'primary'), c ? 'Reopen' : 'Close month'); b.type = 'button';
+      b.addEventListener('click', function () {
+        if (!c && !confirm('Close ' + name + '? Its cases become read-only for everyone until you reopen it.')) return;
+        var next = Object.assign({}, closed); if (c) delete next[m]; else next[m] = { at: new Date().toISOString() };
+        setDoc('config/closed', { months: next }).then(function () { say('#mc-msg', 'ok', name + (c ? ' reopened.' : ' closed.')); return loadConfig(); }, function () { say('#mc-msg', 'err', 'Could not change it.'); });
+      });
+      x.appendChild(b); tr.appendChild(x); body.appendChild(tr);
+    });
+    box.appendChild(tb);
+  }
+  $('#dg-send').addEventListener('click', function () {
+    var b = $('#dg-send'); b.disabled = true;
+    api('/api/cron/digest', {}).then(function (j) { say('#dg-msg', j.sent ? 'ok' : 'warn', j.sent ? 'Sent to ' + j.sent + ' device' + (j.sent === 1 ? '' : 's') + '.' : 'Nobody has turned on notifications yet. Each person turns them on in the tracker\'s Weekly digest card.'); }, function () { say('#dg-msg', 'err', 'Could not send.'); }).finally(function () { b.disabled = false; });
+  });
+  loadConfig().catch(function () {});
+
+
   load().catch(function () {});
 })();
 </script>
