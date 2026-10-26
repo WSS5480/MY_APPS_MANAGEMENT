@@ -137,7 +137,7 @@ function visible(s) {
     const col = p.split('/')[0];
     if (COLS.includes(col) && p.split('/').length === 2 && d && d.rep === s.rep) out[p] = d;
   }
-  for (const [p, d] of docs) if (p.startsWith('products/') || p.startsWith('facilities/')) out[p] = d;
+  for (const [p, d] of docs) if (p.startsWith('products/') || p.startsWith('facilities/') || p.startsWith('surgeons/')) out[p] = d;
   SHARED_CONFIG.forEach(k => { if (docs.has(k)) out[k] = docs.get(k); });
   out['config/quotas'] = { rows: quotaRows().filter(r => r.rep === s.rep && r.role !== 'Team') };
   out[`data/users/${uidOf(s)}/profile`] = { rep: s.rep };
@@ -234,6 +234,11 @@ app.post('/api/doc', needApi(), async (req, res) => {
       }
       if (op === 'delete') { await del(p); } else await put(p, next);
       if (col === 'cases') await audit(parts[1], s, op, prev, next);
+      if (col === 'visits' && next && !prev && s.role === 'owner' && next.rep && next.status === 'planned') notifyRep(next.rep, 'New visit assigned', 'The COO scheduled ' + (next.surgeon || 'a visit') + (next.facility ? ' at ' + next.facility : '') + ' on ' + next.date + (next.time ? ' at ' + next.time : '') + '.').catch(() => {});
+      if (next && !prev && ['targets', 'prefcards', 'credentials', 'visits'].includes(col)) {
+        if (next.facility) await ensureFacility(next.facility, '', s);
+        if (next.surgeon && col !== 'visits' && col !== 'credentials') await ensureSurgeon(next.surgeon, next.facility || '', '', s);
+      }
       return res.json(next ? { ok: true, data: next } : { ok: true });
     }
     if (SHARED_CONFIG.includes(p) && s.role === 'owner' && op !== 'delete') {
@@ -320,7 +325,7 @@ app.post('/api/admin/restore', needApi('owner'), async (req, res) => {
   let n = 0;
   for (const k of Object.keys(inc)) {
     const parts = k.split('/');
-    if (k.startsWith('_auth/') || !((COLS.includes(parts[0]) && parts.length === 2) || k === 'config/quotas' || SHARED_CONFIG.includes(k) || k.startsWith('_audit/') || ((parts[0] === 'coonotes' || parts[0] === 'products' || parts[0] === 'facilities' || parts[0] === '_img') && parts.length === 2))) continue;
+    if (k.startsWith('_auth/') || !((COLS.includes(parts[0]) && parts.length === 2) || k === 'config/quotas' || SHARED_CONFIG.includes(k) || k.startsWith('_audit/') || ((parts[0] === 'coonotes' || parts[0] === 'products' || parts[0] === 'facilities' || parts[0] === 'surgeons' || parts[0] === '_img') && parts.length === 2))) continue;
     await put(k, inc[k]); n++;
   }
   const p = JSON.parse(JSON.stringify(pins()));
@@ -633,6 +638,9 @@ const fmtClock = ms => new Date(ms).toLocaleTimeString('en-US', { timeZone: 'Ame
 async function notifyOwner(title, body) {
   for (const [k, d] of [...docs]) if (k.startsWith('_push/') && d.role === 'owner' && d.v === adminV()) await sendTo(d, { title, body, url: '/admin#visits' });
 }
+async function notifyRep(rep, title, body) {
+  for (const [k, d] of [...docs]) if (k.startsWith('_push/') && d.role === 'rep' && d.rep === rep) await sendTo(d, { title, body, url: '/' });
+}
 let lastSweep = 0;
 function sweepVisits() {
   if (Date.now() - lastSweep < 30e3) return; lastSweep = Date.now();
@@ -662,6 +670,7 @@ app.post('/api/checkin', needApi(), async (req, res) => {
   const inWindow = now >= w.open && now <= w.close;
   let ok, reason, dist = null;
   if (!fac || fac.lat == null || fac.lng == null) { ok = null; reason = 'Cannot verify: no address on file for ' + (v.facility || 'this facility') + '.'; }
+  else if (fac.approved === false) { ok = null; reason = 'Cannot verify yet: the address for ' + fac.name + ' was added by a rep and is waiting for COO approval.'; dist = metersBetween(lat, lng, fac.lat, fac.lng); }
   else {
     dist = metersBetween(lat, lng, fac.lat, fac.lng);
     const radius = Number(fac.radius_m) || g.radius, slack = Math.min(acc, 150);
@@ -697,7 +706,7 @@ app.post('/api/admin/facilities', needApi('owner'), async (req, res) => {
   let lat = b.lat === '' || b.lat == null ? null : Number(b.lat), lng = b.lng === '' || b.lng == null ? null : Number(b.lng), label = null;
   if ((lat == null || lng == null || b.geocode) && address) { const g = await geocode(address); if (!g) return res.status(400).json({ error: 'Could not find that address on the map. Check it, or enter latitude and longitude.' }); lat = g.lat; lng = g.lng; label = g.label; }
   if (lat != null && (!isFinite(lat) || !isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180)) return res.status(400).json({ error: 'Latitude/longitude look wrong.' });
-  const doc = { name, address, lat, lng, map_label: label || (docs.get('facilities/' + id) || {}).map_label || '', radius_m: num(b.radius_m) || null, aliases: strList(b.aliases), updated_at: new Date().toISOString() };
+  const doc = { name, address, lat, lng, map_label: label || (docs.get('facilities/' + id) || {}).map_label || '', radius_m: num(b.radius_m) || null, aliases: strList(b.aliases), approved: true, added_by: (docs.get('facilities/' + id) || {}).added_by || 'COO', created_at: (docs.get('facilities/' + id) || {}).created_at || new Date().toISOString(), updated_at: new Date().toISOString() };
   await put('facilities/' + id, doc); res.json({ ok: true, id, facility: doc });
 });
 app.delete('/api/admin/facilities/:id', needApi('owner'), async (req, res) => { const k = 'facilities/' + req.params.id; if (docs.has(k)) await del(k); res.json({ ok: true }); });
@@ -706,6 +715,57 @@ app.post('/api/admin/visit-ack', needApi('owner'), async (req, res) => {
   if (!v || !v.check) return res.status(404).json({ error: 'No check-in record.' });
   await put(k, Object.assign({}, v, { check: Object.assign({}, v.check, { ack: { at: new Date().toISOString(), note: String(req.body.note || '').slice(0, 500) } }) }));
   res.json({ ok: true });
+});
+
+
+/* ---------------- shared directory: surgeons + facilities (reps can add, COO manages) ---------------- */
+const nameKey = v => String(v || '').toLowerCase().replace(/\bdr\.?\s*/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+const byName = s => s.role === 'owner' ? 'COO' : s.rep;
+function findDir(col, name) { const k = nameKey(name); if (!k) return null; for (const [p, d] of docs) if (p.startsWith(col + '/') && (nameKey(d.name) === k || (d.aliases || []).some(a => nameKey(a) === k))) return Object.assign({ id: p.slice(col.length + 1) }, d); return null; }
+async function ensureFacility(name, address, s) {
+  name = String(name || '').trim().slice(0, 120); if (!name || nameKey(name).length < 2) return null;
+  const hit = findDir('facilities', name); if (hit) return hit;
+  const id = 'f' + crypto.randomBytes(7).toString('hex');
+  let lat = null, lng = null, label = '';
+  address = String(address || '').trim().slice(0, 300);
+  if (address) { const g = await geocode(address); if (g) { lat = g.lat; lng = g.lng; label = g.label; } }
+  const doc = { name, address, lat, lng, map_label: label, radius_m: null, aliases: [], approved: s.role === 'owner', added_by: byName(s), created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+  await put('facilities/' + id, doc); return Object.assign({ id }, doc);
+}
+async function ensureSurgeon(name, facility, specialty, s) {
+  name = String(name || '').trim().slice(0, 120); if (!name || nameKey(name).length < 2) return null;
+  const hit = findDir('surgeons', name); if (hit) return hit;
+  const id = 's' + crypto.randomBytes(7).toString('hex');
+  const doc = { name, facility: String(facility || '').trim().slice(0, 120), specialty: String(specialty || '').trim().slice(0, 80), phone: '', notes: '', added_by: byName(s), created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+  await put('surgeons/' + id, doc); return Object.assign({ id }, doc);
+}
+app.post('/api/directory/surgeon', needApi(), async (req, res) => {
+  const b = req.body || {}; if (!String(b.name || '').trim()) return res.status(400).json({ error: 'Surgeon name is required.' });
+  const existed = findDir('surgeons', b.name);
+  const d = existed || await ensureSurgeon(b.name, b.facility, b.specialty, req.s);
+  if (b.facility) await ensureFacility(b.facility, '', req.s);
+  res.json({ ok: true, existed: !!existed, surgeon: d });
+});
+app.post('/api/directory/facility', needApi(), async (req, res) => {
+  const b = req.body || {}; if (!String(b.name || '').trim()) return res.status(400).json({ error: 'Facility name is required.' });
+  const existed = findDir('facilities', b.name);
+  const d = existed || await ensureFacility(b.name, b.address, req.s);
+  res.json({ ok: true, existed: !!existed, facility: d });
+});
+app.post('/api/admin/surgeons', needApi('owner'), async (req, res) => {
+  const b = req.body || {}, id = b.id && /^[A-Za-z0-9_-]{1,40}$/.test(b.id) ? b.id : 's' + crypto.randomBytes(7).toString('hex');
+  const name = String(b.name || '').trim().slice(0, 120); if (!name) return res.status(400).json({ error: 'Surgeon name is required.' });
+  const dupe = findDir('surgeons', name); if (dupe && dupe.id !== id) return res.status(400).json({ error: name + ' is already in the directory.' });
+  const prev = docs.get('surgeons/' + id) || {};
+  const doc = Object.assign({}, prev, { name, specialty: String(b.specialty || '').trim().slice(0, 80), facility: String(b.facility || '').trim().slice(0, 120), phone: String(b.phone || '').trim().slice(0, 40), notes: String(b.notes || '').slice(0, 1000), added_by: prev.added_by || 'COO', created_at: prev.created_at || new Date().toISOString(), updated_at: new Date().toISOString() });
+  await put('surgeons/' + id, doc);
+  if (doc.facility) await ensureFacility(doc.facility, '', req.s);
+  res.json({ ok: true, id, surgeon: doc });
+});
+app.delete('/api/admin/surgeons/:id', needApi('owner'), async (req, res) => { const k = 'surgeons/' + req.params.id; if (docs.has(k)) await del(k); res.json({ ok: true }); });
+app.post('/api/admin/facilities/:id/approve', needApi('owner'), async (req, res) => {
+  const k = 'facilities/' + req.params.id, d = docs.get(k); if (!d) return res.status(404).json({ error: 'No such facility' });
+  await put(k, Object.assign({}, d, { approved: true, approved_at: new Date().toISOString() })); res.json({ ok: true });
 });
 
 initStore().then(() => app.listen(PORT, () => console.log(`360 Medical tracker on :${PORT} (storage: ${dbMode})`)))

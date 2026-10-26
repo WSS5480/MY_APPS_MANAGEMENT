@@ -230,8 +230,8 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
         <p class="note">Q4 target surgeons, where each sits on the six-step Sales Pathway, and whether a first case has landed. Change the step here and it saves.</p>
         <div class="scroll"><table id="targets"><thead><tr><th class="col-rep">Rep</th><th>Target surgeon</th><th>Facility</th><th>Pathway step</th><th class="r">Cases</th><th>First case</th><th class="r">Net sales</th><th></th></tr></thead><tbody></tbody></table></div>
         <div class="addrow" id="target-add" hidden>
-          <input class="field" id="ta-surgeon" placeholder="Add target surgeon, e.g. Dr. Smith" aria-label="Target surgeon">
-          <input class="field" id="ta-facility" placeholder="Facility" aria-label="Facility">
+          <input class="field" id="ta-surgeon" list="dl-surgeons" autocomplete="off" placeholder="Add target surgeon, e.g. Dr. Smith" aria-label="Target surgeon">
+          <input class="field" id="ta-facility" list="dl-facilities" autocomplete="off" placeholder="Facility" aria-label="Facility">
           <select class="field" id="ta-rep" aria-label="Rep" style="flex:0 1 12rem"></select>
           <button class="btn" id="ta-btn" type="button">Add target</button>
         </div>
@@ -239,6 +239,7 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 
       <section class="card" id="sec-vcal"></section>
       <section class="card" id="sec-visits"></section>
+      <section class="card" id="sec-dir"></section>
       <section class="card" id="sec-pref"></section>
       <section class="card" id="sec-cred"></section>
       <section class="card" id="sec-notify"></section>
@@ -829,8 +830,8 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
     $('#btn-export').hidden = !S.downloads || !loaded;
     $('#log-hint').textContent = S.canWrite ? 'Click a case to update it. Every change saves automatically.' : 'View only.';
 
-    fillList('#dl-surgeons', S.cases.map(function (c) { return c.surgeon; }).concat(S.targets.map(function (t) { return t.surgeon; })));
-    fillList('#dl-facilities', S.cases.map(function (c) { return c.facility; }).concat(S.targets.map(function (t) { return t.facility; })));
+    fillList('#dl-surgeons', S.cases.map(function (c) { return c.surgeon; }).concat(S.targets.map(function (t) { return t.surgeon; })).concat((S.dirSurgeons || []).map(function (d) { return d.name; })));
+    fillList('#dl-facilities', S.cases.map(function (c) { return c.facility; }).concat(S.targets.map(function (t) { return t.facility; })).concat((S.dirFacilities || []).map(function (d) { return d.name; })));
     var offNames = {}, onNames = [];
     S.products.forEach(function (p) { (p.case_names && p.case_names.length ? p.case_names : [p.name]).forEach(function (n) { if (p.available === false) offNames[n.toLowerCase()] = 1; else onNames.push(n); }); });
     onNames.forEach(function (n) { delete offNames[n.toLowerCase()]; });

@@ -530,6 +530,58 @@
     T.render();
   }
 
+
+  /* ---------- shared directory: surgeons + facilities ---------- */
+  var dirKey = function (v) { return lc(v).replace(/\bdr\.?\s*/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim(); };
+  function dirSurgeon(name) { var k = dirKey(name); return k ? (S.dirSurgeons || []).find(function (d) { return dirKey(d.name) === k; }) : null; }
+  function drawDir(ctx) {
+    var sec = $('#sec-dir');
+    if (!X.built.dir) {
+      X.built.dir = true; sec.replaceChildren();
+      var h = el('div', 'cardhead'); h.appendChild(el('h2', '', 'Surgeons & facilities directory'));
+      var q = el('input', 'field'); q.type = 'search'; q.id = 'xd-q'; q.placeholder = 'Search'; q.setAttribute('aria-label', 'Search directory'); q.style.maxWidth = '14rem'; q.addEventListener('input', function () { T.render(); }); h.appendChild(q);
+      sec.appendChild(h);
+      sec.appendChild(el('p', 'note', 'One shared list for the whole team. Everything here shows in the surgeon and facility dropdowns. Add a new surgeon or facility and the COO sees it in Admin. A facility address you add is checked by the COO before it counts for visit check-ins.'));
+      var sp = el('div', 'x-split');
+      var a = el('div'); a.appendChild(el('div', 'x-sub', 'Add a surgeon'));
+      var fa = el('div', 'x-form'), labA = function (t, n) { var l = el('label', '', t); l.appendChild(n); fa.appendChild(l); return n; };
+      var sn = labA('Name', el('input', 'field')); sn.id = 'xd-sname'; sn.placeholder = 'Dr. First Last';
+      var ss = labA('Specialty', el('input', 'field')); ss.id = 'xd-sspec'; ss.placeholder = 'Colorectal, Ortho hand…';
+      var sf = labA('Main facility', el('input', 'field')); sf.id = 'xd-sfac'; sf.setAttribute('list', 'dl-facilities');
+      fa.appendChild(btn('Add surgeon', 'primary', addSurgeon)); a.appendChild(fa);
+      var b = el('div'); b.appendChild(el('div', 'x-sub', 'Add a facility'));
+      var fb = el('div', 'x-form'), labB = function (t, n, c) { var l = el('label', c || '', t); l.appendChild(n); fb.appendChild(l); return n; };
+      var fn = labB('Facility name', el('input', 'field')); fn.id = 'xd-fname'; fn.placeholder = 'e.g. Rio Grande Regional';
+      var fd = labB('Street address', el('input', 'field'), 'full'); fd.id = 'xd-faddr'; fd.placeholder = 'Street, city, TX ZIP';
+      fb.appendChild(btn('Add facility', 'primary', addFacility)); b.appendChild(fb);
+      sp.appendChild(a); sp.appendChild(b); sec.appendChild(sp);
+      var m = el('div', 'msg'); m.id = 'xd-msg'; m.hidden = true; sec.appendChild(m);
+      var lists = el('div', 'x-split'); lists.id = 'xd-lists'; sec.appendChild(lists);
+    }
+    var q2 = lc($('#xd-q').value), match = function (d) { return !q2 || [d.name, d.specialty, d.facility, d.address].join(' ').toLowerCase().indexOf(q2) >= 0; };
+    var L = $('#xd-lists'); L.replaceChildren();
+    var su = (S.dirSurgeons || []).filter(match).sort(function (x, y) { return dirKey(x.name) < dirKey(y.name) ? -1 : 1; });
+    var fa2 = (S.dirFacilities || []).filter(match).sort(function (x, y) { return lc(x.name) < lc(y.name) ? -1 : 1; });
+    var col = function (title, rows, fmt) { var d = el('div'); d.appendChild(el('div', 'x-sub', title + ' · ' + rows.length)); var ul = el('ul', 'x-list'); ul.style.maxHeight = '16rem'; ul.style.overflow = 'auto'; rows.forEach(function (r) { ul.appendChild(fmt(r)); }); if (!rows.length) ul.appendChild(el('li', 'note', 'None yet.')); d.appendChild(ul); L.appendChild(d); };
+    col('Surgeons', su, function (r) { var li = el('li'), l = el('div'); l.appendChild(el('div', 'strong', r.name)); l.appendChild(el('div', 'meta', [r.specialty, r.facility, r.added_by && r.added_by !== 'COO' ? 'added by ' + r.added_by : ''].filter(Boolean).join(' · '))); li.appendChild(l); return li; });
+    col('Facilities', fa2, function (r) { var li = el('li'), l = el('div'); l.appendChild(el('div', 'strong', r.name)); l.appendChild(el('div', 'meta', [r.address || 'No address yet', r.added_by && r.added_by !== 'COO' ? 'added by ' + r.added_by : ''].filter(Boolean).join(' · '))); li.appendChild(l); li.appendChild(el('span', 'pill ' + (r.approved === false ? 'warn' : r.lat != null ? 'ok' : 'mute'), r.approved === false ? 'Pending COO' : r.lat != null ? 'On map' : 'No address')); return li; });
+  }
+  function dirMsg(kind, t) { var m = $('#xd-msg'); m.className = 'msg ' + kind; m.textContent = t; m.hidden = false; setTimeout(function () { m.hidden = true; }, 5000); }
+  function addSurgeon() {
+    var name = $('#xd-sname').value.trim(); if (!name) { $('#xd-sname').focus(); return; }
+    api('/api/directory/surgeon', { name: name, specialty: $('#xd-sspec').value.trim(), facility: $('#xd-sfac').value.trim() }).then(function (j) {
+      dirMsg(j.existed ? 'warn' : 'ok', j.existed ? j.surgeon.name + ' is already in the directory.' : j.surgeon.name + ' added. Everyone on the team can pick them now.');
+      $('#xd-sname').value = ''; $('#xd-sspec').value = ''; $('#xd-sfac').value = '';
+    }, function (e) { dirMsg('err', (e && e.error) || (navigator.onLine ? 'Could not add.' : 'Adding to the directory needs a connection.')); });
+  }
+  function addFacility() {
+    var name = $('#xd-fname').value.trim(); if (!name) { $('#xd-fname').focus(); return; }
+    api('/api/directory/facility', { name: name, address: $('#xd-faddr').value.trim() }).then(function (j) {
+      dirMsg(j.existed ? 'warn' : 'ok', j.existed ? j.facility.name + ' is already in the directory.' : j.facility.name + ' added' + (j.facility.approved === false ? '. The COO will confirm the address before it counts for check-ins.' : '.'));
+      $('#xd-fname').value = ''; $('#xd-faddr').value = '';
+    }, function (e) { dirMsg('err', (e && e.error) || (navigator.onLine ? 'Could not add.' : 'Adding to the directory needs a connection.')); });
+  }
+
   /* ---------- section: surgeon preference cards ---------- */
   var prefEdit = null;
   function drawPrefs(ctx) {
@@ -845,6 +897,8 @@
     $('#ce-sales').addEventListener('input', priceHint);
     $('#ce-surgeon').addEventListener('change', function () { var c = curCase(); var p = c && prefFor($('#ce-rep').value || c.rep, $('#ce-surgeon').value); if (p && !$('#ce-product').value) applyPref(p, false); drawPrefHint(); });
     $('#ce-surgeon').addEventListener('input', drawPrefHint);
+    $('#ta-surgeon').addEventListener('change', function () { var d = dirSurgeon($('#ta-surgeon').value); if (d && d.facility && !$('#ta-facility').value) $('#ta-facility').value = d.facility; });
+    $('#ce-surgeon').addEventListener('change', function () { var d = dirSurgeon($('#ce-surgeon').value); if (d && d.facility && !$('#ce-facility').value) { $('#ce-facility').value = d.facility; autoPrice(); T.editorChanged(0); } });
     $('#ed-history').addEventListener('click', showHistory);
     $('#btn-statement').addEventListener('click', function () { openStatement(); });
     addMic($('#note-text'));
@@ -852,7 +906,7 @@
   function render(M, ctx) {
     if (!S.db) return;
     var ec = curCase(); if (ec && attSig !== ec.id + ':' + (ec.attachments || []).join(',')) drawAtt();
-    drawBilling(ctx); drawUpcoming(ctx); drawVCal(ctx); drawVisits(ctx); drawPrefs(ctx); drawCreds(ctx); drawNotify();
+    drawBilling(ctx); drawUpcoming(ctx); drawVCal(ctx); drawVisits(ctx); drawDir(ctx); drawPrefs(ctx); drawCreds(ctx); drawNotify();
     var anyComm = S.quotas.some(function (q) { return q.role !== 'Team' && q.comm_rate; });
     $('#btn-statement').hidden = !ctx.loaded || !anyComm;
   }
@@ -862,6 +916,8 @@
     db.collection('visits').onSnapshot(function (s) { X.visits = rows(s); T.render(); });
     db.collection('prefcards').onSnapshot(function (s) { X.prefs = rows(s); T.render(); });
     db.collection('credentials').onSnapshot(function (s) { X.creds = rows(s); T.render(); });
+    db.collection('surgeons').onSnapshot(function (s) { S.dirSurgeons = rows(s); T.render(); });
+    db.collection('facilities').onSnapshot(function (s) { S.dirFacilities = rows(s); T.render(); });
     db.doc('config/pricebook').onSnapshot(function (s) { X.pricebook = (s.exists && s.data()) || { rows: [] }; if (!Array.isArray(X.pricebook.rows)) X.pricebook.rows = []; T.render(); });
     db.doc('config/settings').onSnapshot(function (s) { X.settings = (s.exists && s.data()) || {}; T.render(); });
     db.doc('config/closed').onSnapshot(function (s) { X.closed = (s.exists && s.data()) || { months: {} }; if (!X.closed.months) X.closed.months = {}; T.render(); });

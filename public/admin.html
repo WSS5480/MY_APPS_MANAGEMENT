@@ -55,7 +55,7 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
   <header class="head">
     <img class="logo" src="/logo.png" alt="360 Medical">
     <div class="headtxt"><h1>Admin</h1><span class="conf">360 MEDICAL - SURGICAL CASE TRACKER</span><p class="sub">Reps, PINs, quotas and commission plans. Changes here show in the tracker within seconds.</p></div>
-    <div class="tools"><a class="btn" href="/">Open tracker</a><a class="btn" href="#visits">Visits</a><a class="btn" href="/products">Products</a><a class="btn" href="/download">Download app</a><button class="btn" id="logout" type="button">Log out</button></div>
+    <div class="tools"><a class="btn" href="/">Open tracker</a><a class="btn" href="#visits">Visits</a><a class="btn" href="#surgeons">Surgeons</a><a class="btn" href="#facilities">Facilities</a><a class="btn" href="/products">Products</a><a class="btn" href="/download">Download app</a><button class="btn" id="logout" type="button">Log out</button></div>
   </header>
 
   <div class="msg warn" id="dbwarn" hidden></div>
@@ -122,6 +122,21 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
   <section class="card" id="visits">
     <div class="cardhead"><h2>Target visits · all reps</h2><span class="pill mute" id="av-count"></span></div>
     <p class="note">Every planned target-surgeon visit. When a rep checks in, their phone's location at that moment is compared with the facility address and the visit time. <b style="color:#12805A">Green</b> = at the facility during the visit. <b style="color:#B93426">Red</b> = somewhere else, outside the time window, or no check-in; you also get a push notification (turn on notifications in the tracker's Weekly digest card). <b style="color:#8A5A00">Amber</b> = the facility has no address yet, so it can't be checked.</p>
+    <details id="av-plan" style="margin:4px 0 12px"><summary class="btn primary" style="display:inline-flex;list-style:none">+ Schedule a visit for a rep</summary>
+      <form class="form" id="ap-form" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(11rem,1fr));gap:10px;margin-top:12px;align-items:end">
+        <label class="f">Rep<select class="field" id="ap-rep" required></select></label>
+        <label class="f">Surgeon<input class="field" id="ap-surgeon" list="ap-surgeons" required placeholder="Dr. First Last" autocomplete="off"></label>
+        <label class="f">Facility<input class="field" id="ap-fac" list="fc-names" required autocomplete="off"></label>
+        <label class="f">Date<input class="field" id="ap-date" type="date" required></label>
+        <label class="f">Time<input class="field" id="ap-time" type="time" value="09:00" required></label>
+        <label class="f">Length<select class="field" id="ap-dur"><option value="30">30 min</option><option value="45">45 min</option><option value="60" selected>1 hour</option><option value="90">1½ hours</option><option value="120">2 hours</option><option value="240">Half day (case)</option></select></label>
+        <label class="f">Type<select class="field" id="ap-type"><option>Office visit</option><option>Case observation</option><option>In-service</option><option>Lunch &amp; learn</option><option>Phone / virtual</option><option>360 Experience</option><option>Other</option></select></label>
+        <label class="f" style="grid-column:span 2">Purpose / instructions for the rep<input class="field" id="ap-purpose" placeholder="e.g. Bring ASG samples, ask about the colorectal block"></label>
+        <div class="tools" style="grid-column:1/-1"><button class="btn primary" type="submit">Schedule visit</button><span class="note" style="margin:0">If the surgeon is not yet one of that rep's targets, they are added as a target.</span></div>
+      </form>
+      <datalist id="ap-surgeons"></datalist>
+      <div class="msg" id="ap-msg" hidden style="margin-top:10px"></div>
+    </details>
     <div id="av-alerts"></div>
     <div id="av-cal" style="margin-top:12px"></div>
   </section>
@@ -142,6 +157,21 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
     </form>
     <datalist id="fc-names"></datalist>
     <div class="msg" id="fc-msg" hidden style="margin-top:12px"></div>
+  </section>
+
+  <section class="card" id="surgeons">
+    <div class="cardhead"><h2>Surgeon directory</h2><div class="tools"><input class="field" id="sd-q" type="search" placeholder="Search surgeons" style="width:14rem"><button class="btn primary" id="sd-add" type="button">+ Add surgeon</button></div></div>
+    <p class="note">The shared surgeon list every rep picks from. Reps can add surgeons too; theirs are marked "added by". Picking a surgeon fills in their main facility.</p>
+    <form class="form" id="sd-form" hidden style="display:grid;grid-template-columns:repeat(auto-fit,minmax(11rem,1fr));gap:10px;margin-bottom:12px;align-items:end">
+      <label class="f">Name<input class="field" id="sd-name" required placeholder="Dr. First Last"></label>
+      <label class="f">Specialty<input class="field" id="sd-spec"></label>
+      <label class="f">Main facility<input class="field" id="sd-fac" list="fc-names"></label>
+      <label class="f">Office phone<input class="field" id="sd-phone" inputmode="tel"></label>
+      <label class="f" style="grid-column:1/-1">Notes<input class="field" id="sd-notes"></label>
+      <div class="tools" style="grid-column:1/-1"><button class="btn primary" type="submit">Save surgeon</button><button class="btn" type="button" id="sd-cancel">Cancel</button></div>
+    </form>
+    <div class="scroll" style="max-height:24rem"><table id="sd"><thead><tr><th>Surgeon</th><th>Specialty</th><th>Main facility</th><th>Added by</th><th></th></tr></thead><tbody></tbody></table></div>
+    <div class="msg" id="sd-msg" hidden style="margin-top:12px"></div>
   </section>
 
   <section class="card" id="pricebook">
@@ -578,17 +608,19 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
   function loadVisits() {
     return fetch('/api/sync?v=-1').then(function (r) { return r.json(); }).then(function (j) {
       var d = j.docs || {}, names = {};
-      VD.visits = []; VD.facilities = [];
+      VD.visits = []; VD.facilities = []; VD.surgeons = []; VD.targets = [];
       Object.keys(d).forEach(function (k) {
         var c = k.split('/')[0];
         if (c === 'visits') VD.visits.push(Object.assign({ id: k.slice(7) }, d[k]));
         if (c === 'facilities') VD.facilities.push(Object.assign({ id: k.slice(11) }, d[k]));
+        if (c === 'surgeons') VD.surgeons.push(Object.assign({ id: k.slice(9) }, d[k]));
+        if (c === 'targets') VD.targets.push(Object.assign({ id: k.slice(8) }, d[k]));
         if ((c === 'cases' || c === 'targets' || c === 'visits' || c === 'credentials' || c === 'prefcards') && d[k].facility) names[d[k].facility.trim()] = 1;
       });
       VD.reps = ((d['config/quotas'] || {}).rows || []).filter(function (r) { return r.role !== 'Team'; }).map(function (r) { return r.rep; });
       VD.settings = d['config/settings'] || {};
       VD.names = Object.keys(names).sort();
-      drawVisitAdmin(); drawFacilities();
+      drawVisitAdmin(); drawFacilities(); drawSurgeons(); drawPlanForm();
     });
   }
   function lc(v) { return String(v || '').trim().toLowerCase(); }
@@ -597,6 +629,7 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
     if (!avCal && window.VisitCal) avCal = window.VisitCal.mount($('#av-cal'), { repFilter: true, showRep: true, getData: function () { return { visits: VD.visits, reps: VD.reps, settings: VD.settings }; }, actions: function (v, st, close) {
       var a = [];
       if (v.check && v.check.ok !== true && !v.check.ack) a.push({ label: 'Mark reviewed', cls: 'primary', fn: function () { var note = prompt('Note for the record (optional), e.g. "Called Brandon, surgeon moved the meeting":', ''); if (note === null) return; api('/api/admin/visit-ack', { id: v.id, note: note }).then(function () { close(); loadVisits(); }); } });
+      a.push({ label: 'Delete visit', cls: 'danger', fn: function () { if (!confirm('Delete this visit' + (v.check ? ' and its check-in record' : '') + '?')) return; api('/api/doc', { op: 'delete', path: 'visits/' + v.id }).then(function () { close(); loadVisits(); }); } });
       if (v.check && v.check.lat != null) a.push({ label: 'Show on map', fn: function () { window.open('https://www.openstreetmap.org/?mlat=' + v.check.lat + '&mlon=' + v.check.lng + '#map=16/' + v.check.lat + '/' + v.check.lng, '_blank', 'noopener'); } });
       return a;
     } });
@@ -621,21 +654,26 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
     var b = $('#fc tbody'); b.replaceChildren();
     VD.facilities.sort(function (a, c) { return lc(a.name) < lc(c.name) ? -1 : 1; }).forEach(function (f) {
       var tr = el('tr');
-      tr.appendChild(el('td', 'strong', f.name + ((f.aliases || []).length ? ' (' + f.aliases.join(', ') + ')' : '')));
+      var nm = el('td'); nm.appendChild(el('div', 'strong', f.name + ((f.aliases || []).length ? ' (' + f.aliases.join(', ') + ')' : '')));
+      if (f.added_by && f.added_by !== 'COO') nm.appendChild(el('div', 'note', 'added by ' + f.added_by)); 
+      if (f.approved === false) nm.appendChild(el('span', 'pill warn', 'Pending your approval'));
+      tr.appendChild(nm);
       tr.appendChild(el('td', '', f.address || '—'));
       var mp = el('td'); if (f.lat != null) { var a = el('a', '', f.lat.toFixed(4) + ', ' + f.lng.toFixed(4)); a.href = 'https://www.openstreetmap.org/?mlat=' + f.lat + '&mlon=' + f.lng + '#map=17/' + f.lat + '/' + f.lng; a.target = '_blank'; a.rel = 'noopener'; mp.appendChild(a); } else mp.appendChild(el('span', 'pill warn', 'Not on map')); tr.appendChild(mp);
       tr.appendChild(el('td', '', (f.radius_m || VD.settings.geo_radius_m || 400) + ' m'));
       var x = el('td'), e = el('button', 'btn small', 'Edit'), d = el('button', 'btn small danger', 'Delete'); e.type = d.type = 'button';
       e.addEventListener('click', function () { openFac(f); });
+      if (f.approved === false) { var ap = el('button', 'btn small primary', 'Approve'); ap.type = 'button'; ap.title = 'Confirm this address is right so check-ins here can turn green'; ap.addEventListener('click', function () { if (f.lat == null && !confirm('This facility has no map point yet. Approve anyway? (Edit it to add the address first.)')) return; api('/api/admin/facilities/' + encodeURIComponent(f.id) + '/approve', {}).then(function () { say('#fc-msg', 'ok', f.name + ' approved.'); loadVisits(); }); }); x.appendChild(ap); x.appendChild(document.createTextNode(' ')); }
       d.addEventListener('click', function () { if (!d.dataset.armed) { d.dataset.armed = '1'; d.textContent = 'Confirm'; return; } fetch('/api/admin/facilities/' + encodeURIComponent(f.id), { method: 'DELETE' }).then(loadVisits); });
       x.appendChild(e); x.appendChild(document.createTextNode(' ')); x.appendChild(d); tr.appendChild(x); b.appendChild(tr);
     });
     if (!VD.facilities.length) { var tr0 = el('tr'), td0 = el('td', 'note', 'No facilities yet.'); td0.colSpan = 5; tr0.appendChild(td0); b.appendChild(tr0); }
-    var miss = VD.names.filter(function (n) { return !facKnown(n); }), mb = $('#fc-missing'); mb.replaceChildren();
-    var dl = $('#fc-names'); dl.replaceChildren(); VD.names.forEach(function (n) { var o = el('option'); o.value = n; dl.appendChild(o); });
+    var miss = VD.names.filter(function (n) { return !facKnown(n); }).concat(VD.facilities.filter(function (f) { return f.lat == null; }).map(function (f) { return f.name; })), mb = $('#fc-missing'); mb.replaceChildren();
+    miss = miss.filter(function (n, i) { return miss.indexOf(n) === i; });
+    var dl = $('#fc-names'); dl.replaceChildren(); var all = {}; VD.names.concat(VD.facilities.map(function (f) { return f.name; })).forEach(function (n) { all[n] = 1; }); Object.keys(all).sort().forEach(function (n) { var o = el('option'); o.value = n; dl.appendChild(o); });
     if (miss.length) {
       var m = el('div', 'msg warn'); m.style.marginBottom = '10px'; m.appendChild(document.createTextNode('Reps use these facilities but they have no address yet, so check-ins there can\'t be verified: '));
-      miss.forEach(function (n, i) { var bb = el('button', 'btn small', '+ ' + n); bb.type = 'button'; bb.style.margin = '4px 4px 0 0'; bb.addEventListener('click', function () { openFac({ name: n }); }); m.appendChild(bb); });
+      miss.forEach(function (n, i) { var bb = el('button', 'btn small', '+ ' + n); bb.type = 'button'; bb.style.margin = '4px 4px 0 0'; var known = VD.facilities.find(function (f) { return lc(f.name) === lc(n); }); bb.addEventListener('click', function () { openFac(known || { name: n }); }); m.appendChild(bb); });
       mb.appendChild(m);
     }
   }
@@ -668,6 +706,64 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
     if (!body.address && (body.lat === '' || body.lng === '')) return say('#fc-msg', 'err', 'Add an address, or use your location at the facility.');
     say('#fc-msg', 'warn', 'Saving…');
     api('/api/admin/facilities', body).then(function (j) { $('#fc-form').hidden = true; fcEdit = null; say('#fc-msg', 'ok', j.facility.name + ' saved' + (j.facility.map_label ? ': ' + j.facility.map_label : '.')); loadVisits(); }, function (er) { say('#fc-msg', 'err', (er && er.error) || 'Could not save.'); });
+  });
+
+  var sdEdit = null;
+  function drawSurgeons() {
+    var b = $('#sd tbody'); b.replaceChildren();
+    var q = lc($('#sd-q').value), rows = VD.surgeons.filter(function (d) { return !q || [d.name, d.specialty, d.facility].join(' ').toLowerCase().indexOf(q) >= 0; })
+      .sort(function (x, y) { return lc(x.name).replace(/^dr\.?\s*/, '') < lc(y.name).replace(/^dr\.?\s*/, '') ? -1 : 1; });
+    if (!rows.length) { var tr0 = el('tr'), td0 = el('td', 'note', VD.surgeons.length ? 'No match.' : 'No surgeons yet. Add one, or they appear as reps add target surgeons.'); td0.colSpan = 5; tr0.appendChild(td0); b.appendChild(tr0); }
+    rows.forEach(function (d) {
+      var tr = el('tr');
+      tr.appendChild(el('td', 'strong', d.name)); tr.appendChild(el('td', '', d.specialty || '—')); tr.appendChild(el('td', '', d.facility || '—'));
+      var ab = el('td'); ab.appendChild(el('span', 'pill ' + (d.added_by && d.added_by !== 'COO' ? 'warn' : 'mute'), d.added_by || 'COO')); tr.appendChild(ab);
+      var x = el('td'), e = el('button', 'btn small', 'Edit'), del2 = el('button', 'btn small danger', 'Delete'); e.type = del2.type = 'button';
+      e.addEventListener('click', function () { openSurgeon(d); });
+      del2.addEventListener('click', function () { if (!del2.dataset.armed) { del2.dataset.armed = '1'; del2.textContent = 'Confirm'; return; } fetch('/api/admin/surgeons/' + encodeURIComponent(d.id), { method: 'DELETE' }).then(loadVisits); });
+      x.appendChild(e); x.appendChild(document.createTextNode(' ')); x.appendChild(del2); tr.appendChild(x); b.appendChild(tr);
+    });
+  }
+  function openSurgeon(d) {
+    sdEdit = d || null; $('#sd-form').hidden = false;
+    $('#sd-name').value = d ? d.name : ''; $('#sd-spec').value = d ? d.specialty || '' : ''; $('#sd-fac').value = d ? d.facility || '' : ''; $('#sd-phone').value = d ? d.phone || '' : ''; $('#sd-notes').value = d ? d.notes || '' : '';
+    $('#sd-name').focus();
+  }
+  $('#sd-q').addEventListener('input', drawSurgeons);
+  $('#sd-add').addEventListener('click', function () { openSurgeon(null); });
+  $('#sd-cancel').addEventListener('click', function () { $('#sd-form').hidden = true; sdEdit = null; });
+  $('#sd-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    api('/api/admin/surgeons', { id: sdEdit && sdEdit.id, name: $('#sd-name').value.trim(), specialty: $('#sd-spec').value.trim(), facility: $('#sd-fac').value.trim(), phone: $('#sd-phone').value.trim(), notes: $('#sd-notes').value.trim() })
+      .then(function (j) { $('#sd-form').hidden = true; sdEdit = null; say('#sd-msg', 'ok', j.surgeon.name + ' saved. It now shows in every rep\'s surgeon list.'); loadVisits(); }, function (er) { say('#sd-msg', 'err', (er && er.error) || 'Could not save.'); });
+  });
+
+  function drawPlanForm() {
+    var rs = $('#ap-rep'); if (rs !== document.activeElement) { var k = rs.value; rs.replaceChildren.apply(rs, VD.reps.map(function (r) { return new Option(r, r); })); if (VD.reps.indexOf(k) >= 0) rs.value = k; }
+    if (!$('#ap-date').value) { var t = new Date(); $('#ap-date').value = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0'); }
+    var names = {}; VD.surgeons.forEach(function (d) { names[d.name] = 1; }); VD.targets.forEach(function (t) { if (t.surgeon) names[t.surgeon] = 1; });
+    var dl = $('#ap-surgeons'); dl.replaceChildren(); Object.keys(names).sort().forEach(function (n) { var o = el('option'); o.value = n; dl.appendChild(o); });
+  }
+  var skey = function (v) { return lc(v).replace(/\bdr\.?\s*/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim(); };
+  $('#ap-surgeon').addEventListener('change', function () {
+    var d = VD.surgeons.find(function (x) { return skey(x.name) === skey($('#ap-surgeon').value); }) || VD.targets.find(function (t) { return skey(t.surgeon) === skey($('#ap-surgeon').value) && t.rep === $('#ap-rep').value; });
+    if (d && (d.facility) && !$('#ap-fac').value) $('#ap-fac').value = d.facility;
+  });
+  var rid = function () { var a = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789', b = new Uint8Array(20), s = ''; crypto.getRandomValues(b); for (var i = 0; i < 20; i++) s += a[b[i] % 62]; return s; };
+  $('#ap-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var rep = $('#ap-rep').value, surgeon = $('#ap-surgeon').value.trim(), fac = $('#ap-fac').value.trim(), date = $('#ap-date').value, time = $('#ap-time').value;
+    if (!rep || !surgeon || !fac || !date || !time) return say('#ap-msg', 'err', 'Fill in rep, surgeon, facility, date and time.');
+    if (window.VisitCal && window.VisitCal.windowOf({ date: date, time: time, duration: $('#ap-dur').value }, VD.settings).close < Date.now()) return say('#ap-msg', 'err', 'That time has already passed.');
+    var tgt = VD.targets.find(function (t) { return t.rep === rep && skey(t.surgeon) === skey(surgeon); });
+    var stamp = new Date().toISOString(), chain = Promise.resolve(), tid = tgt ? tgt.id : rid();
+    if (!tgt) chain = api('/api/doc', { op: 'set', path: 'targets/' + tid, data: { rep: rep, surgeon: surgeon, facility: fac, step: 0, step_changed_at: date, updated_at: stamp } });
+    chain.then(function () {
+      return api('/api/doc', { op: 'set', path: 'visits/' + rid(), data: { rep: rep, target_id: tid, surgeon: surgeon, facility: fac, date: date, time: time, duration: Number($('#ap-dur').value), type: $('#ap-type').value, purpose: $('#ap-purpose').value.trim(), status: 'planned', assigned_by: 'COO', created_at: stamp } });
+    }).then(function () {
+      say('#ap-msg', 'ok', 'Scheduled for ' + rep + ': ' + surgeon + ' at ' + fac + ' on ' + date + ' ' + time + (tgt ? '.' : ' (added as a new target).') + ' ' + rep + ' gets a notification if they turned them on.');
+      $('#ap-surgeon').value = ''; $('#ap-fac').value = ''; $('#ap-purpose').value = ''; loadVisits();
+    }, function (er) { say('#ap-msg', 'err', (er && er.error) || 'Could not schedule.'); });
   });
   loadVisits().catch(function () {});
   setInterval(function () { if (!document.hidden && $('#fc-form').hidden) loadVisits().catch(function () {}); }, 30000);

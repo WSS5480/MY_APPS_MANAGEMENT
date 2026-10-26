@@ -116,7 +116,7 @@
           var st = state(v, d.settings), row = el('div', 'vc-arow'); row.tabIndex = 0;
           var dot = el('span', 'vc-dot'); dot.style.background = COLOR[st]; row.appendChild(dot);
           var t = el('div'); t.appendChild(el('div', 'vc-t', (v.time ? clock(v.time) + ' · ' : '') + (v.surgeon || 'Visit') + (v.facility ? ' @ ' + v.facility : '')));
-          t.appendChild(el('div', 'vc-m', [opts.showRep ? v.rep : '', v.type, v.purpose].filter(Boolean).join(' · '))); row.appendChild(t);
+          t.appendChild(el('div', 'vc-m', [opts.showRep ? v.rep : '', v.type, v.assigned_by === 'COO' ? 'assigned by COO' : '', v.purpose].filter(Boolean).join(' · '))); row.appendChild(t);
           row.appendChild(el('span', 'vc-s st-' + st, LABEL[st]));
           row.addEventListener('click', function () { open(v); }); row.addEventListener('keydown', function (e) { if (e.key === 'Enter') open(v); });
           ul.appendChild(row);
@@ -135,7 +135,7 @@
       var kv = el('div', 'vc-kv'), add = function (k, val) { if (!val) return; kv.appendChild(el('span', '', k)); kv.appendChild(el('span', '', val)); };
       add('Rep', v.rep); add('Date', dayLabel(v.date)); add('Time', v.time ? clock(v.time) + ' · ' + (v.duration || 60) + ' min' : 'No time set');
       if (w && v.status === 'planned') add('Check-in window', new Date(w.open).toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit' }) + ' – ' + new Date(w.close).toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit' }) + ' (Central)');
-      add('Type', v.type); add('Purpose', v.purpose);
+      add('Type', v.type); add('Purpose', v.purpose); add('Scheduled by', v.assigned_by === 'COO' ? 'COO' : '');
       if (v.check && !v.check.missed) {
         add('Checked in', new Date(v.check.at).toLocaleString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + (v.check_attempts > 1 ? ' · attempt ' + v.check_attempts : ''));
         if (v.check.dist_m != null) add('Distance', (v.check.dist_m >= 1000 ? (v.check.dist_m / 1609.34).toFixed(1) + ' mi' : v.check.dist_m + ' m') + ' from the facility address · GPS ±' + v.check.acc + ' m');
