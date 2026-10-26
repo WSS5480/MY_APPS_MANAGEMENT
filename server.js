@@ -53,7 +53,27 @@ async function put(p, d) { docs.set(p, d); await persist(p); }
 async function del(p) { docs.delete(p); await persist(p); }
 
 const pin6 = () => String(crypto.randomInt(100000, 1000000));
+function seedProducts() {
+  if (docs.has('_seed/products')) return;
+  const dir = path.join(__dirname, 'seed');
+  let list = [];
+  try { list = JSON.parse(fs.readFileSync(path.join(dir, 'products.json'), 'utf8')); } catch (e) { console.error('no product seed', e.message); }
+  list.forEach((p, i) => {
+    const id = 'seed' + String(i + 1).padStart(2, '0');
+    const photos = [];
+    if (p.photo) {
+      try {
+        const b64 = fs.readFileSync(path.join(dir, 'products', p.photo)).toString('base64');
+        const img = 'img' + id; docs.set('_img/' + img, { type: 'image/jpeg', b64, product: id }); persist('_img/' + img); photos.push(img);
+      } catch (e) {}
+    }
+    const doc = { name: p.name, manufacturer: p.manufacturer || '', section: p.section || '', category: p.category || '', description: p.description || '', highlights: p.highlights || [], indications: '', sizes: '', badges: p.badges || [], codes: p.codes || '', case_names: p.case_names || [], talking_points: '', links: [], photos, available: true, sort: (i + 1) * 10, source: '360 Medical Product Portfolio, Q4 2026', updated_at: new Date().toISOString() };
+    docs.set('products/' + id, doc); persist('products/' + id);
+  });
+  docs.set('_seed/products', { at: new Date().toISOString(), count: list.length }); persist('_seed/products');
+}
 function seed() {
+  seedProducts();
   if (!docs.has('config/quotas')) {
     const rows = [
       { rep: 'Brandon', role: 'Sales Rep', territory: 'Brandon', metric: 'Revenue', quota: 20000, counts: 'New only', product_filter: '', carry: true, draw: 3000, comm_rate: 0.15, comm_floor: 20000, pay_kind: 'draw', pay_amount: 3000, sim_quota: null },
@@ -109,13 +129,14 @@ const COLS = ['cases', 'targets', 'simlab'];
 function visible(s) {
   const out = {};
   if (s.role === 'owner') {
-    for (const [p, d] of docs) if (!p.startsWith('_auth/')) out[p] = d;
+    for (const [p, d] of docs) if (p[0] !== '_') out[p] = d;
     return out;
   }
   for (const [p, d] of docs) {
     const col = p.split('/')[0];
     if (COLS.includes(col) && p.split('/').length === 2 && d && d.rep === s.rep) out[p] = d;
   }
+  for (const [p, d] of docs) if (p.startsWith('products/')) out[p] = d;
   out['config/quotas'] = { rows: quotaRows().filter(r => r.rep === s.rep && r.role !== 'Team') };
   out[`data/users/${uidOf(s)}/profile`] = { rep: s.rep };
   return out;
@@ -142,6 +163,14 @@ app.get('/login', page('login.html'));
 app.get('/', needPage(), page('tracker.html'));
 app.get('/admin', needPage('owner'), page('admin.html'));
 app.get('/download', page('download.html'));
+app.get('/products', needPage(), page('products.html'));
+app.get('/img/:id', (req, res) => {
+  if (!session(req)) return res.status(401).end();
+  const d = docs.get('_img/' + req.params.id);
+  if (!d) return res.status(404).end();
+  res.setHeader('Content-Type', d.type || 'image/jpeg'); res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+  res.end(Buffer.from(d.b64, 'base64'));
+});
 app.get(['/logo.png', '/shim.js', '/app.css', '/sw.js', '/favicon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'], (req, res) => { if (req.path === '/sw.js') res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, req.path)); });
 app.get('/manifest.webmanifest', (req, res) => { res.type('application/manifest+json'); res.sendFile(path.join(pub, 'manifest.webmanifest')); });
 
@@ -259,7 +288,7 @@ app.post('/api/admin/admin-pin', needApi('owner'), async (req, res) => {
   res.json({ ok: true });
 });
 app.get('/api/admin/backup', needApi('owner'), (req, res) => {
-  const out = {}; for (const [k, d] of docs) if (!k.startsWith('_auth/')) out[k] = d;
+  const out = {}; for (const [k, d] of docs) if (!k.startsWith('_auth/') && !k.startsWith('_seed/')) out[k] = d;
   res.setHeader('Content-Disposition', `attachment; filename="360-medical-tracker-backup-${new Date().toISOString().slice(0, 10)}.json"`);
   res.json({ app: '360-medical-surgical-case-tracker', exported_at: new Date().toISOString(), docs: out });
 });
@@ -269,13 +298,71 @@ app.post('/api/admin/restore', needApi('owner'), async (req, res) => {
   let n = 0;
   for (const k of Object.keys(inc)) {
     const parts = k.split('/');
-    if (k.startsWith('_auth/') || !((COLS.includes(parts[0]) && parts.length === 2) || k === 'config/quotas' || (parts[0] === 'coonotes' && parts.length === 2))) continue;
+    if (k.startsWith('_auth/') || !((COLS.includes(parts[0]) && parts.length === 2) || k === 'config/quotas' || ((parts[0] === 'coonotes' || parts[0] === 'products' || parts[0] === '_img') && parts.length === 2))) continue;
     await put(k, inc[k]); n++;
   }
   const p = JSON.parse(JSON.stringify(pins()));
   quotaRows().filter(r => r.role !== 'Team').forEach(r => { if (!p.reps[r.rep]) p.reps[r.rep] = { pin: pin6(), v: 1, active: true }; });
   await put('_auth/pins', p);
   res.json({ ok: true, restored: n });
+});
+
+/* ---------------- products (admin) ---------------- */
+const strList = v => (Array.isArray(v) ? v : String(v || '').split(/\n|,/)).map(x => String(x).trim()).filter(Boolean).slice(0, 40).map(x => x.slice(0, 300));
+function productFrom(b, prev) {
+  const links = (Array.isArray(b.links) ? b.links : []).map(l => ({ label: String(l.label || '').slice(0, 80), url: String(l.url || '').trim().slice(0, 500) })).filter(l => /^https?:\/\//i.test(l.url)).slice(0, 10);
+  const photos = (Array.isArray(b.photos) ? b.photos : []).map(String).filter(id => docs.has('_img/' + id)).slice(0, 12);
+  return Object.assign({}, prev || {}, {
+    name: String(b.name || '').trim().slice(0, 120), manufacturer: String(b.manufacturer || '').trim().slice(0, 120),
+    section: String(b.section || '').trim().slice(0, 80), category: String(b.category || '').trim().slice(0, 80),
+    description: String(b.description || '').slice(0, 3000), highlights: strList(b.highlights).map(x => x.replace(/^[-•*]\s*/, '')),
+    indications: String(b.indications || '').slice(0, 3000), sizes: String(b.sizes || '').slice(0, 3000),
+    badges: strList(b.badges), codes: String(b.codes || '').slice(0, 200), case_names: strList(b.case_names),
+    talking_points: String(b.talking_points || '').slice(0, 4000), links, photos,
+    available: b.available !== false, sort: num(b.sort) != null ? num(b.sort) : (prev && prev.sort) || 9999, updated_at: new Date().toISOString()
+  });
+}
+app.post('/api/admin/images', needApi('owner'), async (req, res) => {
+  const m = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body.data || ''));
+  if (!m) return res.status(400).json({ error: 'That file is not a JPG, PNG or WebP image.' });
+  if (m[2].length > 4.2e6) return res.status(400).json({ error: 'Photo is too large.' });
+  const id = 'img' + crypto.randomBytes(9).toString('hex');
+  await put('_img/' + id, { type: m[1], b64: m[2] });
+  res.json({ ok: true, id });
+});
+app.post('/api/admin/products', needApi('owner'), async (req, res) => {
+  const b = req.body || {}, id = b.id && /^[A-Za-z0-9_-]{1,40}$/.test(b.id) ? b.id : 'p' + crypto.randomBytes(8).toString('hex');
+  const prev = docs.get('products/' + id);
+  const next = productFrom(b, prev);
+  if (!next.name) return res.status(400).json({ error: 'Product name is required.' });
+  if (!prev && num(b.sort) == null) next.sort = Math.max(0, ...[...docs].filter(([k]) => k.startsWith('products/')).map(([, d]) => d.sort || 0)) + 10;
+  // photos removed from this product are deleted for good
+  if (prev) for (const old of prev.photos || []) if (!next.photos.includes(old)) await del('_img/' + old);
+  await put('products/' + id, next);
+  res.json({ ok: true, id, product: next });
+});
+app.post('/api/admin/products/:id/available', needApi('owner'), async (req, res) => {
+  const k = 'products/' + req.params.id, prev = docs.get(k);
+  if (!prev) return res.status(404).json({ error: 'No such product' });
+  await put(k, Object.assign({}, prev, { available: !!req.body.available, updated_at: new Date().toISOString() }));
+  res.json({ ok: true });
+});
+app.post('/api/admin/products/order', needApi('owner'), async (req, res) => {
+  const ids = Array.isArray(req.body.ids) ? req.body.ids : [];
+  for (let i = 0; i < ids.length; i++) { const k = 'products/' + ids[i], d = docs.get(k); if (d && d.sort !== (i + 1) * 10) await put(k, Object.assign({}, d, { sort: (i + 1) * 10 })); }
+  res.json({ ok: true });
+});
+app.delete('/api/admin/products/:id', needApi('owner'), async (req, res) => {
+  const k = 'products/' + req.params.id, prev = docs.get(k);
+  if (!prev) return res.status(404).json({ error: 'No such product' });
+  for (const img of prev.photos || []) await del('_img/' + img);
+  await del(k);
+  res.json({ ok: true });
+});
+app.delete('/api/admin/images/:id', needApi('owner'), async (req, res) => {
+  const k = '_img/' + req.params.id; const inUse = [...docs].some(([p, d]) => p.startsWith('products/') && (d.photos || []).includes(req.params.id));
+  if (!inUse && docs.has(k)) await del(k);
+  res.json({ ok: true });
 });
 
 initStore().then(() => app.listen(PORT, () => console.log(`360 Medical tracker on :${PORT} (storage: ${dbMode})`)))

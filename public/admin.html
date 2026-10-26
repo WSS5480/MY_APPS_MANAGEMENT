@@ -25,13 +25,37 @@ tr.team td{background:var(--hl)}
 .copy{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.8125rem;word-break:break-all}
 .chk{display:inline-flex;align-items:center;gap:6px;font-size:.8125rem}
 .stats td{font-size:.875rem}.stats td.strong{font-weight:600}
+.plist{display:flex;flex-direction:column}
+.prow{display:grid;grid-template-columns:72px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.prow.off .pinfo{opacity:.55}
+.pthumb{width:72px;height:50px;border-radius:6px;object-fit:cover;background:var(--hl);display:block}
+.pinfo b{display:block;font-size:.9rem}
+.pinfo span{font-size:.75rem;color:var(--muted)}
+.pact{display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:flex-end}
+.avail{display:inline-flex;align-items:center;gap:6px;font-size:.8125rem;font-weight:600;padding:4px 10px;border-radius:999px;border:1px solid var(--line);cursor:pointer;user-select:none}
+.avail.on{background:var(--ok-bg);color:var(--ok);border-color:transparent}
+.avail.offp{background:var(--bad-bg);color:var(--bad);border-color:transparent}
+@media (max-width:640px){.prow{grid-template-columns:56px minmax(0,1fr)}.pthumb{width:56px;height:40px}.pact{grid-column:1/-1;justify-content:flex-start}}
+dialog{border:none;border-radius:14px;padding:0;width:min(860px,calc(100vw - 24px));max-height:calc(100vh - 24px);background:var(--panel);color:var(--fg);box-shadow:0 20px 60px rgba(3,18,31,.35)}
+dialog::backdrop{background:rgba(3,18,31,.6)}
+.pe{padding:20px 22px;display:flex;flex-direction:column;gap:14px}
+.pe .two{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr));gap:12px}
+.pe textarea.field{min-height:5.5rem;resize:vertical;line-height:1.45}
+.photos{display:flex;flex-wrap:wrap;gap:10px}
+.ph{position:relative;width:120px}
+.ph img{width:120px;height:84px;object-fit:cover;border-radius:8px;border:1px solid var(--line);display:block}
+.ph .cover{position:absolute;top:4px;left:4px;font-size:.625rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;background:var(--accent);color:#fff;border-radius:999px;padding:2px 7px}
+.ph .pb{display:flex;gap:4px;margin-top:4px}
+.drop{width:120px;height:84px;border:2px dashed var(--line);border-radius:8px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:.75rem;color:var(--muted);cursor:pointer;padding:6px}
+.drop.over{border-color:var(--accent);background:var(--hl)}
+.pe-foot{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center;border-top:1px solid var(--line);padding-top:14px;position:sticky;bottom:0;background:var(--panel)}
 </style>
 </head><body>
 <div class="wrap">
   <header class="head">
     <img class="logo" src="/logo.png" alt="360 Medical">
     <div class="headtxt"><h1>Admin</h1><span class="conf">360 MEDICAL - SURGICAL CASE TRACKER</span><p class="sub">Reps, PINs, quotas and commission plans. Changes here show in the tracker within seconds.</p></div>
-    <div class="tools"><a class="btn" href="/">Open tracker</a><a class="btn" href="/download">Download app</a><button class="btn" id="logout" type="button">Log out</button></div>
+    <div class="tools"><a class="btn" href="/">Open tracker</a><a class="btn" href="/products">Products</a><a class="btn" href="/download">Download app</a><button class="btn" id="logout" type="button">Log out</button></div>
   </header>
 
   <div class="msg warn" id="dbwarn" hidden></div>
@@ -48,6 +72,51 @@ tr.team td{background:var(--hl)}
     </tr></thead><tbody></tbody></table></div>
     <div class="msg" id="save-msg" hidden style="margin-top:12px"></div>
   </section>
+
+  <section class="card" id="products">
+    <div class="cardhead">
+      <h2>Products</h2>
+      <div class="tools"><input class="field" id="p-q" type="search" placeholder="Search products" aria-label="Search products" style="width:14rem"><a class="btn" href="/products">View product demo</a><button class="btn primary" id="p-add" type="button">+ Add product</button></div>
+    </div>
+    <p class="note">Everything reps see on the product demo page. Click <b>Available</b> to switch a product on or off: unavailable products are hidden from the demo and from the case log product list, but nothing is deleted. <b>Delete</b> removes a product and its photos for good. Use the arrows to set the order shown to reps.</p>
+    <div class="plist" id="plist"></div>
+    <div class="msg" id="p-msg" hidden style="margin-top:12px"></div>
+  </section>
+
+  <dialog id="pdlg" aria-labelledby="pe-title"><form class="pe" id="pform" method="dialog">
+    <h2 id="pe-title">Product</h2>
+    <div class="two">
+      <label class="f">Product name *<input class="field" id="pe-name" required maxlength="120"></label>
+      <label class="f">Manufacturer<input class="field" id="pe-mfr" maxlength="120"></label>
+      <label class="f">Section<input class="field" id="pe-section" list="pe-sections" maxlength="80" placeholder="Hospital & Surgical"></label>
+      <label class="f">Category<input class="field" id="pe-cat" maxlength="80" placeholder="Surgical biologic"></label>
+    </div>
+    <datalist id="pe-sections"><option value="Hospital & Surgical"><option value="Outpatient & Wound Care"><option value="Clinic Programs"></datalist>
+    <div>
+      <span class="f" style="font-size:.6875rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)">Photos · first photo is the cover</span>
+      <div class="photos" id="pe-photos" style="margin-top:6px"></div>
+      <input type="file" id="pe-file" accept="image/jpeg,image/png,image/webp" multiple hidden>
+    </div>
+    <label class="f">Description<textarea class="field" id="pe-desc" maxlength="3000"></textarea></label>
+    <div class="two">
+      <label class="f">Highlights · one per line<textarea class="field" id="pe-hl"></textarea></label>
+      <label class="f">Indications &amp; uses<textarea class="field" id="pe-ind"></textarea></label>
+      <label class="f">Sizes / SKUs<textarea class="field" id="pe-sizes" placeholder="2 x 2 cm · SKU 1234&#10;4 x 4 cm · SKU 1235"></textarea></label>
+      <label class="f">Rep talking points (internal)<textarea class="field" id="pe-tp"></textarea></label>
+    </div>
+    <div class="two">
+      <label class="f">Badges · comma separated<input class="field" id="pe-badges" placeholder="Texas exclusive, Now launching"></label>
+      <label class="f">Billing code<input class="field" id="pe-codes" maxlength="200" placeholder="Q4316"></label>
+      <label class="f">Log cases as · one per line<textarea class="field" id="pe-cn" style="min-height:4rem" placeholder="Clarix 100&#10;Clarix Flo"></textarea></label>
+      <label class="f">Documents &amp; videos · Label | https://link per line<textarea class="field" id="pe-links" style="min-height:4rem" placeholder="IFU | https://..."></textarea></label>
+    </div>
+    <label class="chk" style="font-weight:600"><input type="checkbox" id="pe-avail"> Available to reps</label>
+    <div class="msg err" id="pe-err" hidden></div>
+    <div class="pe-foot">
+      <span class="note" style="margin:0">"Log cases as" names appear in the case log product list. Keep a product's quota or commission filter word in them (e.g. Skeletal Dynamics).</span>
+      <span class="tools"><button class="btn" type="button" id="pe-cancel">Cancel</button><button class="btn primary" type="button" id="pe-save">Save product</button></span>
+    </div>
+  </form></dialog>
 
   <div class="grid">
     <section class="card">
@@ -218,6 +287,137 @@ tr.team td{background:var(--hl)}
   });
 
   $('#logout').addEventListener('click', function () { fetch('/api/logout', { method: 'POST' }).finally(function () { location.href = '/login'; }); });
+  /* ---------- products ---------- */
+  var PR = [], ED = null, newImgs = [];
+  var imgUrl = function (id) { return '/img/' + encodeURIComponent(id); };
+  var del = function (url) { return fetch(url, { method: 'DELETE' }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw j; return j; }); }); };
+  function loadProducts() {
+    return fetch('/api/sync?v=-1').then(function (r) { if (r.status === 401) { location.href = '/login?next=/admin'; throw {}; } return r.json(); }).then(function (j) {
+      PR = Object.keys(j.docs || {}).filter(function (k) { return k.indexOf('products/') === 0; }).map(function (k) { return Object.assign({ id: k.slice(9) }, j.docs[k]); })
+        .sort(function (a, b) { return (a.sort || 0) - (b.sort || 0); });
+      drawProducts();
+    });
+  }
+  function drawProducts() {
+    var box = $('#plist'); box.replaceChildren();
+    var q = $('#p-q').value.trim().toLowerCase();
+    var rowsP = PR.filter(function (p) { return !q || [p.name, p.manufacturer, p.section, p.codes].join(' ').toLowerCase().indexOf(q) >= 0; });
+    if (!rowsP.length) box.appendChild(el('p', 'note', PR.length ? 'No products match.' : 'No products yet. Click + Add product.'));
+    rowsP.forEach(function (p) {
+      var idx = PR.indexOf(p), r = el('div', 'prow' + (p.available === false ? ' off' : ''));
+      if (p.photos && p.photos[0]) { var im = el('img', 'pthumb'); im.src = imgUrl(p.photos[0]); im.alt = ''; im.loading = 'lazy'; r.appendChild(im); } else r.appendChild(el('div', 'pthumb'));
+      var inf = el('div', 'pinfo'); inf.appendChild(el('b', '', p.name)); inf.appendChild(el('span', '', [p.manufacturer, p.section, (p.photos || []).length + ' photo' + ((p.photos || []).length === 1 ? '' : 's')].filter(Boolean).join(' · '))); r.appendChild(inf);
+      var act = el('div', 'pact');
+      var av = el('label', 'avail ' + (p.available === false ? 'offp' : 'on')), cb = el('input'); cb.type = 'checkbox'; cb.checked = p.available !== false;
+      av.appendChild(cb); av.appendChild(document.createTextNode(p.available === false ? 'Unavailable' : 'Available'));
+      cb.addEventListener('change', function () {
+        var want = cb.checked; p.available = want; drawProducts();
+        api('/api/admin/products/' + encodeURIComponent(p.id) + '/available', { available: want }).then(function () { say('#p-msg', 'ok', p.name + (want ? ' is available to reps.' : ' is now hidden from reps.')); }, function (e) { p.available = !want; drawProducts(); say('#p-msg', 'err', (e && e.error) || 'Could not change availability.'); });
+      });
+      act.appendChild(av);
+      var mk = function (txt, cls, fn, dis, label) { var b = el('button', 'btn small ' + (cls || ''), txt); b.type = 'button'; b.disabled = !!dis; if (label) b.setAttribute('aria-label', label); b.addEventListener('click', fn); act.appendChild(b); return b; };
+      mk('↑', '', function () { move(idx, -1); }, idx === 0 || !!q, 'Move up');
+      mk('↓', '', function () { move(idx, 1); }, idx === PR.length - 1 || !!q, 'Move down');
+      mk('Edit', '', function () { openEditor(p); });
+      var d = mk('Delete', 'danger', function () {
+        if (!d.dataset.armed) { d.dataset.armed = '1'; d.textContent = 'Delete for good?'; setTimeout(function () { if (d.isConnected) { d.dataset.armed = ''; d.textContent = 'Delete'; } }, 4000); return; }
+        d.disabled = true;
+        del('/api/admin/products/' + encodeURIComponent(p.id)).then(function () { say('#p-msg', 'ok', p.name + ' and its photos were deleted permanently. Cases already logged keep the product name.'); return loadProducts(); }, function (e) { d.disabled = false; say('#p-msg', 'err', (e && e.error) || 'Could not delete.'); });
+      });
+      r.appendChild(act); box.appendChild(r);
+    });
+  }
+  function move(i, dir) {
+    var j = i + dir; if (j < 0 || j >= PR.length) return;
+    var t = PR[i]; PR[i] = PR[j]; PR[j] = t; drawProducts();
+    api('/api/admin/products/order', { ids: PR.map(function (p) { return p.id; }) }).catch(function () { say('#p-msg', 'err', 'Could not save the order.'); loadProducts(); });
+  }
+  $('#p-q').addEventListener('input', drawProducts);
+
+  function drawPhotos() {
+    var box = $('#pe-photos'); box.replaceChildren();
+    ED.photos.forEach(function (id, i) {
+      var w = el('div', 'ph'), im = el('img'); im.src = imgUrl(id); im.alt = 'Photo ' + (i + 1); w.appendChild(im);
+      if (i === 0) w.appendChild(el('span', 'cover', 'Cover'));
+      var pb = el('div', 'pb');
+      if (i > 0) { var c = el('button', 'btn small', 'Make cover'); c.type = 'button'; c.addEventListener('click', function () { ED.photos.splice(i, 1); ED.photos.unshift(id); drawPhotos(); }); pb.appendChild(c); }
+      var x = el('button', 'btn small danger', 'Remove'); x.type = 'button'; x.addEventListener('click', function () { ED.photos.splice(i, 1); drawPhotos(); }); pb.appendChild(x);
+      w.appendChild(pb); box.appendChild(w);
+    });
+    var drop = el('div', 'drop', 'Add photos · click or drop'); drop.tabIndex = 0; drop.setAttribute('role', 'button');
+    drop.addEventListener('click', function () { $('#pe-file').click(); });
+    drop.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#pe-file').click(); } });
+    drop.addEventListener('dragover', function (e) { e.preventDefault(); drop.classList.add('over'); });
+    drop.addEventListener('dragleave', function () { drop.classList.remove('over'); });
+    drop.addEventListener('drop', function (e) { e.preventDefault(); drop.classList.remove('over'); addFiles(e.dataTransfer.files); });
+    box.appendChild(drop);
+  }
+  function shrink(file) {
+    return new Promise(function (ok, bad) {
+      var fr = new FileReader();
+      fr.onerror = bad;
+      fr.onload = function () {
+        var im = new Image();
+        im.onerror = function () { bad({ error: file.name + ' could not be read as an image.' }); };
+        im.onload = function () {
+          var max = 1600, w = im.naturalWidth, h = im.naturalHeight, r = Math.min(1, max / Math.max(w, h));
+          var c = document.createElement('canvas'); c.width = Math.round(w * r); c.height = Math.round(h * r);
+          var g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(im, 0, 0, c.width, c.height);
+          ok(c.toDataURL('image/jpeg', 0.85));
+        };
+        im.src = fr.result;
+      };
+      fr.readAsDataURL(file);
+    });
+  }
+  function addFiles(files) {
+    var list = Array.from(files || []).filter(function (f) { return /^image\//.test(f.type); });
+    if (!list.length) return;
+    $('#pe-err').hidden = true; $('#pe-save').disabled = true;
+    var chain = Promise.resolve();
+    list.forEach(function (f) {
+      chain = chain.then(function () { return shrink(f); }).then(function (data) { return api('/api/admin/images', { data: data }); }).then(function (j) { ED.photos.push(j.id); newImgs.push(j.id); drawPhotos(); });
+    });
+    chain.catch(function (e) { $('#pe-err').textContent = (e && e.error) || 'A photo could not be uploaded.'; $('#pe-err').hidden = false; }).finally(function () { $('#pe-save').disabled = false; $('#pe-file').value = ''; });
+  }
+  $('#pe-file').addEventListener('change', function (e) { addFiles(e.target.files); });
+
+  var F = { name: '#pe-name', manufacturer: '#pe-mfr', section: '#pe-section', category: '#pe-cat', description: '#pe-desc', indications: '#pe-ind', sizes: '#pe-sizes', talking_points: '#pe-tp', codes: '#pe-codes' };
+  function openEditor(p) {
+    ED = JSON.parse(JSON.stringify(p || { name: '', manufacturer: '', section: '', category: '', description: '', highlights: [], indications: '', sizes: '', badges: [], codes: '', case_names: [], talking_points: '', links: [], photos: [], available: true }));
+    newImgs = [];
+    $('#pe-title').textContent = p ? 'Edit product' : 'Add product';
+    Object.keys(F).forEach(function (k) { $(F[k]).value = ED[k] || ''; });
+    $('#pe-hl').value = (ED.highlights || []).join('\n');
+    $('#pe-badges').value = (ED.badges || []).join(', ');
+    $('#pe-cn').value = (ED.case_names || []).join('\n');
+    $('#pe-links').value = (ED.links || []).map(function (l) { return (l.label ? l.label + ' | ' : '') + l.url; }).join('\n');
+    $('#pe-avail').checked = ED.available !== false;
+    $('#pe-err').hidden = true;
+    drawPhotos(); $('#pdlg').showModal(); $('#pe-name').focus();
+  }
+  function closeEditor(saved) {
+    if (!saved) newImgs.forEach(function (id) { del('/api/admin/images/' + encodeURIComponent(id)).catch(function () {}); });
+    newImgs = []; ED = null; $('#pdlg').close();
+  }
+  $('#pe-cancel').addEventListener('click', function () { closeEditor(false); });
+  $('#pdlg').addEventListener('cancel', function (e) { e.preventDefault(); closeEditor(false); });
+  $('#p-add').addEventListener('click', function () { openEditor(null); });
+  $('#pe-save').addEventListener('click', function () {
+    var b = {}; Object.keys(F).forEach(function (k) { b[k] = $(F[k]).value.trim(); });
+    if (!b.name) { $('#pe-err').textContent = 'Product name is required.'; $('#pe-err').hidden = false; $('#pe-name').focus(); return; }
+    b.id = ED.id; b.photos = ED.photos; b.sort = ED.sort;
+    b.highlights = $('#pe-hl').value.split('\n'); b.case_names = $('#pe-cn').value.split('\n');
+    b.badges = $('#pe-badges').value.split(',');
+    b.links = $('#pe-links').value.split('\n').map(function (line) { var i = line.lastIndexOf('|'); return i >= 0 ? { label: line.slice(0, i).trim(), url: line.slice(i + 1).trim() } : { label: '', url: line.trim() }; }).filter(function (l) { return l.url; });
+    var badLink = b.links.filter(function (l) { return !/^https?:\/\//i.test(l.url); })[0];
+    if (badLink) { $('#pe-err').textContent = 'Links must start with https:// — check "' + badLink.url + '".'; $('#pe-err').hidden = false; return; }
+    b.available = $('#pe-avail').checked;
+    var btn = $('#pe-save'); btn.disabled = true;
+    api('/api/admin/products', b).then(function (j) { closeEditor(true); say('#p-msg', 'ok', j.product.name + ' saved.'); return loadProducts(); }, function (e) { $('#pe-err').textContent = (e && e.error) || 'Could not save.'; $('#pe-err').hidden = false; }).finally(function () { btn.disabled = false; });
+  });
+
+  loadProducts().catch(function () {});
   load().catch(function () {});
 })();
 </script>

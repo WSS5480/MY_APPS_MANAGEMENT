@@ -138,6 +138,7 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
       <label>Month<select id="sel-month" aria-label="Month"></select></label>
       <label id="lab-view" hidden>View<select id="sel-view" aria-label="View"></select></label>
       <a class="btn small" id="btn-admin" href="/admin" hidden>Admin</a>
+      <a class="btn small" href="/products">Products</a>
       <a class="btn small" href="/download">Get the app</a>
       <button class="btn small" id="btn-notme" type="button">Log out</button>
       <span class="save" id="save" role="status">Autosave on</span>
@@ -304,7 +305,7 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 
   /* owner = the COO: team view, quotas, private notes. Everyone else is a rep and sees only their own view. */
   var S = { db: null, user: null, downloads: null, owner: false, editor: false, leadChoice: false, canWrite: true, writeKnown: false, uid: null, myRep: '', profileLoaded: false,
-    cases: [], quotas: [], targets: [], sim: [], loaded: { cases: false, quotas: false, targets: false },
+    cases: [], quotas: [], targets: [], sim: [], products: [], loaded: { cases: false, quotas: false, targets: false },
     month: CUR, viewRep: '', editId: null, notes: { team: '', reps: {} }, notesMonth: null, notesUnsub: null, unavailable: false };
   var pendingNew = {};
 
@@ -812,7 +813,10 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 
     fillList('#dl-surgeons', S.cases.map(function (c) { return c.surgeon; }).concat(S.targets.map(function (t) { return t.surgeon; })));
     fillList('#dl-facilities', S.cases.map(function (c) { return c.facility; }).concat(S.targets.map(function (t) { return t.facility; })));
-    fillList('#dl-products', PRODUCTS.concat(S.cases.map(function (c) { return c.product; })));
+    var offNames = {}, onNames = [];
+    S.products.forEach(function (p) { (p.case_names && p.case_names.length ? p.case_names : [p.name]).forEach(function (n) { if (p.available === false) offNames[n.toLowerCase()] = 1; else onNames.push(n); }); });
+    onNames.forEach(function (n) { delete offNames[n.toLowerCase()]; });
+    fillList('#dl-products', (S.products.length ? onNames : PRODUCTS).concat(S.cases.map(function (c) { return c.product; })).filter(function (n) { return n && !offNames[String(n).toLowerCase()]; }));
 
     if (S.editId && !pendingNew[S.editId] && !timers['case:' + S.editId] && !S.cases.some(function (c) { return c.id === S.editId; })) closeEditor();
   }
@@ -1026,6 +1030,7 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
     db.collection('cases').onSnapshot(function (snap) { S.cases = rowsOf(snap); S.loaded.cases = true; render(); }, fail);
     db.collection('targets').onSnapshot(function (snap) { S.targets = rowsOf(snap); S.loaded.targets = true; render(); }, fail);
     db.collection('simlab').onSnapshot(function (snap) { S.sim = rowsOf(snap); render(); }, function () {});
+    db.collection('products').onSnapshot(function (snap) { S.products = rowsOf(snap); render(); }, function () {});
     db.doc('config/quotas').onSnapshot(function (snap) { var d = (snap.exists && snap.data()) || {}; S.quotas = Array.isArray(d.rows) ? d.rows : []; S.loaded.quotas = true; render(); }, fail);
     if (S.uid && !S.owner) db.doc('data/users/' + S.uid + '/profile').onSnapshot(function (snap) {
       var d = (snap.exists && snap.data()) || {};
