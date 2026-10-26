@@ -252,7 +252,7 @@ app.post('/api/admin/reset-pin', needApi('owner'), async (req, res) => {
 });
 app.post('/api/admin/admin-pin', needApi('owner'), async (req, res) => {
   const pin = String(req.body.pin || '').trim();
-  if (!/^\d{6,10}$/.test(pin)) return res.status(400).json({ error: 'Admin PIN must be 6 to 10 digits.' });
+  if (!/^\d{4,10}$/.test(pin)) return res.status(400).json({ error: 'Admin PIN must be 4 to 10 digits.' });
   const v = adminV() + 1;
   await put('_auth/admin', { pin, v });
   setSession(res, { role: 'owner', v });
