@@ -567,6 +567,15 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
   function drawVideos() {
     var box = $('#pe-videos'); if (!box || !ED) return; box.replaceChildren();
     if (!ED.id) { box.appendChild(el('p', 'note', 'Save the product first, then open it again to add videos.')); return; }
+    if (ED.spin) {
+      var sr = el('div', 'vrow'), si = el('img'); si.src = ED.spin.poster ? imgUrl(ED.spin.poster) : '/icon-192.png'; si.alt = ''; sr.appendChild(si);
+      sr.appendChild(el('b', '', ED.spin.title || '360° view'));
+      sr.appendChild(el('span', 'note', '360° drag-to-rotate · ' + (ED.spin.frames || []).length + ' angles'));
+      var sv = el('a', 'btn small', 'View'); sv.href = '/products'; sv.target = '_blank'; sv.rel = 'noopener'; sr.appendChild(sv);
+      var srm = el('button', 'btn small danger', 'Remove'); srm.type = 'button';
+      srm.addEventListener('click', function () { if (!confirm('Remove the 360° view from this product for good?')) return; del('/api/admin/products/' + encodeURIComponent(ED.id) + '/spin').then(function () { delete ED.spin; drawVideos(); loadProducts(); }); });
+      sr.appendChild(srm); box.appendChild(sr);
+    }
     (ED.videos || []).forEach(function (v) {
       var r = el('div', 'vrow'), im = el('img'); im.src = v.poster ? imgUrl(v.poster) : '/icon-192.png'; im.alt = ''; r.appendChild(im);
       var t = el('input', 'field'); t.value = v.title || ''; t.setAttribute('aria-label', 'Video title');

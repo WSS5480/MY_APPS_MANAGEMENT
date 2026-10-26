@@ -36,6 +36,7 @@ async function initStore() {
   await fileInit();
   seed();
   await seedVideos().catch(e => console.error('video seed', e.message));
+  await seedSpins().catch(e => console.error('spin seed', e.message));
   await seedVideoLinks().catch(e => console.error('video link seed', e.message));
   await seedStabilityPhotos().catch(e => console.error('photo seed', e.message));
 }
@@ -78,6 +79,31 @@ async function seedVideos() {
     await put(entry[0], prod);
     await put(v.key, { at: new Date().toISOString() });
   }
+}
+/* 360-degree drag-to-rotate views: frames packed back to back as JPEGs in one file */
+const SEED_SPINS = [
+  { key: '_seed/spin-skeletal', file: 'skeletal-dynamics', match: d => /skeletal dynamics/i.test(d.manufacturer || ''), id: 'spinseedsd', title: '360° construct rotation' },
+];
+async function seedSpins() {
+  const dir = path.join(__dirname, 'seed', 'spins');
+  for (const s of SEED_SPINS) {
+    if (docs.has(s.key)) continue;
+    const bin = path.join(dir, s.file + '.bin'), meta = path.join(dir, s.file + '.json');
+    const entry = [...docs].find(([k, d]) => k.startsWith('products/') && s.match(d));
+    if (!entry || !fs.existsSync(bin) || !fs.existsSync(meta)) continue;
+    const m = JSON.parse(fs.readFileSync(meta, 'utf8'));
+    await filePut(s.id, 'application/octet-stream', fs.readFileSync(bin), s.file + '.bin');
+    const poster = 'img' + s.id, pj = path.join(dir, s.file + '.jpg');
+    if (fs.existsSync(pj)) await put('_img/' + poster, { type: 'image/jpeg', b64: fs.readFileSync(pj).toString('base64'), product: entry[0].slice(9) });
+    const prod = Object.assign({}, docs.get(entry[0]));
+    prod.spin = { id: s.id, title: s.title, poster: fs.existsSync(pj) ? poster : null, frames: m.frames, w: m.w, h: m.h, start: m.start || 0 };
+    await put(entry[0], prod);
+    await put(s.key, { at: new Date().toISOString() });
+  }
+}
+async function dropSpin(prod) {
+  if (!prod || !prod.spin) return;
+  await fileDel(prod.spin.id); if (prod.spin.poster && docs.has('_img/' + prod.spin.poster)) await del('_img/' + prod.spin.poster);
 }
 let fileTimer = null;
 function persist(p) {
@@ -258,7 +284,7 @@ app.get('/media/:id', async (req, res) => {
     res.setHeader('Content-Length', buf.length); res.end(buf);
   } catch (e) { res.status(500).end(); }
 });
-app.get(['/logo.png', '/shim.js', '/plus.js', '/plus.css', '/visitcal.js', '/idle.js', '/zoom.js', '/webauthn.js', '/qrious.min.js', '/app.css', '/sw.js', '/favicon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'], (req, res) => { if (req.path === '/sw.js') res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, req.path)); });
+app.get(['/logo.png', '/shim.js', '/plus.js', '/plus.css', '/visitcal.js', '/idle.js', '/zoom.js', '/spin.js', '/webauthn.js', '/qrious.min.js', '/app.css', '/sw.js', '/favicon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'], (req, res) => { if (req.path === '/sw.js') res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, req.path)); });
 app.get('/manifest.webmanifest', (req, res) => { res.type('application/manifest+json'); res.sendFile(path.join(pub, 'manifest.webmanifest')); });
 
 app.get('/api/login-options', (req, res) => {
@@ -477,7 +503,14 @@ app.delete('/api/admin/products/:id', needApi('owner'), async (req, res) => {
   if (!prev) return res.status(404).json({ error: 'No such product' });
   for (const img of prev.photos || []) await del('_img/' + img);
   for (const v of prev.videos || []) { await fileDel(v.id); if (v.poster && docs.has('_img/' + v.poster)) await del('_img/' + v.poster); }
+  await dropSpin(prev);
   await del(k);
+  res.json({ ok: true });
+});
+app.delete('/api/admin/products/:id/spin', needApi('owner'), async (req, res) => {
+  const k = 'products/' + req.params.id, prev = docs.get(k);
+  if (!prev) return res.status(404).json({ error: 'No such product' });
+  const next = Object.assign({}, prev); delete next.spin; await put(k, next); await dropSpin(prev);
   res.json({ ok: true });
 });
 app.delete('/api/admin/images/:id', needApi('owner'), async (req, res) => {

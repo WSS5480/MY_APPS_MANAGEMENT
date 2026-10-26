@@ -43,6 +43,7 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
 .thumbs button{border:2px solid transparent;border-radius:6px;padding:0;background:none;cursor:pointer;flex:none}
 .thumbs button[aria-current="true"]{border-color:var(--accent)}
 .thumbs img{width:64px;height:48px;object-fit:cover;border-radius:4px;display:block}
+.thumbs .st{position:relative}.thumbs .st::after{content:'360°';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700;text-shadow:0 1px 4px rgba(0,0,0,.6);background:rgba(7,159,233,.35);border-radius:4px}
 .thumbs .vt{position:relative}.thumbs .vt::after{content:'▶';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;text-shadow:0 1px 4px rgba(0,0,0,.6);background:rgba(3,18,31,.25);border-radius:4px}
 .gal .main video,.gal .main iframe{width:100%;height:100%;background:#000;object-fit:contain;border:0}
 .p-ph iframe{width:100%;height:100%;border:0;background:#000}
@@ -117,6 +118,7 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
 <script src="/shim.js"></script>
 <script src="/idle.js"></script>
 <script src="/zoom.js"></script>
+<script src="/spin.js"></script>
 <script>
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function () {});
 (function () {
@@ -142,6 +144,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').cat
   }
   var media = function (id) { return '/media/' + encodeURIComponent(id); };
   function tags(p, box) {
+    if (p.spin) box.appendChild(el('span', 'tag vid', '360° view'));
     if ((p.videos && p.videos.length) || (p.video_links && p.video_links.length)) box.appendChild(el('span', 'tag vid', '▶ Video'));
     (p.badges || []).forEach(function (b) { box.appendChild(el('span', 'tag', b)); });
     if (p.codes) box.appendChild(el('span', 'tag code', p.codes));
@@ -175,21 +178,25 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').cat
     $('#present').disabled = !filtered(false).filter(function (p) { return p.available !== false; }).length;
   }
   function block(box, title, node, cls) { var d = el('div', cls || ''); d.appendChild(el('h4', '', title)); d.appendChild(node); box.appendChild(d); }
+  var detSpin = null, presSpin = null;
+  function spinIn(box, s) { return window.Spin360 ? Spin360.mount(box, { src: media(s.id), frames: s.frames, start: s.start, title: s.title, poster: s.poster ? img(s.poster) : null }) : null; }
   function openDetail(p) {
+    if (detSpin) { detSpin.destroy(); detSpin = null; }
     var main = $('#d-main'), th = $('#d-thumbs'); main.replaceChildren(); th.replaceChildren();
-    var items = (p.videos || []).map(function (v) { return { kind: 'video', v: v }; }).concat((p.video_links || []).map(function (l) { return { kind: 'link', l: l }; })).concat((p.photos || []).map(function (id) { return { kind: 'photo', id: id }; }));
+    var items = (p.spin ? [{ kind: 'spin', s: p.spin }] : []).concat((p.videos || []).map(function (v) { return { kind: 'video', v: v }; })).concat((p.video_links || []).map(function (l) { return { kind: 'link', l: l }; })).concat((p.photos || []).map(function (id) { return { kind: 'photo', id: id }; }));
     var curI = -1;
     var show = function (i) {
-      if (i === curI) return; curI = i;
+      if (i === curI) return; curI = i; if (detSpin) { detSpin.destroy(); detSpin = null; }
       main.querySelectorAll('video').forEach(function (v) { v.pause(); }); main.querySelectorAll('iframe').forEach(function (f) { f.src = 'about:blank'; });
       main.replaceChildren(); var it = items[i];
       if (!it) { main.appendChild(el('span', 'note', 'No photo yet')); return; }
-      if (it.kind === 'link') { main.appendChild(frame(it.l, false)); }
+      if (it.kind === 'spin') { detSpin = spinIn(main, it.s); }
+      else if (it.kind === 'link') { main.appendChild(frame(it.l, false)); }
       else if (it.kind === 'video') { var vd = el('video'); vd.controls = true; vd.setAttribute('playsinline', ''); vd.preload = 'metadata'; if (it.v.poster) vd.poster = img(it.v.poster); vd.src = media(it.v.id); vd.title = it.v.title || ''; main.appendChild(vd); }
       else { var im = el('img'); im.src = img(it.id); im.alt = p.name; main.appendChild(im); }
       Array.from(th.children).forEach(function (b, k) { b.setAttribute('aria-current', String(k === i)); });
     };
-    if (items.length > 1) items.forEach(function (it, i) { var b = el('button', it.kind !== 'photo' ? 'vt' : ''); b.type = 'button'; b.setAttribute('aria-label', it.kind === 'video' ? 'Play video: ' + (it.v.title || '') : it.kind === 'link' ? 'Play video: ' + (it.l.title || '') : 'Photo ' + (i + 1)); var im = el('img'); im.referrerPolicy = 'no-referrer'; im.src = it.kind === 'video' ? (it.v.poster ? img(it.v.poster) : '/icon-192.png') : it.kind === 'link' ? (it.l.thumb || '/icon-192.png') : img(it.id); im.alt = ''; b.appendChild(im); b.addEventListener('click', function () { show(i); }); if (it.kind === 'photo') b.addEventListener('mouseenter', function () { show(i); }); th.appendChild(b); });
+    if (items.length > 1) items.forEach(function (it, i) { var b = el('button', it.kind === 'spin' ? 'st' : it.kind !== 'photo' ? 'vt' : ''); b.type = 'button'; b.setAttribute('aria-label', it.kind === 'spin' ? '360° view' : it.kind === 'video' ? 'Play video: ' + (it.v.title || '') : it.kind === 'link' ? 'Play video: ' + (it.l.title || '') : 'Photo ' + (i + 1)); var im = el('img'); im.referrerPolicy = 'no-referrer'; im.src = it.kind === 'spin' ? (it.s.poster ? img(it.s.poster) : '/icon-192.png') : it.kind === 'video' ? (it.v.poster ? img(it.v.poster) : '/icon-192.png') : it.kind === 'link' ? (it.l.thumb || '/icon-192.png') : img(it.id); im.alt = ''; b.appendChild(im); b.addEventListener('click', function () { show(i); }); if (it.kind === 'photo') b.addEventListener('mouseenter', function () { show(i); }); th.appendChild(b); });
     th.hidden = items.length < 2; show(0);
     var info = $('#d-info'); info.replaceChildren();
     info.appendChild(el('span', 'mfr', p.manufacturer || ''));
@@ -208,7 +215,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').cat
     $('#dlg').showModal();
   }
   $('#d-close').addEventListener('click', function () { $('#dlg').close(); });
-  $('#dlg').addEventListener('close', function () { $('#d-main').querySelectorAll('video').forEach(function (v) { v.pause(); }); $('#d-main').querySelectorAll('iframe').forEach(function (f) { f.src = 'about:blank'; }); });
+  $('#dlg').addEventListener('close', function () { if (detSpin) { detSpin.destroy(); detSpin = null; } $('#d-main').querySelectorAll('video').forEach(function (v) { v.pause(); }); $('#d-main').querySelectorAll('iframe').forEach(function (f) { f.src = 'about:blank'; }); });
   function frame(l, autoplay) {
     var f = el('iframe'); f.title = l.title || 'Product video'; f.allow = 'autoplay; fullscreen; picture-in-picture; encrypted-media'; f.allowFullscreen = true; f.referrerPolicy = 'strict-origin-when-cross-origin';
     f.src = l.embed + (autoplay ? (l.embed.indexOf('?') >= 0 ? '&' : '?') + 'autoplay=1' : ''); return f;
@@ -217,10 +224,11 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').cat
 
   function drawSlide() {
     var p = deck[slide], s = $('#p-slide'); s.querySelectorAll('video').forEach(function (v) { v.pause(); }); s.replaceChildren();
-    var ph = el('div', 'p-ph'); if (p.photos && p.photos.length) { var im = el('img'); im.src = img(p.photos[0]); im.alt = p.name; ph.appendChild(im); } else if (p.videos && p.videos[0] && p.videos[0].poster) { var pi = el('img'); pi.src = img(p.videos[0].poster); pi.alt = p.name; ph.appendChild(pi); } else ph.appendChild(el('span', 'note', 'No photo'));
+    if (presSpin) { presSpin.destroy(); presSpin = null; }
+    var ph = el('div', 'p-ph'); if (p.spin) { presSpin = spinIn(ph, p.spin); } else if (p.photos && p.photos.length) { var im = el('img'); im.src = img(p.photos[0]); im.alt = p.name; ph.appendChild(im); } else if (p.videos && p.videos[0] && p.videos[0].poster) { var pi = el('img'); pi.src = img(p.videos[0].poster); pi.alt = p.name; ph.appendChild(pi); } else ph.appendChild(el('span', 'note', 'No photo'));
     if (!(p.videos && p.videos.length) && p.video_links && p.video_links.length) {
       var pl0 = p.video_links[0], lp = el('button', 'p-play', '▶'); lp.type = 'button'; lp.setAttribute('aria-label', 'Play video: ' + (pl0.title || p.name));
-      if (!(p.photos && p.photos.length) && pl0.thumb) { ph.replaceChildren(); var ti = el('img'); ti.src = pl0.thumb; ti.alt = ''; ti.referrerPolicy = 'no-referrer'; ph.appendChild(ti); }
+      if (!p.spin && !(p.photos && p.photos.length) && pl0.thumb) { ph.replaceChildren(); var ti = el('img'); ti.src = pl0.thumb; ti.alt = ''; ti.referrerPolicy = 'no-referrer'; ph.appendChild(ti); }
       lp.addEventListener('click', function (e) { e.stopPropagation(); ph.replaceChildren(frame(pl0, true)); });
       ph.appendChild(lp);
     }
@@ -242,7 +250,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').cat
     if (!deck.length) return; slide = 0; $('#pres').hidden = false; document.body.style.overflow = 'hidden'; drawSlide();
     var r = document.documentElement; if (r.requestFullscreen) r.requestFullscreen().catch(function () {});
   }
-  function exitPresent() { $('#p-slide').querySelectorAll('video').forEach(function (v) { v.pause(); }); $('#p-slide').querySelectorAll('iframe').forEach(function (f) { f.src = 'about:blank'; }); $('#pres').hidden = true; document.body.style.overflow = ''; if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(function () {}); }
+  function exitPresent() { if (presSpin) { presSpin.destroy(); presSpin = null; } $('#p-slide').querySelectorAll('video').forEach(function (v) { v.pause(); }); $('#p-slide').querySelectorAll('iframe').forEach(function (f) { f.src = 'about:blank'; }); $('#pres').hidden = true; document.body.style.overflow = ''; if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(function () {}); }
   $('#present').addEventListener('click', present);
   $('#p-exit').addEventListener('click', exitPresent);
   $('#p-prev').addEventListener('click', function () { if (slide > 0) { slide--; drawSlide(); } });
