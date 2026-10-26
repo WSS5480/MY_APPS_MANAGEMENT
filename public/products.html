@@ -178,7 +178,9 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').cat
   function openDetail(p) {
     var main = $('#d-main'), th = $('#d-thumbs'); main.replaceChildren(); th.replaceChildren();
     var items = (p.videos || []).map(function (v) { return { kind: 'video', v: v }; }).concat((p.video_links || []).map(function (l) { return { kind: 'link', l: l }; })).concat((p.photos || []).map(function (id) { return { kind: 'photo', id: id }; }));
+    var curI = -1;
     var show = function (i) {
+      if (i === curI) return; curI = i;
       main.querySelectorAll('video').forEach(function (v) { v.pause(); }); main.querySelectorAll('iframe').forEach(function (f) { f.src = 'about:blank'; });
       main.replaceChildren(); var it = items[i];
       if (!it) { main.appendChild(el('span', 'note', 'No photo yet')); return; }
@@ -187,7 +189,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').cat
       else { var im = el('img'); im.src = img(it.id); im.alt = p.name; main.appendChild(im); }
       Array.from(th.children).forEach(function (b, k) { b.setAttribute('aria-current', String(k === i)); });
     };
-    if (items.length > 1) items.forEach(function (it, i) { var b = el('button', it.kind !== 'photo' ? 'vt' : ''); b.type = 'button'; b.setAttribute('aria-label', it.kind === 'video' ? 'Play video: ' + (it.v.title || '') : it.kind === 'link' ? 'Play video: ' + (it.l.title || '') : 'Photo ' + (i + 1)); var im = el('img'); im.referrerPolicy = 'no-referrer'; im.src = it.kind === 'video' ? (it.v.poster ? img(it.v.poster) : '/icon-192.png') : it.kind === 'link' ? (it.l.thumb || '/icon-192.png') : img(it.id); im.alt = ''; b.appendChild(im); b.addEventListener('click', function () { show(i); }); th.appendChild(b); });
+    if (items.length > 1) items.forEach(function (it, i) { var b = el('button', it.kind !== 'photo' ? 'vt' : ''); b.type = 'button'; b.setAttribute('aria-label', it.kind === 'video' ? 'Play video: ' + (it.v.title || '') : it.kind === 'link' ? 'Play video: ' + (it.l.title || '') : 'Photo ' + (i + 1)); var im = el('img'); im.referrerPolicy = 'no-referrer'; im.src = it.kind === 'video' ? (it.v.poster ? img(it.v.poster) : '/icon-192.png') : it.kind === 'link' ? (it.l.thumb || '/icon-192.png') : img(it.id); im.alt = ''; b.appendChild(im); b.addEventListener('click', function () { show(i); }); if (it.kind === 'photo') b.addEventListener('mouseenter', function () { show(i); }); th.appendChild(b); });
     th.hidden = items.length < 2; show(0);
     var info = $('#d-info'); info.replaceChildren();
     info.appendChild(el('span', 'mfr', p.manufacturer || ''));

@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   if (!window.matchMedia || !matchMedia('(hover: hover) and (pointer: fine)').matches) return;
-  var SEL = '.pthumb, #pe-photos .ph img, .x-thumb img, .pc .ph img, .gal .thumbs img, img[data-zoom]';
+  var SEL = '.pthumb, #pe-photos .ph img, .x-thumb img, .pc .ph img, img[data-zoom]';
   var box = null, img = null, cur = null;
   function make() {
     box = document.createElement('div');
@@ -19,8 +19,9 @@
   }
   document.addEventListener('mouseover', function (e) {
     var t = e.target.closest && e.target.closest(SEL);
-    if (!t || t.tagName !== 'IMG' || !t.src) return;
+    if (!t || t.tagName !== 'IMG' || !t.src || t.closest('.gal')) return;
     if (!box) make();
+    var host = t.closest('dialog[open]') || document.body; if (box.parentNode !== host) host.appendChild(box);
     cur = t; img.src = t.currentSrc || t.src; box.style.display = 'block';
     requestAnimationFrame(function () { box.style.opacity = '1'; place(e.clientX, e.clientY); });
     img.onload = function () { if (cur === t) place(e.clientX, e.clientY); };
