@@ -24,7 +24,7 @@ async function initStore() {
   if (process.env.DATABASE_URL) {
     const { Pool } = require('pg');
     const cs = process.env.DATABASE_URL;
-    pool = new Pool({ connectionString: cs, ssl: /localhost|127\.0\.0\.1|sslmode=disable/.test(cs) ? false : { rejectUnauthorized: false }, max: 4 });
+    pool = new Pool({ connectionString: cs, ssl: /localhost|127\.0\.0\.1|sslmode=disable/.test(cs) || /@[^.:/]+(:\d+)?\//.test(cs) ? false : { rejectUnauthorized: false }, max: 4 });
     await pool.query(`CREATE TABLE IF NOT EXISTS sct360_docs (path TEXT PRIMARY KEY, data JSONB NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
     const r = await pool.query('SELECT path, data FROM sct360_docs');
     r.rows.forEach(row => docs.set(row.path, row.data));
