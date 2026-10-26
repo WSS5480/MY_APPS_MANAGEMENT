@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Admin · 360 MEDICAL - SURGICAL CASE TRACKER</title>
+<link rel="manifest" href="/manifest.webmanifest"><link rel="icon" href="/favicon.png"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#081F33">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/app.css">
+<style>
+.tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.cardhead{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:4px}
+.scroll{overflow:auto}
+table{width:100%;border-collapse:collapse;font-size:.8125rem}
+th{text-align:left;font-size:.6875rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);padding:8px 6px;border-bottom:2px solid var(--accent);white-space:nowrap;background:var(--panel);position:sticky;top:0}
+td{padding:6px;border-bottom:1px solid var(--line);vertical-align:middle;white-space:nowrap}
+td .field{padding:6px 8px;font-size:.8125rem;min-width:5.5rem}
+td .w-s{min-width:4.5rem;width:4.5rem}td .w-m{min-width:7rem}td .w-l{min-width:9rem}
+tr.team td{background:var(--hl)}
+.pinv{font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:600;letter-spacing:.08em}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr));gap:16px}
+.form{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+.form .f{flex:1 1 10rem}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:.875rem;align-items:center}
+.kv b{font-weight:600}
+.copy{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.8125rem;word-break:break-all}
+.chk{display:inline-flex;align-items:center;gap:6px;font-size:.8125rem}
+.stats td{font-size:.875rem}.stats td.strong{font-weight:600}
+</style>
+</head><body>
+<div class="wrap">
+  <header class="head">
+    <img class="logo" src="/logo.png" alt="360 Medical">
+    <div class="headtxt"><h1>Admin</h1><span class="conf">360 MEDICAL - SURGICAL CASE TRACKER</span><p class="sub">Reps, PINs, quotas and commission plans. Changes here show in the tracker within seconds.</p></div>
+    <div class="tools"><a class="btn" href="/">Open tracker</a><a class="btn" href="/download">Download app</a><button class="btn" id="logout" type="button">Log out</button></div>
+  </header>
+
+  <div class="msg warn" id="dbwarn" hidden></div>
+  <div class="msg warn" id="pinwarn" hidden>You are still on the starting admin PIN. Set your own below.</div>
+
+  <section class="card">
+    <div class="cardhead">
+      <h2>Reps and plans</h2>
+      <div class="tools"><button class="btn" id="add-rep" type="button">+ Add rep</button><button class="btn" id="add-team" type="button">+ Add team quota</button><button class="btn primary" id="save" type="button" disabled>Save changes</button></div>
+    </div>
+    <p class="note">Quota and commission rules drive the scorecard, pace alerts and commission estimates. <b>Counts</b> limits quota to new or legacy surgeons; <b>Product</b> limits it to one product line. <b>Carry</b> adds a month's shortfall to the next month's target within the quarter. A <b>Team</b> row sets a quota for a whole territory. Turning access off signs the rep out right away.</p>
+    <div class="scroll"><table id="reps"><thead><tr>
+      <th>Name</th><th>Role</th><th>Territory</th><th>Metric</th><th>Monthly quota</th><th>Counts</th><th>Product</th><th>Carry</th><th>Comm %</th><th>Comm floor $</th><th>Pay</th><th>Pay $ / mo</th><th>SIM / qtr</th><th>PIN</th><th>Access</th><th></th>
+    </tr></thead><tbody></tbody></table></div>
+    <div class="msg" id="save-msg" hidden style="margin-top:12px"></div>
+  </section>
+
+  <div class="grid">
+    <section class="card">
+      <h2>Sign-in links</h2>
+      <p class="note">Send reps the tracker link and their PIN. They pick their name on the sign-in page.</p>
+      <div class="kv">
+        <span>Tracker</span><span class="copy" id="u-app"></span>
+        <span>Download app</span><span class="copy" id="u-dl"></span>
+        <span>Admin</span><span class="copy" id="u-admin"></span>
+      </div>
+      <div class="tools" style="margin-top:12px"><button class="btn" id="copy-all" type="button">Copy rep sign-in list</button></div>
+      <div class="msg ok" id="copy-msg" hidden style="margin-top:10px"></div>
+    </section>
+
+    <section class="card">
+      <h2>Activity</h2>
+      <p class="note">Records logged by rep, all months.</p>
+      <div class="scroll"><table class="stats" id="stats"><thead><tr><th>Rep</th><th>Cases</th><th>Targets</th><th>SIM events</th><th>Last case</th></tr></thead><tbody></tbody></table></div>
+    </section>
+
+    <section class="card">
+      <h2>Admin PIN</h2>
+      <p class="note">The PIN you use to sign in as Admin (COO). 6 to 10 digits. Changing it signs out any other admin sessions.</p>
+      <form class="form" id="apin">
+        <label class="f">New admin PIN<input class="field" id="apin1" type="password" inputmode="numeric" autocomplete="new-password" required></label>
+        <label class="f">Type it again<input class="field" id="apin2" type="password" inputmode="numeric" autocomplete="new-password" required></label>
+        <button class="btn primary" type="submit">Change PIN</button>
+      </form>
+      <div class="msg" id="apin-msg" hidden style="margin-top:10px"></div>
+    </section>
+
+    <section class="card">
+      <h2>Backup and restore</h2>
+      <p class="note">Download everything (cases, targets, SIM events, quotas, COO notes) as one file. Restoring adds or overwrites records from a backup; PINs are never in backups.</p>
+      <div class="tools">
+        <a class="btn" href="/api/admin/backup">Download backup</a>
+        <label class="btn" style="cursor:pointer">Restore from file<input type="file" id="restore" accept="application/json,.json" hidden></label>
+      </div>
+      <div class="msg" id="restore-msg" hidden style="margin-top:10px"></div>
+    </section>
+  </div>
+  <footer class="foot">Never enter patient names, MRNs, dates of birth or other patient identifiers. Confidential: 360 Medical internal sales data, not for distribution outside the company.</footer>
+</div>
+<script>
+(function () {
+  'use strict';
+  var $ = function (s) { return document.querySelector(s); };
+  var el = function (t, c, x) { var n = document.createElement(t); if (c) n.className = c; if (x != null) n.textContent = x; return n; };
+  var api = function (url, body) {
+    return fetch(url, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}).then(function (r) {
+      if (r.status === 401 || r.status === 403) { location.href = '/login?next=/admin'; throw {}; }
+      return r.json().then(function (j) { if (!r.ok) throw j; return j; });
+    });
+  };
+  var say = function (id, kind, text) { var m = $(id); m.className = 'msg ' + kind; m.textContent = text; m.hidden = false; };
+  var ST = null, rows = [], dirty = false;
+
+  function setDirty(v) { dirty = v; $('#save').disabled = !v; }
+  window.addEventListener('beforeunload', function (e) { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+
+  function load() {
+    return api('/api/admin/state').then(function (j) {
+      ST = j;
+      rows = j.rows.map(function (r) { return Object.assign({}, r, { comm_rate: r.comm_rate != null ? Math.round(r.comm_rate * 10000) / 100 : null, _orig: r.rep }); });
+      draw(); setDirty(false);
+      $('#dbwarn').hidden = j.db === 'postgres';
+      $('#dbwarn').textContent = 'Storage is temporary: this service has no database connected, so data can reset when Render restarts the app. Add DATABASE_URL in Render to make it permanent.';
+      $('#pinwarn').hidden = !j.adminPinIsDefault;
+      $('#u-app').textContent = j.url + '/'; $('#u-dl').textContent = j.url + '/download'; $('#u-admin').textContent = j.url + '/admin';
+      var sb = $('#stats tbody'); sb.replaceChildren();
+      Object.keys(j.counts).sort().forEach(function (k) { var c = j.counts[k], tr = el('tr'); [k, c.cases, c.targets, c.simlab, c.last || '—'].forEach(function (v, i) { tr.appendChild(el('td', i ? '' : 'strong', String(v))); }); sb.appendChild(tr); });
+      if (!Object.keys(j.counts).length) { var tr = el('tr'); var td = el('td', '', 'Nothing logged yet.'); td.colSpan = 5; tr.appendChild(td); sb.appendChild(tr); }
+    });
+  }
+
+  function input(r, k, type, cls, ph) {
+    var i = el('input', 'field ' + (cls || '')); i.type = type || 'text'; if (type === 'number') { i.step = 'any'; i.min = '0'; i.inputMode = 'decimal'; }
+    i.value = r[k] == null ? '' : r[k]; if (ph) i.placeholder = ph;
+    i.addEventListener('input', function () { r[k] = type === 'number' ? (i.value === '' ? null : Number(i.value)) : i.value; setDirty(true); });
+    return i;
+  }
+  function select(r, k, opts) {
+    var s = el('select', 'field w-m'); opts.forEach(function (o) { s.appendChild(new Option(o[1], o[0])); });
+    s.value = r[k] == null ? opts[0][0] : r[k];
+    s.addEventListener('change', function () { r[k] = s.value || null; setDirty(true); if (k === 'role') draw(); });
+    return s;
+  }
+  function draw() {
+    var b = $('#reps tbody'); b.replaceChildren();
+    rows.forEach(function (r, idx) {
+      var team = r.role === 'Team', tr = el('tr', team ? 'team' : ''), td = function (n) { var c = el('td'); if (n) c.appendChild(n); tr.appendChild(c); return c; };
+      td(input(r, 'rep', 'text', 'w-l', 'Name'));
+      td(team ? el('span', 'pill mute', 'Team') : input(r, 'role', 'text', 'w-m', 'Sales Rep'));
+      td(input(r, 'territory', 'text', 'w-m', r.rep));
+      td(select(r, 'metric', [['Revenue', 'Revenue $'], ['Cases', 'Cases']]));
+      td(input(r, 'quota', 'number', 'w-m', r.metric === 'Cases' ? 'cases' : '$'));
+      td(select(r, 'counts', [['All', 'All'], ['New only', 'New only'], ['Legacy only', 'Legacy only']]));
+      td(input(r, 'product_filter', 'text', 'w-l', 'All products'));
+      var cb = el('input'); cb.type = 'checkbox'; cb.checked = !!r.carry; cb.addEventListener('change', function () { r.carry = cb.checked; setDirty(true); }); cb.setAttribute('aria-label', 'Carry shortfall'); td(cb);
+      if (team) { for (var k = 0; k < 4; k++) td(el('span', 'note', '—')); }
+      else {
+        td(input(r, 'comm_rate', 'number', 'w-s', '%'));
+        td(input(r, 'comm_floor', 'number', 'w-m', '0'));
+        td(select(r, 'pay_kind', [['', 'None'], ['draw', 'Draw'], ['salary', 'Base salary']]));
+        td(input(r, 'pay_amount', 'number', 'w-m', '$'));
+      }
+      td(input(r, 'sim_quota', 'number', 'w-s', '—'));
+      var pc = td();
+      if (team) pc.appendChild(el('span', 'note', '—'));
+      else if (r.pin == null) pc.appendChild(el('span', 'note', 'Set on save'));
+      else {
+        var v = el('span', 'pinv', '••••••'), shown = false, show = el('button', 'btn small', 'Show'), reset = el('button', 'btn small', 'New PIN');
+        show.type = reset.type = 'button';
+        show.addEventListener('click', function () { shown = !shown; v.textContent = shown ? r.pin : '••••••'; show.textContent = shown ? 'Hide' : 'Show'; });
+        reset.addEventListener('click', function () {
+          var want = prompt('New PIN for ' + r._orig + ' (4-8 digits). Leave blank for a random one. Their current sign-in stops working.', '');
+          if (want === null) return;
+          api('/api/admin/reset-pin', { rep: r._orig, pin: want.trim() }).then(function (j) { r.pin = j.pin; shown = true; v.textContent = j.pin; show.textContent = 'Hide'; say('#save-msg', 'ok', 'New PIN for ' + r._orig + ': ' + j.pin); }, function (e) { say('#save-msg', 'err', (e && e.error) || 'Could not change the PIN.'); });
+        });
+        pc.appendChild(v); pc.appendChild(document.createTextNode(' ')); pc.appendChild(show); pc.appendChild(document.createTextNode(' ')); pc.appendChild(reset);
+      }
+      var ac = td();
+      if (!team) { var a = el('input'); a.type = 'checkbox'; a.checked = r.active !== false; a.addEventListener('change', function () { r.active = a.checked; setDirty(true); }); var lab = el('label', 'chk'); lab.appendChild(a); lab.appendChild(document.createTextNode('On')); ac.appendChild(lab); }
+      var x = td(), rm = el('button', 'btn small danger', 'Remove'); rm.type = 'button';
+      rm.addEventListener('click', function () {
+        if (!rm.dataset.armed) { rm.dataset.armed = '1'; rm.textContent = 'Confirm'; setTimeout(function () { rm.dataset.armed = ''; rm.textContent = 'Remove'; }, 4000); return; }
+        rows.splice(idx, 1); setDirty(true); draw(); say('#save-msg', 'warn', 'Removed from the list. Their logged cases stay in the tracker. Click Save changes to apply.');
+      });
+      x.appendChild(rm);
+      b.appendChild(tr);
+    });
+  }
+
+  $('#add-rep').addEventListener('click', function () { rows.push({ rep: '', role: 'Sales Rep', territory: '', metric: 'Revenue', quota: null, counts: 'All', product_filter: '', carry: false, comm_rate: null, comm_floor: null, pay_kind: '', pay_amount: null, sim_quota: null, pin: null, active: true, _orig: null }); setDirty(true); draw(); var ins = $('#reps tbody').lastChild.querySelector('input'); if (ins) ins.focus(); });
+  $('#add-team').addEventListener('click', function () { rows.push({ rep: '', role: 'Team', territory: '', metric: 'Revenue', quota: null, counts: 'All', product_filter: '', carry: false, sim_quota: null, _orig: null }); setDirty(true); draw(); });
+
+  $('#save').addEventListener('click', function () {
+    var b = $('#save'); b.disabled = true;
+    rows.forEach(function (r) { r.rep = String(r.rep || '').trim(); if (!r.territory) r.territory = r.rep; });
+    var renames = rows.filter(function (r) { return r._orig && r.rep && r._orig !== r.rep; });
+    var chain = Promise.resolve();
+    renames.forEach(function (r) { chain = chain.then(function () { return api('/api/admin/rename', { from: r._orig, to: r.rep }); }); });
+    chain.then(function () { return api('/api/admin/reps', { rows: rows.map(function (r) { var o = Object.assign({}, r); delete o._orig; delete o.pin; return o; }) }); })
+      .then(function () { setDirty(false); return load(); })
+      .then(function () { say('#save-msg', 'ok', 'Saved.' + (renames.length ? ' Renamed reps keep all their cases, targets and notes.' : '') + ' New reps get a PIN: click Show to see it.'); })
+      .catch(function (e) { b.disabled = false; say('#save-msg', 'err', (e && e.error) || 'Could not save. Check your connection and try again.'); });
+  });
+
+  $('#copy-all').addEventListener('click', function () {
+    var lines = ['360 MEDICAL - SURGICAL CASE TRACKER', 'Sign in: ' + ST.url + '/', 'Install the app: ' + ST.url + '/download', ''];
+    rows.filter(function (r) { return r.role !== 'Team' && r.pin && r.active !== false; }).forEach(function (r) { lines.push(r.rep + ' — PIN ' + r.pin); });
+    var t = lines.join('\n');
+    (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(function () { say('#copy-msg', 'ok', 'Copied. Send each rep only their own line.'); }, function () { prompt('Copy this:', t); });
+  });
+
+  $('#apin').addEventListener('submit', function (e) {
+    e.preventDefault(); var a = $('#apin1').value.trim(), b = $('#apin2').value.trim();
+    if (a !== b) return say('#apin-msg', 'err', 'The two PINs do not match.');
+    api('/api/admin/admin-pin', { pin: a }).then(function () { $('#apin1').value = $('#apin2').value = ''; $('#pinwarn').hidden = true; say('#apin-msg', 'ok', 'Admin PIN changed.'); }, function (e) { say('#apin-msg', 'err', (e && e.error) || 'Could not change it.'); });
+  });
+
+  $('#restore').addEventListener('change', function (e) {
+    var f = e.target.files[0]; if (!f) return;
+    f.text().then(function (t) { var j = JSON.parse(t); if (!confirm('Restore ' + Object.keys(j.docs || {}).length + ' records from ' + f.name + '? Matching records are overwritten.')) throw { cancel: 1 }; return api('/api/admin/restore', j); })
+      .then(function (j) { say('#restore-msg', 'ok', 'Restored ' + j.restored + ' records.'); return load(); })
+      .catch(function (err) { if (!err || !err.cancel) say('#restore-msg', 'err', (err && err.error) || 'That file could not be read as a backup.'); })
+      .finally(function () { e.target.value = ''; });
+  });
+
+  $('#logout').addEventListener('click', function () { fetch('/api/logout', { method: 'POST' }).finally(function () { location.href = '/login'; }); });
+  load().catch(function () {});
+})();
+</script>
+</body></html>

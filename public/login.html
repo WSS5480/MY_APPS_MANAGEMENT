@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Sign in · 360 MEDICAL - SURGICAL CASE TRACKER</title>
+<link rel="manifest" href="/manifest.webmanifest"><link rel="icon" href="/favicon.png"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#081F33"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="360 Cases">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/app.css">
+<style>
+.box{max-width:26rem;margin:0 auto;width:100%}
+form{display:flex;flex-direction:column;gap:14px}
+.pin{letter-spacing:.3em;font-size:1.25rem;text-align:center}
+.row{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center}
+</style>
+</head><body>
+<div class="wrap">
+  <header class="head">
+    <img class="logo" src="/logo.png" alt="360 Medical">
+    <div class="headtxt"><h1>Surgical Case Tracker</h1><span class="conf">Confidential · Internal use only</span></div>
+  </header>
+  <section class="card box">
+    <h2>Sign in</h2>
+    <p class="note">Pick your name and enter your PIN. The COO signs in as Admin.</p>
+    <form id="f">
+      <label class="f">Who are you<select class="field" id="who" required></select></label>
+      <label class="f">PIN<input class="field pin" id="pin" type="password" inputmode="numeric" autocomplete="current-password" maxlength="10" required></label>
+      <div class="msg err" id="err" hidden></div>
+      <button class="btn primary" type="submit" id="go">Sign in</button>
+    </form>
+  </section>
+  <section class="card box row">
+    <span class="note" style="margin:0">Put the tracker on your phone or PC.</span>
+    <a class="btn" href="/download">Download the app</a>
+  </section>
+  <footer class="foot box">Never enter patient names, MRNs or dates of birth. Confidential: 360 Medical internal sales data.</footer>
+</div>
+<script>
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function () {});
+var who = document.getElementById('who'), err = document.getElementById('err');
+fetch('/api/login-options').then(function (r) { return r.json(); }).then(function (j) {
+  who.appendChild(new Option('Choose your name', ''));
+  (j.reps || []).forEach(function (r) { who.appendChild(new Option(r, r)); });
+  who.appendChild(new Option('Admin (COO)', '__owner__'));
+  try { var last = localStorage.getItem('sct_who'); if (last && Array.from(who.options).some(function (o) { return o.value === last; })) { who.value = last; document.getElementById('pin').focus(); } } catch (e) {}
+});
+document.getElementById('f').addEventListener('submit', function (e) {
+  e.preventDefault(); err.hidden = true; var b = document.getElementById('go'); b.disabled = true;
+  fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ who: who.value, pin: document.getElementById('pin').value }) })
+    .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw j; return j; }); })
+    .then(function () {
+      try { localStorage.setItem('sct_who', who.value); } catch (e) {}
+      var next = new URLSearchParams(location.search).get('next') || '/';
+      location.href = /^\/[a-z]*$/.test(next) ? next : '/';
+    })
+    .catch(function (j) { err.textContent = (j && j.error) || 'Could not sign in.'; err.hidden = false; b.disabled = false; document.getElementById('pin').select(); });
+});
+</script>
+</body></html>
