@@ -59,18 +59,25 @@ async function fileDel(id) {
   if (pool) await pool.query('DELETE FROM sct360_files WHERE id=$1', [id]); else { try { fs.unlinkSync(path.join(FILE_DIR, id)); } catch (e) {} }
   if (docs.has('_file/' + id)) await del('_file/' + id);
 }
+const SEED_VIDEOS = [
+  { key: '_seed/videos', file: 'amniosurge-asg', match: /amniosurge.*asg/i, vid: 'vidseedasg', name: 'AmnioSurge-Utilization-Video-MK-0062.mp4', title: 'AmnioSurge ASG utilization video', duration: 89 },
+  { key: '_seed/video-hemoblast', file: 'hemoblast', match: /hemoblast/i, vid: 'vidseedhemo', name: 'HEMOBLAST-homepage.mp4', title: 'HEMOBLAST Bellows overview', duration: 11 },
+];
 async function seedVideos() {
-  if (docs.has('_seed/videos')) return;
-  const dir = path.join(__dirname, 'seed', 'videos'), vp = path.join(dir, 'amniosurge-asg.mp4');
-  const entry = [...docs].find(([k, d]) => k.startsWith('products/') && /amniosurge.*asg/i.test(d.name || ''));
-  if (!entry || !fs.existsSync(vp)) return;
-  const vid = 'vidseedasg', poster = 'imgvidseedasg';
-  await filePut(vid, 'video/mp4', fs.readFileSync(vp), 'AmnioSurge-Utilization-Video-MK-0062.mp4');
-  const pj = path.join(dir, 'amniosurge-asg.jpg'); if (fs.existsSync(pj)) await put('_img/' + poster, { type: 'image/jpeg', b64: fs.readFileSync(pj).toString('base64'), product: entry[0].slice(9) });
-  const prod = Object.assign({}, entry[1]);
-  prod.videos = (prod.videos || []).filter(v => v.id !== vid).concat([{ id: vid, title: 'AmnioSurge ASG utilization video', poster: fs.existsSync(pj) ? poster : null, type: 'video/mp4', size: docs.get('_file/' + vid).size, duration: 89 }]);
-  await put(entry[0], prod);
-  await put('_seed/videos', { at: new Date().toISOString() });
+  const dir = path.join(__dirname, 'seed', 'videos');
+  for (const v of SEED_VIDEOS) {
+    if (docs.has(v.key)) continue;
+    const vp = path.join(dir, v.file + '.mp4');
+    const entry = [...docs].find(([k, d]) => k.startsWith('products/') && v.match.test(d.name || ''));
+    if (!entry || !fs.existsSync(vp)) continue;
+    const poster = 'img' + v.vid;
+    await filePut(v.vid, 'video/mp4', fs.readFileSync(vp), v.name);
+    const pj = path.join(dir, v.file + '.jpg'); if (fs.existsSync(pj)) await put('_img/' + poster, { type: 'image/jpeg', b64: fs.readFileSync(pj).toString('base64'), product: entry[0].slice(9) });
+    const prod = Object.assign({}, docs.get(entry[0]));
+    prod.videos = (prod.videos || []).filter(x => x.id !== v.vid).concat([{ id: v.vid, title: v.title, poster: fs.existsSync(pj) ? poster : null, type: 'video/mp4', size: docs.get('_file/' + v.vid).size, duration: v.duration }]);
+    await put(entry[0], prod);
+    await put(v.key, { at: new Date().toISOString() });
+  }
 }
 let fileTimer = null;
 function persist(p) {
