@@ -102,7 +102,7 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
       <input type="file" id="pe-file" accept="image/jpeg,image/png,image/webp" multiple hidden>
     </div>
     <div>
-      <span class="f" style="font-size:.6875rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)">Videos · MP4 works everywhere (up to 150 MB)</span>
+      <span class="f" style="font-size:.6875rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)">Videos · upload an MP4 (up to 150 MB) or add a Vimeo / YouTube link</span>
       <div id="pe-videos" style="display:flex;flex-direction:column;gap:8px;margin-top:6px"></div>
       <input type="file" id="pe-vfile" accept="video/mp4,video/webm,video/quicktime" hidden>
       <div class="msg" id="pe-vmsg" hidden style="margin-top:8px"></div>
@@ -450,7 +450,7 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
     rowsP.forEach(function (p) {
       var idx = PR.indexOf(p), r = el('div', 'prow' + (p.available === false ? ' off' : ''));
       if (p.photos && p.photos[0]) { var im = el('img', 'pthumb'); im.src = imgUrl(p.photos[0]); im.alt = ''; im.loading = 'lazy'; r.appendChild(im); } else r.appendChild(el('div', 'pthumb'));
-      var inf = el('div', 'pinfo'); inf.appendChild(el('b', '', p.name)); inf.appendChild(el('span', '', [p.manufacturer, p.section, (p.photos || []).length + ' photo' + ((p.photos || []).length === 1 ? '' : 's'), (p.videos || []).length ? '▶ ' + p.videos.length + ' video' + (p.videos.length === 1 ? '' : 's') : ''].filter(Boolean).join(' · '))); r.appendChild(inf);
+      var inf = el('div', 'pinfo'); inf.appendChild(el('b', '', p.name)); inf.appendChild(el('span', '', [p.manufacturer, p.section, (p.photos || []).length + ' photo' + ((p.photos || []).length === 1 ? '' : 's'), ((p.videos || []).length + (p.video_links || []).length) ? '▶ ' + ((p.videos || []).length + (p.video_links || []).length) + ' video' + (((p.videos || []).length + (p.video_links || []).length) === 1 ? '' : 's') : ''].filter(Boolean).join(' · '))); r.appendChild(inf);
       var act = el('div', 'pact');
       var av = el('label', 'avail ' + (p.available === false ? 'offp' : 'on')), cb = el('input'); cb.type = 'checkbox'; cb.checked = p.available !== false;
       av.appendChild(cb); av.appendChild(document.createTextNode(p.available === false ? 'Unavailable' : 'Available'));
@@ -578,7 +578,25 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
       rm.addEventListener('click', function () { if (!confirm('Remove this video from the product for good?')) return; del('/api/admin/videos/' + encodeURIComponent(ED.id) + '/' + encodeURIComponent(v.id)).then(function () { ED.videos = ED.videos.filter(function (x) { return x.id !== v.id; }); drawVideos(); loadProducts(); }); });
       r.appendChild(rm); box.appendChild(r);
     });
-    var add = el('button', 'btn small', '🎬 Add video'); add.type = 'button'; add.addEventListener('click', function () { $('#pe-vfile').click(); }); box.appendChild(add);
+    (ED.video_links || []).forEach(function (l) {
+      var r = el('div', 'vrow'), im = el('img'); im.src = l.thumb || '/icon-192.png'; im.alt = ''; im.referrerPolicy = 'no-referrer'; r.appendChild(im);
+      var t = el('input', 'field'); t.value = l.title || ''; t.setAttribute('aria-label', 'Video title');
+      t.addEventListener('change', function () { l.title = t.value; api('/api/admin/products/' + encodeURIComponent(ED.id) + '/video-links/' + encodeURIComponent(l.id), { title: t.value }).catch(function () {}); });
+      r.appendChild(t); r.appendChild(el('span', 'note', (l.provider === 'vimeo' ? 'Vimeo' : 'YouTube') + ' link'));
+      var pv = el('a', 'btn small', 'Open'); pv.href = l.url; pv.target = '_blank'; pv.rel = 'noopener'; r.appendChild(pv);
+      var rm = el('button', 'btn small danger', 'Remove'); rm.type = 'button';
+      rm.addEventListener('click', function () { del('/api/admin/products/' + encodeURIComponent(ED.id) + '/video-links/' + encodeURIComponent(l.id)).then(function () { ED.video_links = ED.video_links.filter(function (x) { return x.id !== l.id; }); drawVideos(); loadProducts(); }); });
+      r.appendChild(rm); box.appendChild(r);
+    });
+    var row = el('div', 'tools');
+    var add = el('button', 'btn small', '🎬 Upload video file'); add.type = 'button'; add.addEventListener('click', function () { $('#pe-vfile').click(); }); row.appendChild(add);
+    var lk = el('button', 'btn small', '🔗 Add Vimeo / YouTube link'); lk.type = 'button';
+    lk.addEventListener('click', function () {
+      var url = prompt('Paste the Vimeo or YouTube link:', ''); if (!url) return;
+      var msg = $('#pe-vmsg'); msg.className = 'msg warn'; msg.textContent = 'Looking up the video…'; msg.hidden = false;
+      api('/api/admin/products/' + encodeURIComponent(ED.id) + '/video-links', { url: url.trim() }).then(function (j) { ED.video_links = (ED.video_links || []).filter(function (x) { return x.id !== j.link.id; }).concat([j.link]); msg.className = 'msg ok'; msg.textContent = 'Added: ' + j.link.title; drawVideos(); loadProducts(); }, function (e) { msg.className = 'msg err'; msg.textContent = (e && e.error) || 'Could not add that link.'; });
+    });
+    row.appendChild(lk); box.appendChild(row);
   }
   function posterOf(file) {
     return new Promise(function (ok) {

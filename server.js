@@ -36,6 +36,7 @@ async function initStore() {
   await fileInit();
   seed();
   await seedVideos().catch(e => console.error('video seed', e.message));
+  await seedVideoLinks().catch(e => console.error('video link seed', e.message));
 }
 /* large files (videos) live outside the in-memory docs: Postgres bytea, or a folder next to the data file */
 const FILE_DIR = path.join(path.dirname(DATA_FILE), 'sct360-files');
@@ -1036,6 +1037,68 @@ app.delete('/api/admin/videos/:pid/:vid', needApi('owner'), async (req, res) => 
   if (v) { await fileDel(v.id); if (v.poster && docs.has('_img/' + v.poster)) await del('_img/' + v.poster); }
   res.json({ ok: true });
 });
+
+
+/* ---------------- video links (Vimeo / YouTube embeds) ---------------- */
+function parseVideoUrl(raw) {
+  let u; try { u = new URL(String(raw || '').trim()); } catch (e) { return null; }
+  const h = u.hostname.replace(/^www\./, '');
+  if (/(^|\.)vimeo\.com$/.test(h)) {
+    const m = /(?:video\/)?(\d{6,})(?:\/([a-f0-9]{6,}))?/.exec(u.pathname); if (!m) return null;
+    const hash = u.searchParams.get('h') || m[2] || '';
+    return { provider: 'vimeo', vid: m[1], embed: 'https://player.vimeo.com/video/' + m[1] + (hash ? '?h=' + hash : ''), url: 'https://vimeo.com/' + m[1] + (hash ? '/' + hash : '') };
+  }
+  if (h === 'youtu.be' || /(^|\.)youtube(-nocookie)?\.com$/.test(h)) {
+    const id = h === 'youtu.be' ? u.pathname.slice(1) : (u.searchParams.get('v') || (/\/(?:embed|shorts|live)\/([\w-]{6,})/.exec(u.pathname) || [])[1]);
+    if (!id || !/^[\w-]{6,20}$/.test(id)) return null;
+    return { provider: 'youtube', vid: id, embed: 'https://www.youtube-nocookie.com/embed/' + id + '?rel=0', url: 'https://www.youtube.com/watch?v=' + id, thumb: 'https://i.ytimg.com/vi/' + id + '/hqdefault.jpg' };
+  }
+  return null;
+}
+async function resolveVideo(raw) {
+  const v = parseVideoUrl(raw); if (!v) return null;
+  const oe = v.provider === 'vimeo' ? 'https://vimeo.com/api/oembed.json?url=' + encodeURIComponent(raw) : 'https://www.youtube.com/oembed?format=json&url=' + encodeURIComponent(v.url);
+  try {
+    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 7000);
+    const r = await fetch(oe, { signal: ctl.signal }); clearTimeout(t);
+    if (r.ok) {
+      const j = await r.json(), src = (/src="([^"]+)"/.exec(j.html || '') || [])[1];
+      if (src && v.provider === 'vimeo') { const hh = new URL(src.replace(/&amp;/g, '&')).searchParams.get('h'); if (hh) v.embed = 'https://player.vimeo.com/video/' + v.vid + '?h=' + hh; }
+      v.title = j.title || ''; v.author = j.author_name || ''; v.thumb = j.thumbnail_url || v.thumb || ''; v.duration = j.duration || null;
+    }
+  } catch (e) {}
+  return v;
+}
+async function addVideoLink(k, v) {
+  const prod = Object.assign({}, docs.get(k)), list = (prod.video_links || []).filter(x => x.embed !== v.embed);
+  prod.video_links = list.concat([{ id: 'vl' + crypto.randomBytes(5).toString('hex'), provider: v.provider, url: v.url, embed: v.embed, title: v.title || (v.provider === 'vimeo' ? 'Vimeo video' : 'YouTube video'), author: v.author || '', thumb: v.thumb || '', duration: v.duration || null }]).slice(0, 8);
+  await put(k, prod); return prod.video_links[prod.video_links.length - 1];
+}
+app.post('/api/admin/products/:id/video-links', needApi('owner'), async (req, res) => {
+  const k = 'products/' + req.params.id; if (!docs.has(k)) return res.status(404).json({ error: 'Save the product first.' });
+  const v = await resolveVideo(req.body.url);
+  if (!v) return res.status(400).json({ error: 'Paste a Vimeo or YouTube link, e.g. https://vimeo.com/123456789' });
+  if (req.body.title) v.title = String(req.body.title).slice(0, 120);
+  res.json({ ok: true, link: await addVideoLink(k, v) });
+});
+app.post('/api/admin/products/:id/video-links/:lid', needApi('owner'), async (req, res) => {
+  const k = 'products/' + req.params.id, prod = docs.get(k); if (!prod) return res.status(404).json({ error: 'No such product' });
+  const next = Object.assign({}, prod); next.video_links = (prod.video_links || []).map(x => x.id === req.params.lid ? Object.assign({}, x, { title: String(req.body.title || x.title).slice(0, 120) }) : x);
+  await put(k, next); res.json({ ok: true });
+});
+app.delete('/api/admin/products/:id/video-links/:lid', needApi('owner'), async (req, res) => {
+  const k = 'products/' + req.params.id, prod = docs.get(k); if (!prod) return res.status(404).json({ error: 'No such product' });
+  const next = Object.assign({}, prod); next.video_links = (prod.video_links || []).filter(x => x.id !== req.params.lid);
+  await put(k, next); res.json({ ok: true });
+});
+async function seedVideoLinks() {
+  if (docs.has('_seed/vlinks')) return;
+  const entry = [...docs].find(([k, d]) => k.startsWith('products/') && /xtant medical portfolio/i.test(d.name || ''));
+  if (!entry) return;
+  const v = (await resolveVideo('https://vimeo.com/1132641948?fl=pl&fe=cm')) || {};
+  await addVideoLink(entry[0], { provider: 'vimeo', url: 'https://vimeo.com/1132641948/60cd6de7cc', embed: v.embed && /h=/.test(v.embed) ? v.embed : 'https://player.vimeo.com/video/1132641948?h=60cd6de7cc', title: 'Xtant Medical · Biologics', author: 'Xtant Medical', thumb: v.thumb || 'https://i.vimeocdn.com/video/2076944072-80c50880bdccecd432a20270a9ae747db565bd742f365a9b06374d24bb5f285e-d?f=webp&region=us', duration: v.duration || null });
+  await put('_seed/vlinks', { at: new Date().toISOString() });
+}
 
 initStore().then(() => app.listen(PORT, () => console.log(`360 Medical tracker on :${PORT} (storage: ${dbMode})`)))
   .catch(e => { console.error('startup failed', e); process.exit(1); });
