@@ -22,6 +22,11 @@ Lives on branch `surgical-case-tracker` of MY_APPS_MANAGEMENT; Render service `3
 - Voice dictation on notes; works offline (changes queue on the device and sync later).
 - Weekly digest push notifications (Monday morning) via web push; Render cron job `360-medical-weekly-digest` wakes the service.
 
+## Sign-in
+- Sales reps: PIN, or (once invited) email + password + authenticator app code; Face ID / passkey on their phone.
+- Managers: invited from Admin → Sign-in accounts (setup link, password, authenticator app), Face ID on phone. "Can manage managers" = can add/remove accounts and change the COO PIN. The COO PIN sign-in can be turned off once a manager account exists.
+- Computers sign out after 10 minutes without activity (IDLE_MIN env to change); phones stay signed in 30 days.
+
 ## Render env
 - `DATABASE_URL` Postgres connection string (table `sct360_docs`). Without it data is kept in a local file and resets when the service restarts.
 - `ADMIN_PIN` starting admin PIN (change it from /admin afterwards).

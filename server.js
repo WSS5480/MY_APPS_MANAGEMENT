@@ -105,20 +105,40 @@ function unsign(tok) {
   try { const o = JSON.parse(Buffer.from(b, 'base64url').toString()); return o.exp > Date.now() ? o : null; } catch { return null; }
 }
 function cookies(req) { const o = {}; (req.headers.cookie || '').split(';').forEach(c => { const i = c.indexOf('='); if (i > 0) o[c.slice(0, i).trim()] = decodeURIComponent(c.slice(i + 1).trim()); }); return o; }
+const IDLE_MS = (Number(process.env.IDLE_MIN) || 10) * 60e3;
+const lastActive = new Map();
 function session(req) {
   const s = unsign(cookies(req).sct_session);
   if (!s) return null;
-  if (s.role === 'owner') return s.v === adminV() ? s : null;
+  if (s.dev === 'computer' && s.sid) {
+    const t = lastActive.get(s.sid);
+    if (t === undefined) lastActive.set(s.sid, Date.now());
+    else if (Date.now() - t > IDLE_MS) return null;
+  }
+  if (s.role === 'owner' && s.mgr) { const m = mgrs()[s.mgr]; return m && m.active !== false && m.v === s.v ? s : null; }
+  if (s.role === 'owner') return s.v === adminV() && !pinOff() ? s : null;
   const p = pins().reps[s.rep];
-  if (!p || p.active === false || p.v !== s.v) return null;
+  if (!p || p.active === false) return null;
+  if (s.acct) { const a = mgrs()[s.acct]; if (!a || a.active === false || a.v !== s.v || a.kind !== 'rep' || a.rep !== s.rep) return null; }
+  else if (p.v !== s.v || repAcct(s.rep)) return null;
   if (!quotaRows().some(r => r.rep === s.rep && r.role !== 'Team')) return null;
   return s;
 }
-function setSession(res, obj) {
-  const days = 30;
-  res.setHeader('Set-Cookie', `sct_session=${encodeURIComponent(sign(Object.assign({}, obj, { exp: Date.now() + days * 864e5 })))}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${days * 86400}${PROD ? '; Secure' : ''}`);
+const repAcct = rep => Object.values(mgrs()).find(a => a.kind === 'rep' && a.rep === rep && a.totp_on && a.active !== false);
+function acctSession(rec) { return rec.kind === 'rep' ? { role: 'rep', rep: rec.rep, acct: rec.id, v: rec.v } : { role: 'owner', mgr: rec.id, v: rec.v }; }
+const acctOf = s => mgrs()[s.mgr || s.acct];
+function setSession(res, obj, dev) {
+  dev = dev === 'phone' ? 'phone' : 'computer';
+  const days = dev === 'phone' ? 30 : 1, sid = crypto.randomBytes(9).toString('base64url');
+  lastActive.set(sid, Date.now());
+  res.setHeader('Set-Cookie', `sct_session=${encodeURIComponent(sign(Object.assign({}, obj, { sid, dev, exp: Date.now() + days * 864e5 })))}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${days * 86400}${PROD ? '; Secure' : ''}`);
 }
-const uidOf = s => s.role === 'owner' ? 'owner' : 'rep-' + slug(s.rep);
+const uidOf = s => s.role === 'owner' ? (s.mgr ? 'mgr-' + s.mgr : 'owner') : 'rep-' + slug(s.rep);
+const mgrs = () => (docs.get('_auth/managers') || {}).m || {};
+async function saveMgrs(m) { await put('_auth/managers', { m }); }
+const pinOff = () => !!(docs.get('_auth/admin') || {}).pin_disabled;
+const isSuper = s => s && s.role === 'owner' && (!s.mgr || !!(mgrs()[s.mgr] || {}).can_manage);
+const whoName = s => s.role === 'owner' ? (s.mgr ? ((mgrs()[s.mgr] || {}).name || 'Manager') : 'COO') : s.rep;
 
 /* login throttle */
 const tries = new Map();
@@ -158,13 +178,14 @@ app.use((req, res, next) => { res.setHeader('X-Frame-Options', 'SAMEORIGIN'); re
 
 const pub = path.join(__dirname, 'public');
 const page = f => (req, res) => res.sendFile(path.join(pub, f));
-const needPage = role => (req, res, next) => { const s = session(req); if (!s) return res.redirect('/login?next=' + encodeURIComponent(req.path)); if (role === 'owner' && s.role !== 'owner') return res.redirect('/'); req.s = s; next(); };
+const needPage = role => (req, res, next) => { const s = session(req); if (!s) return res.redirect('/login?next=' + encodeURIComponent(req.path)); if (role === 'owner' && s.role !== 'owner') return res.redirect('/'); if (s.sid) lastActive.set(s.sid, Date.now()); req.s = s; next(); };
 
 app.get('/healthz', (req, res) => res.json({ ok: true }));
 app.get('/login', page('login.html'));
 app.get('/', needPage(), page('tracker.html'));
 app.get('/admin', needPage('owner'), page('admin.html'));
 app.get('/download', page('download.html'));
+app.get('/setup', page('setup.html'));
 app.get('/products', needPage(), page('products.html'));
 app.get('/img/:id', (req, res) => {
   const s = session(req);
@@ -175,31 +196,40 @@ app.get('/img/:id', (req, res) => {
   res.setHeader('Content-Type', d.type || 'image/jpeg'); res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
   res.end(Buffer.from(d.b64, 'base64'));
 });
-app.get(['/logo.png', '/shim.js', '/plus.js', '/plus.css', '/visitcal.js', '/app.css', '/sw.js', '/favicon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'], (req, res) => { if (req.path === '/sw.js') res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, req.path)); });
+app.get(['/logo.png', '/shim.js', '/plus.js', '/plus.css', '/visitcal.js', '/idle.js', '/zoom.js', '/webauthn.js', '/qrious.min.js', '/app.css', '/sw.js', '/favicon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'], (req, res) => { if (req.path === '/sw.js') res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, req.path)); });
 app.get('/manifest.webmanifest', (req, res) => { res.type('application/manifest+json'); res.sendFile(path.join(pub, 'manifest.webmanifest')); });
 
 app.get('/api/login-options', (req, res) => {
   const p = pins().reps;
-  res.json({ reps: quotaRows().filter(r => r.role !== 'Team' && p[r.rep] && p[r.rep].active !== false).map(r => r.rep) });
+  res.json({ reps: quotaRows().filter(r => r.role !== 'Team' && p[r.rep] && p[r.rep].active !== false && !repAcct(r.rep)).map(r => r.rep), pin_login: !pinOff(), managers: Object.values(mgrs()).some(m => m.active !== false && m.totp_on) });
 });
 app.post('/api/login', (req, res) => {
   const t = throttled(req.ip);
   if (t.n >= 10) return res.status(429).json({ error: 'Too many tries. Wait 15 minutes and try again.' });
   const who = String(req.body.who || ''), pin = String(req.body.pin || '').trim();
   if (who === '__owner__') {
-    if (pin && pin === adminPin()) { tries.delete(req.ip); setSession(res, { role: 'owner', v: adminV() }); return res.json({ ok: true, role: 'owner' }); }
+    if (pinOff()) return res.status(403).json({ error: 'The COO PIN sign-in is turned off. Sign in with your manager account.' });
+    if (pin && pin === adminPin()) { tries.delete(req.ip); setSession(res, { role: 'owner', v: adminV() }, req.body.dev); return res.json({ ok: true, role: 'owner' }); }
   } else {
     const p = pins().reps[who];
-    if (p && p.active !== false && pin && pin === String(p.pin) && quotaRows().some(r => r.rep === who)) { tries.delete(req.ip); setSession(res, { role: 'rep', rep: who, v: p.v }); return res.json({ ok: true, role: 'rep' }); }
+    if (repAcct(who)) return res.status(403).json({ error: who + ' signs in with email now. Use the Email sign-in tab.' });
+    if (p && p.active !== false && pin && pin === String(p.pin) && quotaRows().some(r => r.rep === who)) { tries.delete(req.ip); setSession(res, { role: 'rep', rep: who, v: p.v }, req.body.dev); return res.json({ ok: true, role: 'rep' }); }
   }
   t.n++;
   res.status(401).json({ error: 'Wrong PIN.' });
 });
 app.post('/api/logout', (req, res) => { res.setHeader('Set-Cookie', `sct_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${PROD ? '; Secure' : ''}`); res.json({ ok: true }); });
 
-const needApi = role => (req, res, next) => { const s = session(req); if (!s) return res.status(401).json({ error: 'Sign in again.' }); if (role === 'owner' && s.role !== 'owner') return res.status(403).json({ error: 'Admin only.' }); req.s = s; next(); };
+const needApi = role => (req, res, next) => {
+  const s = session(req); if (!s) return res.status(401).json({ error: 'Sign in again.' });
+  if (role === 'owner' && s.role !== 'owner') return res.status(403).json({ error: 'Admin only.' });
+  if (role === 'super' && !isSuper(s)) return res.status(403).json({ error: 'Only the account owner can manage managers.' });
+  if (req.method !== 'GET' && s.sid) lastActive.set(s.sid, Date.now());
+  req.s = s; next();
+};
 
-app.get('/api/me', needApi(), (req, res) => res.json({ role: req.s.role, rep: req.s.rep || null, uid: uidOf(req.s), db: dbMode }));
+app.get('/api/me', needApi(), (req, res) => res.json({ role: req.s.role, rep: req.s.rep || null, uid: uidOf(req.s), db: dbMode, name: whoName(req.s), manager: !!req.s.mgr, account: !!(req.s.mgr || req.s.acct), super: isSuper(req.s), dev: req.s.dev || 'computer', idle_min: req.s.dev === 'computer' ? IDLE_MS / 60e3 : null }));
+app.post('/api/activity', needApi(), (req, res) => res.json({ ok: true }));
 app.get('/api/sync', needApi(), (req, res) => {
   sweepVisits();
   if (Number(req.query.v) === version) return res.json({ v: version, unchanged: true });
@@ -261,7 +291,7 @@ app.post('/api/doc', needApi(), async (req, res) => {
 app.get('/api/admin/state', needApi('owner'), (req, res) => {
   const p = pins().reps, counts = {};
   for (const [k, d] of docs) { const c = k.split('/')[0]; if (COLS.includes(c)) { const r = d.rep || '(none)'; counts[r] = counts[r] || { cases: 0, targets: 0, simlab: 0, visits: 0, prefcards: 0, credentials: 0, last: '' }; counts[r][c]++; if (c === 'cases' && (d.date || '') > counts[r].last) counts[r].last = d.date || ''; } }
-  res.json({ rows: quotaRows().map(r => Object.assign({}, r, { pin: p[r.rep] ? p[r.rep].pin : null, active: p[r.rep] ? p[r.rep].active !== false : r.role === 'Team' ? null : false })), counts, db: dbMode, adminPinIsDefault: !docs.has('_auth/admin') && !process.env.ADMIN_PIN, url: (process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`) });
+  res.json({ rows: quotaRows().map(r => { const ac = Object.values(mgrs()).find(a => a.kind === 'rep' && a.rep === r.rep); return Object.assign({}, r, { pin: p[r.rep] ? p[r.rep].pin : null, active: p[r.rep] ? p[r.rep].active !== false : r.role === 'Team' ? null : false, account: ac ? (ac.totp_on ? 'active' : 'pending') : null }); }), counts, db: dbMode, adminPinIsDefault: !docs.has('_auth/admin') && !process.env.ADMIN_PIN, url: (process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`) });
 });
 const num = v => (v === '' || v == null || isNaN(Number(v))) ? null : Number(v);
 app.post('/api/admin/reps', needApi('owner'), async (req, res) => {
@@ -292,6 +322,7 @@ app.post('/api/admin/rename', needApi('owner'), async (req, res) => {
   let moved = 0;
   for (const [k, d] of [...docs]) if (COLS.includes(k.split('/')[0]) && d.rep === from) { await put(k, Object.assign({}, d, { rep: to })); moved++; }
   const p = JSON.parse(JSON.stringify(pins())); if (p.reps[from]) { p.reps[to] = p.reps[from]; delete p.reps[from]; }
+  const am = Object.assign({}, mgrs()); let amc = false; Object.keys(am).forEach(k => { if (am[k].kind === 'rep' && am[k].rep === from) { am[k] = Object.assign({}, am[k], { rep: to }); amc = true; } }); if (amc) await saveMgrs(am);
   for (const [k, d] of [...docs]) if (k.startsWith('coonotes/') && d.reps && d.reps[from] != null) { const reps = Object.assign({}, d.reps); reps[to] = reps[from]; delete reps[from]; await put(k, Object.assign({}, d, { reps })); }
   await put('config/quotas', { rows, updated_at: new Date().toISOString() });
   await put('_auth/pins', p);
@@ -306,12 +337,12 @@ app.post('/api/admin/reset-pin', needApi('owner'), async (req, res) => {
   await put('_auth/pins', p);
   res.json({ ok: true, pin: p.reps[rep].pin });
 });
-app.post('/api/admin/admin-pin', needApi('owner'), async (req, res) => {
+app.post('/api/admin/admin-pin', needApi('super'), async (req, res) => {
   const pin = String(req.body.pin || '').trim();
   if (!/^\d{4,10}$/.test(pin)) return res.status(400).json({ error: 'Admin PIN must be 4 to 10 digits.' });
   const v = adminV() + 1;
-  await put('_auth/admin', { pin, v });
-  setSession(res, { role: 'owner', v });
+  await put('_auth/admin', Object.assign({}, docs.get('_auth/admin') || {}, { pin, v }));
+  if (!req.s.mgr) setSession(res, { role: 'owner', v }, req.s.dev);
   res.json({ ok: true });
 });
 app.get('/api/admin/backup', needApi('owner'), (req, res) => {
@@ -405,7 +436,7 @@ async function audit(caseId, s, op, prev, next) {
     if (JSON.stringify(o === undefined ? null : o) !== JSON.stringify(n === undefined ? null : n)) changes[f] = [o === undefined ? null : o, n === undefined ? null : n];
   });
   if (!Object.keys(changes).length && op !== 'delete') return;
-  const by = s.role === 'owner' ? 'COO' : s.rep, at = new Date().toISOString(), kind = !prev ? 'created' : op === 'delete' ? 'deleted' : 'changed';
+  const by = whoName(s), at = new Date().toISOString(), kind = !prev ? 'created' : op === 'delete' ? 'deleted' : 'changed';
   const entries = (a.entries || []).slice(), last = entries[entries.length - 1];
   // typing autosaves every second or so: fold rapid edits by the same person into one entry
   if (last && kind === 'changed' && last.op !== 'deleted' && last.by === by && Date.now() - Date.parse(last.at) < 10 * 60e3) {
@@ -439,11 +470,14 @@ app.delete('/api/upload/:id', needApi(), async (req, res) => {
 });
 
 /* ---------------- calendar feed (subscribe from a phone calendar) ---------------- */
-function calToken(s) { return sign({ cal: 1, role: s.role, rep: s.rep || null, v: s.v, exp: Date.now() + 5 * 365 * 864e5 }); }
+function calToken(s) { return sign({ cal: 1, role: s.role, rep: s.rep || null, mgr: s.mgr || null, acct: s.acct || null, v: s.v, exp: Date.now() + 5 * 365 * 864e5 }); }
 function calSession(tok) {
   const s = unsign(tok); if (!s || !s.cal) return null;
+  if (s.role === 'owner' && s.mgr) { const m = mgrs()[s.mgr]; return m && m.active !== false && m.v === s.v ? s : null; }
   if (s.role === 'owner') return s.v === adminV() ? s : null;
-  const p = pins().reps[s.rep]; return p && p.active !== false && p.v === s.v ? s : null;
+  const p = pins().reps[s.rep]; if (!p || p.active === false) return null;
+  if (s.acct) { const a = mgrs()[s.acct]; return a && a.active !== false && a.v === s.v ? s : null; }
+  return p.v === s.v ? s : null;
 }
 app.get('/api/cal-link', needApi(), (req, res) => {
   const base = (process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
@@ -518,7 +552,7 @@ app.get('/api/push/key', needApi(), (req, res) => { const v = vapid(); const min
 app.post('/api/push/subscribe', needApi(), async (req, res) => {
   const sub = req.body && req.body.sub;
   if (!sub || !/^https:\/\//.test(String(sub.endpoint || '')) || !sub.keys) return res.status(400).json({ error: 'Bad subscription' });
-  await put(subKey(sub.endpoint), { uid: uidOf(req.s), role: req.s.role, rep: req.s.rep || null, v: req.s.v, sub: { endpoint: sub.endpoint, keys: { p256dh: String(sub.keys.p256dh || ''), auth: String(sub.keys.auth || '') } }, at: new Date().toISOString() });
+  await put(subKey(sub.endpoint), { uid: uidOf(req.s), role: req.s.role, rep: req.s.rep || null, mgr: req.s.mgr || null, v: req.s.v, sub: { endpoint: sub.endpoint, keys: { p256dh: String(sub.keys.p256dh || ''), auth: String(sub.keys.auth || '') } }, at: new Date().toISOString() });
   res.json({ ok: true });
 });
 app.post('/api/push/unsubscribe', needApi(), async (req, res) => { const k = subKey(req.body && req.body.endpoint); if (docs.has(k)) await del(k); res.json({ ok: true }); });
@@ -584,6 +618,10 @@ function teamDigest(today) {
   if (unpaid) parts.push(unpaid + ' invoiced, not yet paid');
   return { title: '360 Medical · team week', body: parts.join(' · '), url: '/' };
 }
+function subValid(d) {
+  if (d.role === 'owner') { if (d.mgr) { const m = mgrs()[d.mgr]; return !!m && m.active !== false && m.v === d.v; } return d.v === adminV() && !pinOff(); }
+  return !!(pins().reps[d.rep] && pins().reps[d.rep].active !== false);
+}
 async function sendTo(d, msg) {
   if (!vapid()) return false;
   try { await webpush.sendNotification(d.sub, JSON.stringify(msg), { TTL: 86400 }); return true; }
@@ -593,7 +631,7 @@ async function sendDigests() {
   const today = chiDate(); let sent = 0;
   for (const [k, d] of [...docs]) {
     if (!k.startsWith('_push/')) continue;
-    if (d.role === 'owner' ? d.v !== adminV() : !(pins().reps[d.rep] && pins().reps[d.rep].active !== false)) continue;
+    if (!subValid(d)) continue;
     if (await sendTo(d, d.role === 'owner' ? teamDigest(today) : repDigest(d.rep, today))) sent++;
   }
   await put('_auth/digest', { last: today, sent, at: new Date().toISOString() });
@@ -636,7 +674,7 @@ function facilityFor(name) { const n = lcs(name); if (!n) return null; for (cons
 function metersBetween(a, b, c, d) { const R = 6371000, r = x => x * Math.PI / 180, dl = r(c - a), dg = r(d - b); const h = Math.sin(dl / 2) ** 2 + Math.cos(r(a)) * Math.cos(r(c)) * Math.sin(dg / 2) ** 2; return Math.round(2 * R * Math.asin(Math.sqrt(h))); }
 const fmtClock = ms => new Date(ms).toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit' });
 async function notifyOwner(title, body) {
-  for (const [k, d] of [...docs]) if (k.startsWith('_push/') && d.role === 'owner' && d.v === adminV()) await sendTo(d, { title, body, url: '/admin#visits' });
+  for (const [k, d] of [...docs]) if (k.startsWith('_push/') && d.role === 'owner' && subValid(d)) await sendTo(d, { title, body, url: '/admin#visits' });
 }
 async function notifyRep(rep, title, body) {
   for (const [k, d] of [...docs]) if (k.startsWith('_push/') && d.role === 'rep' && d.rep === rep) await sendTo(d, { title, body, url: '/' });
@@ -720,7 +758,7 @@ app.post('/api/admin/visit-ack', needApi('owner'), async (req, res) => {
 
 /* ---------------- shared directory: surgeons + facilities (reps can add, COO manages) ---------------- */
 const nameKey = v => String(v || '').toLowerCase().replace(/\bdr\.?\s*/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
-const byName = s => s.role === 'owner' ? 'COO' : s.rep;
+const byName = s => whoName(s);
 function findDir(col, name) { const k = nameKey(name); if (!k) return null; for (const [p, d] of docs) if (p.startsWith(col + '/') && (nameKey(d.name) === k || (d.aliases || []).some(a => nameKey(a) === k))) return Object.assign({ id: p.slice(col.length + 1) }, d); return null; }
 async function ensureFacility(name, address, s) {
   name = String(name || '').trim().slice(0, 120); if (!name || nameKey(name).length < 2) return null;
@@ -766,6 +804,154 @@ app.delete('/api/admin/surgeons/:id', needApi('owner'), async (req, res) => { co
 app.post('/api/admin/facilities/:id/approve', needApi('owner'), async (req, res) => {
   const k = 'facilities/' + req.params.id, d = docs.get(k); if (!d) return res.status(404).json({ error: 'No such facility' });
   await put(k, Object.assign({}, d, { approved: true, approved_at: new Date().toISOString() })); res.json({ ok: true });
+});
+
+
+/* ---------------- manager accounts: password + authenticator app, passkeys (Face ID / Touch ID) ---------------- */
+const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+function b32enc(buf) { let bits = 0, val = 0, out = ''; for (const b of buf) { val = ((val << 8) | b) & 0xffff; bits += 8; while (bits >= 5) { out += B32[(val >>> (bits - 5)) & 31]; bits -= 5; } } if (bits > 0) out += B32[(val << (5 - bits)) & 31]; return out; }
+function b32dec(str) { let bits = 0, val = 0; const out = []; for (const c of String(str).toUpperCase().replace(/[^A-Z2-7]/g, '')) { val = ((val << 5) | B32.indexOf(c)) & 0xffff; bits += 5; if (bits >= 8) { out.push((val >>> (bits - 8)) & 255); bits -= 8; } } return Buffer.from(out); }
+function hotp(key, counter) { const b = Buffer.alloc(8); b.writeBigUInt64BE(BigInt(counter)); const h = crypto.createHmac('sha1', key).update(b).digest(), o = h[h.length - 1] & 15; return String((((h[o] & 127) << 24) | (h[o + 1] << 16) | (h[o + 2] << 8) | h[o + 3]) % 1e6).padStart(6, '0'); }
+function totpCheck(secret, code, lastStep) {
+  code = String(code || '').replace(/\D/g, ''); if (code.length !== 6 || !secret) return null;
+  const key = b32dec(secret), step = Math.floor(Date.now() / 30000);
+  for (const d of [0, -1, 1]) { const st = step + d; if (lastStep != null && st <= lastStep) continue; if (crypto.timingSafeEqual(Buffer.from(hotp(key, st)), Buffer.from(code))) return st; }
+  return null;
+}
+function hashPw(pw) { const salt = crypto.randomBytes(16); return 'scrypt$' + salt.toString('base64') + '$' + crypto.scryptSync(String(pw), salt, 64).toString('base64'); }
+function checkPw(pw, stored) { if (!stored) return false; const [, salt, h] = stored.split('$'); const got = crypto.scryptSync(String(pw), Buffer.from(salt, 'base64'), 64); return crypto.timingSafeEqual(got, Buffer.from(h, 'base64')); }
+const tokHash = t => crypto.createHash('sha256').update(String(t)).digest('hex');
+const pubMgr = m => ({ id: m.id, kind: m.kind || 'manager', rep: m.rep || null, name: m.name, email: m.email, can_manage: m.kind !== 'rep' && !!m.can_manage, active: m.active !== false, totp_on: !!m.totp_on, pending: !m.totp_on, passkeys: (m.passkeys || []).map(p => ({ id: p.id.slice(0, 10), label: p.label, at: p.at, last: p.last })), last_login: m.last_login || null, created_at: m.created_at, created_by: m.created_by || '' });
+function baseUrl(req) { return (process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, ''); }
+function newSetup(m, req) { const t = crypto.randomBytes(24).toString('base64url'); m.setup_hash = tokHash(t); m.setup_exp = Date.now() + 7 * 864e5; m.setup_secret = null; return baseUrl(req) + '/setup#t=' + t; }
+
+app.get('/api/admin/managers', needApi('owner'), (req, res) => res.json({ managers: Object.values(mgrs()).map(pubMgr), pin_login: !pinOff(), me: req.s.mgr || null, super: isSuper(req.s) }));
+app.post('/api/admin/managers', needApi('super'), async (req, res) => {
+  const name = String(req.body.name || '').trim().slice(0, 80), email = String(req.body.email || '').trim().toLowerCase().slice(0, 120);
+  if (!name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ error: 'Enter a name and a valid email.' });
+  const m = Object.assign({}, mgrs()), kind = req.body.kind === 'rep' ? 'rep' : 'manager', repName = String(req.body.rep || '');
+  if (Object.values(m).some(x => x.email === email)) return res.status(400).json({ error: email + ' already has an account.' });
+  if (kind === 'rep') {
+    if (!quotaRows().some(r => r.rep === repName && r.role !== 'Team')) return res.status(400).json({ error: 'Pick which rep this account belongs to.' });
+    if (Object.values(m).some(x => x.kind === 'rep' && x.rep === repName)) return res.status(400).json({ error: repName + ' already has an email account. Use Reset sign-in on it instead.' });
+  }
+  const id = crypto.randomBytes(6).toString('hex'), rec = { id, kind, rep: kind === 'rep' ? repName : null, name, email, can_manage: kind === 'manager' && !!req.body.can_manage, active: true, v: 1, passkeys: [], created_at: new Date().toISOString(), created_by: whoName(req.s) };
+  const link = newSetup(rec, req); m[id] = rec; await saveMgrs(m);
+  res.json({ ok: true, manager: pubMgr(rec), setup_url: link });
+});
+app.post('/api/admin/managers/:id', needApi('super'), async (req, res) => {
+  const m = Object.assign({}, mgrs()), rec = m[req.params.id]; if (!rec) return res.status(404).json({ error: 'No such manager.' });
+  if (req.s.mgr === rec.id && (req.body.active === false || req.body.can_manage === false)) return res.status(400).json({ error: 'You cannot turn off your own access.' });
+  const next = Object.assign({}, rec);
+  if (typeof req.body.name === 'string' && req.body.name.trim()) next.name = req.body.name.trim().slice(0, 80);
+  if (typeof req.body.can_manage === 'boolean' && rec.kind !== 'rep') next.can_manage = req.body.can_manage;
+  if (typeof req.body.active === 'boolean' && req.body.active !== (rec.active !== false)) { next.active = req.body.active; next.v++; }
+  m[rec.id] = next; await saveMgrs(m); res.json({ ok: true, manager: pubMgr(next) });
+});
+app.post('/api/admin/managers/:id/reset', needApi('super'), async (req, res) => {
+  const m = Object.assign({}, mgrs()), rec = m[req.params.id]; if (!rec) return res.status(404).json({ error: 'No such manager.' });
+  const next = Object.assign({}, rec, { pw: null, totp_secret: null, totp_on: false, totp_last: null, passkeys: [], v: rec.v + 1 });
+  const link = newSetup(next, req); m[rec.id] = next; await saveMgrs(m);
+  res.json({ ok: true, setup_url: link, manager: pubMgr(next) });
+});
+app.delete('/api/admin/managers/:id', needApi('super'), async (req, res) => {
+  if (req.s.mgr === req.params.id) return res.status(400).json({ error: 'You cannot delete your own account.' });
+  const m = Object.assign({}, mgrs()); delete m[req.params.id]; await saveMgrs(m); res.json({ ok: true });
+});
+app.post('/api/admin/pin-login', needApi('super'), async (req, res) => {
+  const off = req.body.enabled === false;
+  if (off) {
+    if (!req.s.mgr) return res.status(400).json({ error: 'Sign in with your own manager account first, then turn off the PIN, so you are not locked out.' });
+    if (!Object.values(mgrs()).some(x => x.kind !== 'rep' && x.active !== false && x.can_manage && x.totp_on)) return res.status(400).json({ error: 'Set up at least one manager who can manage managers first.' });
+  }
+  await put('_auth/admin', Object.assign({}, docs.get('_auth/admin') || { pin: ENV_ADMIN_PIN, v: adminV() }, { pin: adminPin(), v: adminV() + (off ? 1 : 0), pin_disabled: off }));
+  res.json({ ok: true, pin_login: !off });
+});
+
+/* setup link: set password + connect authenticator app */
+function setupRec(token) { const h = tokHash(token || ''); return Object.values(mgrs()).find(m => m.setup_hash && m.setup_hash === h && m.setup_exp > Date.now()); }
+app.post('/api/setup/info', async (req, res) => {
+  const rec = setupRec(req.body.token); if (!rec) return res.status(400).json({ error: 'This setup link has expired or was already used. Ask for a new one.' });
+  const m = Object.assign({}, mgrs()), r = Object.assign({}, rec);
+  if (!r.setup_secret) { r.setup_secret = b32enc(crypto.randomBytes(20)); m[r.id] = r; await saveMgrs(m); }
+  const label = encodeURIComponent('360 Medical:' + r.email);
+  res.json({ name: r.name, email: r.email, secret: r.setup_secret, otpauth: 'otpauth://totp/' + label + '?secret=' + r.setup_secret + '&issuer=' + encodeURIComponent('360 Medical') + '&algorithm=SHA1&digits=6&period=30' });
+});
+app.post('/api/setup/finish', async (req, res) => {
+  const t = throttled(req.ip); if (t.n >= 10) return res.status(429).json({ error: 'Too many tries. Wait 15 minutes.' });
+  const rec = setupRec(req.body.token); if (!rec || !rec.setup_secret) return res.status(400).json({ error: 'This setup link has expired. Ask for a new one.' });
+  const pw = String(req.body.password || '');
+  if (pw.length < 10) return res.status(400).json({ error: 'Use a password of at least 10 characters.' });
+  const step = totpCheck(rec.setup_secret, req.body.code, null);
+  if (step == null) { t.n++; return res.status(400).json({ error: 'That code does not match. Make sure the phone clock is right and type the newest 6-digit code.' }); }
+  const m = Object.assign({}, mgrs()), r = Object.assign({}, rec, { pw: hashPw(pw), totp_secret: rec.setup_secret, totp_on: true, totp_last: step, setup_hash: null, setup_exp: null, setup_secret: null, v: rec.v + 1, active: true, last_login: new Date().toISOString() });
+  m[r.id] = r; await saveMgrs(m);
+  setSession(res, acctSession(r), req.body.dev);
+  res.json({ ok: true, kind: r.kind || 'manager' });
+});
+
+/* sign in: email + password, then the 6-digit code */
+app.post('/api/login/manager', (req, res) => {
+  const t = throttled(req.ip); if (t.n >= 10) return res.status(429).json({ error: 'Too many tries. Wait 15 minutes and try again.' });
+  const email = String(req.body.email || '').trim().toLowerCase(), rec = Object.values(mgrs()).find(m => m.email === email);
+  if (!rec || rec.active === false || !rec.totp_on || !checkPw(req.body.password, rec.pw)) { t.n++; return res.status(401).json({ error: 'Wrong email or password.' }); }
+  res.json({ ok: true, step: 'code', ticket: sign({ t: '2fa', mgr: rec.id, v: rec.v, exp: Date.now() + 5 * 60e3 }) });
+});
+app.post('/api/login/code', async (req, res) => {
+  const t = throttled(req.ip); if (t.n >= 10) return res.status(429).json({ error: 'Too many tries. Wait 15 minutes and try again.' });
+  const tk = unsign(req.body.ticket), rec = tk && tk.t === '2fa' ? mgrs()[tk.mgr] : null;
+  if (!rec || rec.v !== tk.v || rec.active === false) return res.status(401).json({ error: 'Sign-in expired. Start again.' });
+  const step = totpCheck(rec.totp_secret, req.body.code, rec.totp_last);
+  if (step == null) { t.n++; return res.status(401).json({ error: 'Wrong code. Type the newest 6-digit code from your authenticator app.' }); }
+  const m = Object.assign({}, mgrs()); m[rec.id] = Object.assign({}, rec, { totp_last: step, last_login: new Date().toISOString() }); await saveMgrs(m);
+  tries.delete(req.ip); setSession(res, acctSession(rec), req.body.dev);
+  res.json({ ok: true, role: rec.kind === 'rep' ? 'rep' : 'owner' });
+});
+
+/* passkeys: Face ID / Touch ID / Windows Hello */
+let wa = null; try { wa = { srv: require('@simplewebauthn/server'), b64: require('@simplewebauthn/server/helpers').isoBase64URL }; } catch (e) { console.log('passkeys off: @simplewebauthn/server not installed'); }
+const rp = req => { const u = new URL(baseUrl(req)); return { id: u.hostname, origin: u.origin }; };
+app.post('/api/passkey/register/options', needApi(), async (req, res) => {
+  if (!wa) return res.status(501).json({ error: 'Passkeys are not available on this server.' });
+  const rec = acctOf(req.s); if (!rec) return res.status(400).json({ error: 'Face ID needs an email account. Ask the COO for an email invite.' });
+  const r = rp(req);
+  const options = await wa.srv.generateRegistrationOptions({ rpName: '360 Medical Case Tracker', rpID: r.id, userID: rec.id, userName: rec.email, userDisplayName: rec.name, attestationType: 'none',
+    excludeCredentials: (rec.passkeys || []).map(p => ({ id: wa.b64.toBuffer(p.id), type: 'public-key' })), authenticatorSelection: { residentKey: 'required', userVerification: 'required' } });
+  res.json({ options, ticket: sign({ t: 'reg', mgr: rec.id, ch: options.challenge, exp: Date.now() + 5 * 60e3 }) });
+});
+app.post('/api/passkey/register/verify', needApi(), async (req, res) => {
+  const tk = unsign(req.body.ticket); if (!wa || !tk || tk.t !== 'reg' || tk.mgr !== (req.s.mgr || req.s.acct)) return res.status(400).json({ error: 'Setup expired. Try again.' });
+  const r = rp(req);
+  let v; try { v = await wa.srv.verifyRegistrationResponse({ response: req.body.response, expectedChallenge: tk.ch, expectedOrigin: r.origin, expectedRPID: r.id, requireUserVerification: true }); } catch (e) { return res.status(400).json({ error: 'Face ID setup did not verify: ' + e.message }); }
+  if (!v.verified) return res.status(400).json({ error: 'Face ID setup did not verify.' });
+  const info = v.registrationInfo, m = Object.assign({}, mgrs()), rec = Object.assign({}, m[req.s.mgr || req.s.acct]);
+  rec.passkeys = (rec.passkeys || []).concat([{ id: wa.b64.fromBuffer(info.credentialID), pk: wa.b64.fromBuffer(info.credentialPublicKey), counter: info.counter || 0, label: String(req.body.label || 'This device').slice(0, 60), at: new Date().toISOString() }]).slice(-10);
+  m[rec.id] = rec; await saveMgrs(m); res.json({ ok: true, passkeys: pubMgr(rec).passkeys });
+});
+app.post('/api/passkey/login/options', async (req, res) => {
+  if (!wa) return res.status(501).json({ error: 'Passkeys are not available.' });
+  const r = rp(req), options = await wa.srv.generateAuthenticationOptions({ rpID: r.id, userVerification: 'required' });
+  res.json({ options, ticket: sign({ t: 'auth', ch: options.challenge, exp: Date.now() + 5 * 60e3 }) });
+});
+app.post('/api/passkey/login/verify', async (req, res) => {
+  const t = throttled(req.ip); if (t.n >= 10) return res.status(429).json({ error: 'Too many tries. Wait 15 minutes.' });
+  const tk = unsign(req.body.ticket), resp = req.body.response || {};
+  if (!wa || !tk || tk.t !== 'auth') return res.status(400).json({ error: 'Sign-in expired. Try again.' });
+  const rec = Object.values(mgrs()).find(m => m.active !== false && (m.passkeys || []).some(p => p.id === resp.id));
+  if (!rec) { t.n++; return res.status(401).json({ error: 'This Face ID / passkey is not registered. Sign in with email and code, then turn on Face ID again.' }); }
+  const pk = rec.passkeys.find(p => p.id === resp.id), r = rp(req);
+  let v; try { v = await wa.srv.verifyAuthenticationResponse({ response: resp, expectedChallenge: tk.ch, expectedOrigin: r.origin, expectedRPID: r.id, requireUserVerification: true, authenticator: { credentialID: wa.b64.toBuffer(pk.id), credentialPublicKey: wa.b64.toBuffer(pk.pk), counter: pk.counter || 0 } }); } catch (e) { t.n++; return res.status(401).json({ error: 'Face ID did not verify.' }); }
+  if (!v.verified) { t.n++; return res.status(401).json({ error: 'Face ID did not verify.' }); }
+  const m = Object.assign({}, mgrs()), r2 = Object.assign({}, rec);
+  r2.passkeys = rec.passkeys.map(p => p.id === pk.id ? Object.assign({}, p, { counter: v.authenticationInfo.newCounter, last: new Date().toISOString() }) : p); r2.last_login = new Date().toISOString();
+  m[r2.id] = r2; await saveMgrs(m);
+  tries.delete(req.ip); setSession(res, acctSession(r2), req.body.dev);
+  res.json({ ok: true, role: r2.kind === 'rep' ? 'rep' : 'owner', name: r2.name });
+});
+app.get('/api/me/passkeys', needApi(), (req, res) => { const rec = acctOf(req.s); res.json({ manager: !!rec, passkeys: rec ? pubMgr(rec).passkeys : [], available: !!wa }); });
+app.delete('/api/me/passkeys/:pid', needApi(), async (req, res) => {
+  const m = Object.assign({}, mgrs()), rec = m[req.s.mgr || req.s.acct]; if (!rec) return res.status(400).json({ error: 'No account.' });
+  m[rec.id] = Object.assign({}, rec, { passkeys: (rec.passkeys || []).filter(p => p.id.slice(0, 10) !== req.params.pid) }); await saveMgrs(m); res.json({ ok: true });
 });
 
 initStore().then(() => app.listen(PORT, () => console.log(`360 Medical tracker on :${PORT} (storage: ${dbMode})`)))

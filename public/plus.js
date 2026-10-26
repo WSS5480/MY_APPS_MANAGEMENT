@@ -696,7 +696,24 @@
     var prev = el('div', 'x-cal'); prev.id = 'xn-prev'; prev.textContent = 'Loading this week\'s digest…'; sec.appendChild(prev);
     var row = el('div', 'tools'); row.style.marginTop = '12px'; row.id = 'xn-row'; sec.appendChild(row);
     var msg = el('p', 'note'); msg.id = 'xn-msg'; sec.appendChild(msg);
+    sec.appendChild(el('div', 'x-sub', 'Your sign-in'));
+    var sg = el('p', 'note'); sg.id = 'xs-msg'; sec.appendChild(sg);
+    var srow = el('div', 'tools'); srow.id = 'xs-row'; sec.appendChild(srow);
+    drawSignIn();
     loadPreview(); refreshNotify();
+  }
+  function drawSignIn() {
+    var msg = $('#xs-msg'), row = $('#xs-row'); row.replaceChildren();
+    api('/api/me/passkeys').then(function (j) {
+      var W = window.SimpleWebAuthnBrowser, can = W && W.browserSupportsWebAuthn() && j.available;
+      if (!j.manager) { msg.textContent = T.isLead() ? 'You are signed in with the COO PIN. Set up your own email account in Admin → Sign-in accounts.' : 'You sign in with a PIN. Ask the COO for an email invite to switch to email + authenticator app and Face ID.'; return; }
+      msg.textContent = 'You sign in with email, password and your authenticator code' + (j.passkeys.length ? ', or Face ID on: ' + j.passkeys.map(function (p) { return p.label; }).join(', ') + '.' : '. Turn on Face ID to sign in on this phone with just your face.');
+      if (can) row.appendChild(btn(/iPhone|iPad|Android|Mac/.test(navigator.userAgent) ? '🙂 Turn on Face ID on this device' : '🔑 Turn on passkey on this device', 'primary', function () {
+        var b = this; b.disabled = true;
+        api('/api/passkey/register/options', {}).then(function (o) { return W.startRegistration(o.options).then(function (resp) { return api('/api/passkey/register/verify', { ticket: o.ticket, response: resp, label: /iPhone|iPad|Android/.test(navigator.userAgent) ? 'Phone' : 'Computer' }); }); })
+          .then(function () { T.setStatus('saved', 'Face ID turned on'); drawSignIn(); }, function (e) { msg.textContent = (e && e.error) || (e && e.name === 'NotAllowedError' ? 'Cancelled.' : 'Could not turn on Face ID on this device.'); b.disabled = false; });
+      }));
+    }, function () { msg.textContent = 'Sign-in settings need a connection.'; });
   }
   var prevAt = 0;
   function loadPreview() {

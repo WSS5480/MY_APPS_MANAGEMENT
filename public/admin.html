@@ -28,7 +28,7 @@ tr.team td{background:var(--hl)}
 .plist{display:flex;flex-direction:column}
 .prow{display:grid;grid-template-columns:72px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
 .prow.off .pinfo{opacity:.55}
-.pthumb{width:72px;height:50px;border-radius:6px;object-fit:cover;background:var(--hl);display:block}
+.pthumb{width:72px;height:50px;border-radius:6px;object-fit:cover;background:var(--hl);display:block;cursor:zoom-in}
 .pinfo b{display:block;font-size:.9rem}
 .pinfo span{font-size:.75rem;color:var(--muted)}
 .pact{display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:flex-end}
@@ -55,7 +55,7 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
   <header class="head">
     <img class="logo" src="/logo.png" alt="360 Medical">
     <div class="headtxt"><h1>Admin</h1><span class="conf">360 MEDICAL - SURGICAL CASE TRACKER</span><p class="sub">Reps, PINs, quotas and commission plans. Changes here show in the tracker within seconds.</p></div>
-    <div class="tools"><a class="btn" href="/">Open tracker</a><a class="btn" href="#visits">Visits</a><a class="btn" href="#surgeons">Surgeons</a><a class="btn" href="#facilities">Facilities</a><a class="btn" href="/products">Products</a><a class="btn" href="/download">Download app</a><button class="btn" id="logout" type="button">Log out</button></div>
+    <div class="tools"><a class="btn" href="/">Open tracker</a><a class="btn" href="#managers">Managers</a><a class="btn" href="#visits">Visits</a><a class="btn" href="#surgeons">Surgeons</a><a class="btn" href="#facilities">Facilities</a><a class="btn" href="/products">Products</a><a class="btn" href="/download">Download app</a><button class="btn" id="logout" type="button">Log out</button></div>
   </header>
 
   <div class="msg warn" id="dbwarn" hidden></div>
@@ -118,6 +118,31 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
       <span class="tools"><button class="btn" type="button" id="pe-cancel">Cancel</button><button class="btn primary" type="button" id="pe-save">Save product</button></span>
     </div>
   </form></dialog>
+
+  <section class="card" id="managers">
+    <div class="cardhead"><h2>Sign-in accounts · managers &amp; reps</h2><span class="note" id="mg-who" style="margin:0"></span></div>
+    <p class="note"><b>Managers</b> can open this Admin page and the team view. <b>Sales reps</b> see only their own tracker. Each gets an email setup link, picks a password and connects an authenticator app (Google Authenticator, Microsoft Authenticator or Authy). On their phone they can then sign in with Face ID. <b>Can manage managers</b> lets them add or remove managers and change these settings.</p>
+    <div class="scroll"><table id="mg"><thead><tr><th>Person</th><th>Role</th><th>Status</th><th>Face ID devices</th><th>Last sign-in</th><th>Can manage managers</th><th></th></tr></thead><tbody></tbody></table></div>
+    <form class="form" id="mg-form" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(12rem,1fr));gap:10px;margin-top:12px;align-items:end">
+      <label class="f">Name<input class="field" id="mg-name" required placeholder="First Last"></label>
+      <label class="f">Email<input class="field" id="mg-email" type="email" required placeholder="name@360medical.net"></label>
+      <label class="f">Role<select class="field" id="mg-kind"><option value="manager">Manager (Admin access)</option><option value="rep">Sales rep</option></select></label>
+      <label class="f" id="mg-rep-l" hidden>Which rep<select class="field" id="mg-rep"></select></label>
+      <label class="chk" style="font-size:.875rem;font-weight:600" id="mg-super-l"><input type="checkbox" id="mg-super"> Can manage managers</label>
+      <button class="btn primary" type="submit" id="mg-btn">Send invite</button>
+    </form>
+    <div class="msg" id="mg-msg" hidden style="margin-top:12px"></div>
+    <div id="mg-link" hidden style="margin-top:10px" class="msg ok"></div>
+    <div id="mg-pin" style="margin-top:14px"></div>
+  </section>
+
+  <section class="card" id="mysign">
+    <h2>Your sign-in &amp; Face ID</h2>
+    <div id="me-box" class="note"></div>
+    <div class="tools" style="margin-top:10px"><button class="btn primary" type="button" id="me-face" hidden>🙂 Turn on Face ID on this device</button></div>
+    <ul id="me-keys" style="margin:10px 0 0;padding-left:1.1rem;font-size:.875rem"></ul>
+    <div class="msg" id="me-msg" hidden style="margin-top:10px"></div>
+  </section>
 
   <section class="card" id="visits">
     <div class="cardhead"><h2>Target visits · all reps</h2><span class="pill mute" id="av-count"></span></div>
@@ -241,7 +266,7 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
       <div class="scroll"><table class="stats" id="stats"><thead><tr><th>Rep</th><th>Cases</th><th>Targets</th><th>SIM events</th><th>Last case</th></tr></thead><tbody></tbody></table></div>
     </section>
 
-    <section class="card">
+    <section class="card" id="pin-card">
       <h2>Admin PIN</h2>
       <p class="note">The PIN you use to sign in as Admin (COO). 4 to 10 digits. Changing it signs out any other admin sessions.</p>
       <form class="form" id="apin">
@@ -264,6 +289,9 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
   </div>
   <footer class="foot">Never enter patient names, MRNs, dates of birth or other patient identifiers. Confidential: 360 Medical internal sales data, not for distribution outside the company.</footer>
 </div>
+<script src="/webauthn.js"></script>
+<script src="/idle.js"></script>
+<script src="/zoom.js"></script>
 <script src="/visitcal.js"></script>
 <script>
 (function () {
@@ -272,7 +300,7 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
   var el = function (t, c, x) { var n = document.createElement(t); if (c) n.className = c; if (x != null) n.textContent = x; return n; };
   var api = function (url, body) {
     return fetch(url, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}).then(function (r) {
-      if (r.status === 401 || r.status === 403) { location.href = '/login?next=/admin'; throw {}; }
+      if (r.status === 401) { location.href = '/login?next=/admin'; throw {}; }
       return r.json().then(function (j) { if (!r.ok) throw j; return j; });
     });
   };
@@ -286,7 +314,7 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
     return api('/api/admin/state').then(function (j) {
       ST = j;
       rows = j.rows.map(function (r) { return Object.assign({}, r, { comm_rate: r.comm_rate != null ? Math.round(r.comm_rate * 10000) / 100 : null, _orig: r.rep }); });
-      draw(); setDirty(false);
+      draw(); setDirty(false); fillRepSel();
       $('#dbwarn').hidden = j.db === 'postgres';
       $('#dbwarn').textContent = 'Storage is temporary: this service has no database connected, so data can reset when Render restarts the app. Add DATABASE_URL in Render to make it permanent.';
       $('#pinwarn').hidden = !j.adminPinIsDefault;
@@ -331,6 +359,7 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
       td(input(r, 'sim_quota', 'number', 'w-s', '—'));
       var pc = td();
       if (team) pc.appendChild(el('span', 'note', '—'));
+      else if (r.account === 'active') pc.appendChild(el('span', 'pill ok', 'Email + 2-step'));
       else if (r.pin == null) pc.appendChild(el('span', 'note', 'Set on save'));
       else {
         var v = el('span', 'pinv', '••••••'), shown = false, show = el('button', 'btn small', 'Show'), reset = el('button', 'btn small', 'New PIN');
@@ -765,6 +794,84 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
       $('#ap-surgeon').value = ''; $('#ap-fac').value = ''; $('#ap-purpose').value = ''; loadVisits();
     }, function (er) { say('#ap-msg', 'err', (er && er.error) || 'Could not schedule.'); });
   });
+
+  /* ---------- managers + your sign-in ---------- */
+  var ME = null;
+  function fmtDate(v) { return v ? new Date(v).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'; }
+  function loadManagers() {
+    return Promise.all([fetch('/api/me').then(function (r) { return r.json(); }), fetch('/api/admin/managers').then(function (r) { return r.json(); })]).then(function (a) {
+      ME = a[0]; var j = a[1];
+      $('#mg-who').textContent = 'Signed in as ' + ME.name + (ME.manager ? '' : ' (COO PIN)');
+      $('#pin-card').hidden = !ME.super; $('#mg-form').hidden = !ME.super;
+      fillRepSel();
+      var b = $('#mg tbody'); b.replaceChildren();
+      if (!j.managers.length) { var tr0 = el('tr'), td0 = el('td', 'note', 'No accounts yet. Add yourself first as a Manager with your own email so you get an authenticator code and Face ID, then invite the others.'); td0.colSpan = 7; tr0.appendChild(td0); b.appendChild(tr0); }
+      j.managers.forEach(function (m) {
+        var tr = el('tr'), n = el('td'); n.appendChild(el('div', 'strong', m.name + (m.id === j.me ? ' (you)' : ''))); n.appendChild(el('div', 'note', m.email)); tr.appendChild(n);
+        tr.appendChild(el('td', '', m.kind === 'rep' ? 'Sales rep · ' + m.rep : 'Manager'));
+        var st = el('td'); st.appendChild(el('span', 'pill ' + (!m.active ? 'mute' : m.pending ? 'warn' : 'ok'), !m.active ? 'Turned off' : m.pending ? 'Waiting for setup' : 'Active · 2-step on')); tr.appendChild(st);
+        tr.appendChild(el('td', '', m.passkeys.length ? m.passkeys.map(function (p) { return p.label; }).join(', ') : '—'));
+        tr.appendChild(el('td', '', fmtDate(m.last_login)));
+        var cm = el('td'), cb = el('input'); cb.type = 'checkbox'; cb.checked = m.can_manage; cb.disabled = !j.super || m.id === j.me; cb.hidden = m.kind === 'rep'; cb.setAttribute('aria-label', 'Can manage managers');
+        cb.addEventListener('change', function () { api('/api/admin/managers/' + m.id, { can_manage: cb.checked }).then(loadManagers, function (e) { say('#mg-msg', 'err', (e && e.error) || 'Could not change it.'); loadManagers(); }); });
+        cm.appendChild(cb); tr.appendChild(cm);
+        var x = el('td');
+        if (j.super && m.id !== j.me) {
+          var mk = function (t, cls, fn) { var bb = el('button', 'btn small ' + (cls || ''), t); bb.type = 'button'; bb.addEventListener('click', fn); x.appendChild(bb); x.appendChild(document.createTextNode(' ')); return bb; };
+          mk(m.pending ? 'New setup link' : 'Reset sign-in', '', function () { if (!m.pending && !confirm('Reset ' + m.name + '\'s password, authenticator and Face ID? They get a new setup link and are signed out everywhere.')) return; api('/api/admin/managers/' + m.id + '/reset', {}).then(function (r) { showLink(m.name, m.email, r.setup_url); loadManagers(); }); });
+          mk(m.active ? 'Turn off' : 'Turn on', '', function () { api('/api/admin/managers/' + m.id, { active: !m.active }).then(loadManagers); });
+          var dd = mk('Delete', 'danger', function () { if (!dd.dataset.armed) { dd.dataset.armed = '1'; dd.textContent = 'Confirm'; return; } fetch('/api/admin/managers/' + m.id, { method: 'DELETE' }).then(loadManagers); });
+        }
+        tr.appendChild(x); b.appendChild(tr);
+      });
+      var pb = $('#mg-pin'); pb.replaceChildren();
+      if (j.super) {
+        var wrap = el('div', 'msg ' + (j.pin_login ? 'warn' : 'ok'));
+        wrap.appendChild(document.createTextNode(j.pin_login ? 'The COO PIN sign-in is ON (a PIN alone, no second step). Once you have your own manager account, turn it off so only 2-step sign-in works. ' : 'The COO PIN sign-in is OFF. Managers sign in with email + authenticator code or Face ID. '));
+        var tb = el('button', 'btn small ' + (j.pin_login ? 'primary' : ''), j.pin_login ? 'Turn off PIN sign-in' : 'Turn PIN sign-in back on'); tb.type = 'button';
+        tb.addEventListener('click', function () { api('/api/admin/pin-login', { enabled: !j.pin_login }).then(function () { say('#mg-msg', 'ok', j.pin_login ? 'COO PIN sign-in turned off.' : 'COO PIN sign-in turned back on.'); loadManagers(); }, function (e) { say('#mg-msg', 'err', (e && e.error) || 'Could not change it.'); }); });
+        wrap.appendChild(tb); pb.appendChild(wrap);
+      }
+      return loadMyKeys();
+    });
+  }
+  function fillRepSel() { var rs = $('#mg-rep'), keep = rs.value; rs.replaceChildren.apply(rs, (rows || []).filter(function (r) { return r.role !== 'Team' && r.rep; }).map(function (r) { return new Option(r.rep + (r.account ? ' (has account)' : ''), r.rep); })); if (keep) rs.value = keep; }
+  function showLink(name, email, url) {
+    var box = $('#mg-link'); box.replaceChildren(); box.hidden = false;
+    box.appendChild(el('div', 'strong', 'Setup link for ' + name + ' (valid 7 days, works once):'));
+    var code = el('div', ''); code.style.cssText = 'font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.75rem;word-break:break-all;margin:6px 0'; code.textContent = url; box.appendChild(code);
+    var row = el('div', 'tools');
+    var cp = el('button', 'btn small', 'Copy link'); cp.type = 'button'; cp.addEventListener('click', function () { (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(function () { cp.textContent = 'Copied'; }, function () { prompt('Copy this link:', url); }); }); row.appendChild(cp);
+    var subj = '360 Medical case tracker: set up your sign-in', body = 'Hi ' + name + ',\n\nYou now have access to the 360 Medical Surgical Case Tracker. Open this link to choose your password and connect an authenticator app (Google Authenticator, Microsoft Authenticator or Authy). On your phone you can then turn on Face ID.\n\n' + url + '\n\nThe link works once and expires in 7 days.\n';
+    var em = el('a', 'btn small primary', 'Email the invite'); em.href = 'mailto:' + encodeURIComponent(email) + '?subject=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(body); row.appendChild(em);
+    box.appendChild(row);
+  }
+  $('#mg-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    api('/api/admin/managers', { name: $('#mg-name').value.trim(), email: $('#mg-email').value.trim(), can_manage: $('#mg-super').checked, kind: $('#mg-kind').value, rep: $('#mg-rep').value }).then(function (j) {
+      showLink(j.manager.name, j.manager.email, j.setup_url); $('#mg-name').value = ''; $('#mg-email').value = ''; $('#mg-super').checked = false; loadManagers();
+    }, function (er) { say('#mg-msg', 'err', (er && er.error) || 'Could not add.'); });
+  });
+  function loadMyKeys() {
+    return fetch('/api/me/passkeys').then(function (r) { return r.json(); }).then(function (j) {
+      var box = $('#me-box'), ul = $('#me-keys'); ul.replaceChildren();
+      var W = window.SimpleWebAuthnBrowser, can = W && W.browserSupportsWebAuthn() && j.available;
+      if (!j.manager) { box.textContent = 'You are signed in with the COO PIN. Add yourself as a manager above with your own email to get 2-step sign-in and Face ID; then you can turn the PIN off.'; $('#me-face').hidden = true; return; }
+      box.textContent = 'You sign in with email + password + authenticator code' + (j.passkeys.length ? ', or Face ID on: ' : '. Turn on Face ID on your phone to sign in with just your face.') + (ME && ME.dev === 'computer' ? ' This computer signs out after 10 minutes without activity.' : '');
+      j.passkeys.forEach(function (p) { var li = el('li'); li.appendChild(document.createTextNode((p.label || 'Device') + ' · added ' + fmtDate(p.at) + (p.last ? ' · last used ' + fmtDate(p.last) : '') + ' ')); var rm = el('button', 'btn small danger', 'Remove'); rm.type = 'button'; rm.addEventListener('click', function () { fetch('/api/me/passkeys/' + encodeURIComponent(p.id), { method: 'DELETE' }).then(loadManagers); }); li.appendChild(rm); ul.appendChild(li); });
+      $('#me-face').hidden = !can;
+      if (can && ME && ME.dev === 'computer') $('#me-face').textContent = '🔑 Turn on passkey / Windows Hello on this computer';
+    });
+  }
+  $('#me-face').addEventListener('click', function () {
+    var W = window.SimpleWebAuthnBrowser, b = $('#me-face'); b.disabled = true;
+    api('/api/passkey/register/options', {}).then(function (o) {
+      return W.startRegistration(o.options).then(function (resp) { return api('/api/passkey/register/verify', { ticket: o.ticket, response: resp, label: ME && ME.dev === 'phone' ? 'Phone' : 'Computer' }); });
+    }).then(function () { say('#me-msg', 'ok', 'Face ID / passkey turned on for this device.'); loadManagers(); }, function (e) { say('#me-msg', 'err', (e && e.error) || (e && e.name === 'NotAllowedError' ? 'Cancelled.' : 'Could not turn it on on this device.')); }).finally(function () { b.disabled = false; });
+  });
+  $('#mg-kind').addEventListener('change', function () { var r = $('#mg-kind').value === 'rep'; $('#mg-rep-l').hidden = !r; $('#mg-super-l').hidden = r; if (r) { var row = (rows || []).find(function (x) { return x.rep === $('#mg-rep').value; }); if (row && !$('#mg-name').value) $('#mg-name').value = row.rep; } });
+  $('#mg-rep').addEventListener('change', function () { if ($('#mg-kind').value === 'rep') $('#mg-name').value = $('#mg-rep').value; });
+  loadManagers().catch(function () {});
   loadVisits().catch(function () {});
   setInterval(function () { if (!document.hidden && $('#fc-form').hidden) loadVisits().catch(function () {}); }, 30000);
 

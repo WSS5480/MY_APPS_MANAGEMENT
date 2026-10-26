@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Set up your account · 360 MEDICAL - SURGICAL CASE TRACKER</title>
+<link rel="icon" href="/favicon.png"><meta name="theme-color" content="#081F33"><meta name="robots" content="noindex">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/app.css">
+<style>
+.box{max-width:30rem;margin:0 auto;width:100%}
+form{display:flex;flex-direction:column;gap:14px}
+.step{font-size:.6875rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+.qr{background:#fff;border-radius:10px;padding:10px;width:200px;height:200px;align-self:center}
+.secret{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.95rem;letter-spacing:.08em;word-break:break-all;background:var(--bg);border-radius:8px;padding:10px;text-align:center}
+.pin{letter-spacing:.3em;font-size:1.25rem;text-align:center}
+</style>
+</head><body>
+<div class="wrap">
+  <header class="head"><img class="logo" src="/logo.png" alt="360 Medical"><div class="headtxt"><h1>Set up your sign-in</h1><span class="conf">360 MEDICAL - SURGICAL CASE TRACKER</span></div></header>
+  <div class="msg err box" id="bad" hidden></div>
+  <section class="card box" id="card" hidden>
+    <form id="f">
+      <p id="hello" style="font-weight:600"></p>
+      <span class="step">Step 1 · Choose a password</span>
+      <label class="f">Password (at least 10 characters)<input class="field" id="pw" type="password" autocomplete="new-password" minlength="10" required></label>
+      <label class="f">Type it again<input class="field" id="pw2" type="password" autocomplete="new-password" minlength="10" required></label>
+      <span class="step">Step 2 · Connect your authenticator app</span>
+      <p class="note" style="margin:0">Install Google Authenticator, Microsoft Authenticator or Authy on your phone. Tap <b>+</b> and scan this code. On this phone already? Tap <b>Open in authenticator app</b>, or type the setup key by hand.</p>
+      <img class="qr" id="qr" alt="QR code for your authenticator app">
+      <a class="btn" id="otp-link" href="#">Open in authenticator app</a>
+      <div class="secret" id="secret"></div>
+      <span class="step">Step 3 · Type the 6-digit code it shows</span>
+      <label class="f">6-digit code<input class="field pin" id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required></label>
+      <div class="msg err" id="err" hidden></div>
+      <button class="btn primary" type="submit" id="go">Finish setup</button>
+    </form>
+  </section>
+  <section class="card box" id="done" hidden>
+    <h2>You're all set</h2>
+    <p class="note">From now on, sign in with your email, password and the 6-digit code.</p>
+    <div id="face-box" hidden>
+      <p class="note"><b>On your phone?</b> Turn on Face ID (or fingerprint) and next time you sign in with just your face.</p>
+      <button class="btn primary" type="button" id="face">🙂 Turn on Face ID on this device</button>
+      <div class="msg" id="face-msg" hidden style="margin-top:10px"></div>
+    </div>
+    <div class="tools" style="margin-top:14px"><a class="btn primary" href="/admin" id="to-admin">Go to Admin</a><a class="btn" href="/">Open tracker</a></div>
+  </section>
+  <footer class="foot box">Keep your authenticator app on a phone only you use. If you lose that phone, ask the COO for a new setup link.</footer>
+</div>
+<script src="/qrious.min.js"></script>
+<script src="/webauthn.js"></script>
+<script>
+(function () {
+  var $ = function (s) { return document.querySelector(s); };
+  var ua = navigator.userAgent, DEV = /Android|iPhone|iPad|iPod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) ? 'phone' : 'computer';
+  var token = (location.hash.match(/t=([A-Za-z0-9_-]+)/) || [])[1] || '';
+  var post = function (url, body) { return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw j; return j; }); }); };
+  var bad = function (t) { $('#bad').textContent = t; $('#bad').hidden = false; };
+  if (!token) { bad('This page needs the setup link you were sent. Ask the account owner for a new one.'); return; }
+  var j0 = {};
+  post('/api/setup/info', { token: token }).then(function (j) { j0 = j;
+    $('#card').hidden = false;
+    $('#hello').textContent = 'Hi ' + j.name + ' · ' + j.email;
+    try { new QRious({ element: $('#qr'), value: j.otpauth, size: 400, foreground: '#081F33' }); } catch (e) { $('#qr').hidden = true; }
+    $('#otp-link').href = j.otpauth;
+    $('#secret').textContent = j.secret.replace(/(.{4})/g, '$1 ').trim();
+  }, function (e) { bad((e && e.error) || 'This setup link is not valid.'); });
+  $('#code').addEventListener('input', function () { this.value = this.value.replace(/\D/g, '').slice(0, 6); });
+  $('#f').addEventListener('submit', function (e) {
+    e.preventDefault(); var er = $('#err'); er.hidden = true;
+    if ($('#pw').value !== $('#pw2').value) { er.textContent = 'The two passwords do not match.'; er.hidden = false; return; }
+    var b = $('#go'); b.disabled = true;
+    post('/api/setup/finish', { token: token, password: $('#pw').value, code: $('#code').value, dev: DEV }).then(function (r) {
+      if (r.kind === 'rep') $('#to-admin').hidden = true;
+      history.replaceState(null, '', '/setup');
+      try { localStorage.setItem('sct_tab', 'mgr'); localStorage.setItem('sct_email', j0.email); } catch (x) {}
+      $('#card').hidden = true; $('#done').hidden = false;
+      var W = window.SimpleWebAuthnBrowser;
+      if (W && W.browserSupportsWebAuthn()) { $('#face-box').hidden = false; if (DEV === 'computer') $('#face').textContent = '🔑 Turn on passkey / Windows Hello on this computer'; }
+    }, function (j) { er.textContent = (j && j.error) || 'Could not finish setup.'; er.hidden = false; b.disabled = false; });
+  });
+  $('#face').addEventListener('click', function () {
+    var W = window.SimpleWebAuthnBrowser, m = $('#face-msg'), b = $('#face'); b.disabled = true;
+    post('/api/passkey/register/options', {}).then(function (o) {
+      return W.startRegistration(o.options).then(function (resp) { return post('/api/passkey/register/verify', { ticket: o.ticket, response: resp, label: DEV === 'phone' ? 'Phone' : 'Computer' }); });
+    }).then(function () { m.className = 'msg ok'; m.textContent = 'Face ID is on. Next time tap "Sign in with Face ID" on the sign-in page.'; m.hidden = false; b.hidden = true; },
+      function (e) { m.className = 'msg err'; m.textContent = (e && e.error) || (e && e.name === 'NotAllowedError' ? 'Cancelled. You can turn it on later in Admin → Your sign-in.' : 'Could not turn on Face ID on this device.'); m.hidden = false; b.disabled = false; });
+  });
+})();
+</script>
+</body></html>

@@ -11,6 +11,12 @@
 form{display:flex;flex-direction:column;gap:14px}
 .pin{letter-spacing:.3em;font-size:1.25rem;text-align:center}
 .row{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center}
+.tabs{display:flex;gap:6px;margin-bottom:14px;background:var(--bg);padding:4px;border-radius:10px}
+.tabs button{flex:1;border:none;background:none;padding:9px 10px;border-radius:8px;font:inherit;font-size:.875rem;font-weight:600;color:var(--muted);cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--panel);color:var(--fg);box-shadow:0 1px 4px rgba(3,18,31,.12)}
+.face{width:100%;justify-content:center;padding:12px;font-size:1rem}
+.or{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:.75rem;margin:14px 0}
+.or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
 </style>
 </head><body>
 <div class="wrap">
@@ -18,41 +24,105 @@ form{display:flex;flex-direction:column;gap:14px}
     <img class="logo" src="/logo.png" alt="360 Medical">
     <div class="headtxt"><h1>Surgical Case Tracker</h1><span class="conf">Confidential · Internal use only</span></div>
   </header>
+  <div class="msg warn box" id="idle" hidden>You were signed out after 10 minutes without activity on this computer.</div>
   <section class="card box">
-    <h2>Sign in</h2>
-    <p class="note">Pick your name and enter your PIN. The COO signs in as Admin.</p>
-    <form id="f">
+    <h2 style="margin-bottom:12px">Sign in</h2>
+    <button class="btn primary face" type="button" id="face" hidden>🙂 Sign in with Face ID / fingerprint</button>
+    <div class="or" id="face-or" hidden>or</div>
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" id="tab-rep" aria-selected="true">PIN</button>
+      <button type="button" role="tab" id="tab-mgr" aria-selected="false">Email sign-in</button>
+    </div>
+
+    <form id="f-rep">
       <label class="f">Who are you<select class="field" id="who" required></select></label>
       <label class="f">PIN<input class="field pin" id="pin" type="password" inputmode="numeric" autocomplete="current-password" maxlength="10" required></label>
-      <div class="msg err" id="err" hidden></div>
+      <div class="msg err" id="err-rep" hidden></div>
       <button class="btn primary" type="submit" id="go">Sign in</button>
     </form>
+
+    <div id="p-mgr" hidden>
+      <form id="f-mgr">
+        <label class="f">Email<input class="field" id="email" type="email" autocomplete="username" required></label>
+        <label class="f">Password<input class="field" id="pw" type="password" autocomplete="current-password" required></label>
+        <button class="btn primary" type="submit" id="go-mgr">Continue</button>
+      </form>
+      <form id="f-code" hidden>
+        <p class="note" style="margin:0">Open your authenticator app (Google Authenticator, Microsoft Authenticator or Authy) and type the 6-digit code for <b>360 Medical</b>.</p>
+        <label class="f">6-digit code<input class="field pin" id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required></label>
+        <button class="btn primary" type="submit" id="go-code">Sign in</button>
+        <button class="btn" type="button" id="back">Back</button>
+      </form>
+      <div class="msg err" id="err-mgr" hidden style="margin-top:12px"></div>
+    </div>
   </section>
   <section class="card box row">
     <span class="note" style="margin:0">Put the tracker on your phone or PC.</span>
     <a class="btn" href="/download">Download the app</a>
   </section>
-  <footer class="foot box">Never enter patient names, MRNs or dates of birth. Confidential: 360 Medical internal sales data.</footer>
+  <footer class="foot box">Never enter patient names, MRNs or dates of birth. Confidential: 360 Medical internal sales data. Computers sign out after 10 minutes without activity.</footer>
 </div>
+<script src="/webauthn.js"></script>
 <script>
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function () {});
-var who = document.getElementById('who'), err = document.getElementById('err');
-fetch('/api/login-options').then(function (r) { return r.json(); }).then(function (j) {
-  who.appendChild(new Option('Choose your name', ''));
-  (j.reps || []).forEach(function (r) { who.appendChild(new Option(r, r)); });
-  who.appendChild(new Option('Admin (COO)', '__owner__'));
-  try { var last = localStorage.getItem('sct_who'); if (last && Array.from(who.options).some(function (o) { return o.value === last; })) { who.value = last; document.getElementById('pin').focus(); } } catch (e) {}
-});
-document.getElementById('f').addEventListener('submit', function (e) {
-  e.preventDefault(); err.hidden = true; var b = document.getElementById('go'); b.disabled = true;
-  fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ who: who.value, pin: document.getElementById('pin').value }) })
-    .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw j; return j; }); })
-    .then(function () {
-      try { localStorage.setItem('sct_who', who.value); } catch (e) {}
-      var next = new URLSearchParams(location.search).get('next') || '/';
-      location.href = /^\/[a-z]*$/.test(next) ? next : '/';
-    })
-    .catch(function (j) { err.textContent = (j && j.error) || 'Could not sign in.'; err.hidden = false; b.disabled = false; document.getElementById('pin').select(); });
-});
+(function () {
+  var $ = function (s) { return document.querySelector(s); };
+  var ua = navigator.userAgent, standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  var DEV = /Android|iPhone|iPad|iPod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) || standalone ? 'phone' : 'computer';
+  var qs = new URLSearchParams(location.search);
+  if (qs.get('idle')) $('#idle').hidden = false;
+  var next = function () { var n = qs.get('next') || '/'; return /^\/[a-z]*$/.test(n) ? n : '/'; };
+  var post = function (url, body) { return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ dev: DEV }, body)) }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw j; return j; }); }); };
+  var show = function (id, t) { var e = $(id); e.textContent = t; e.hidden = !t; };
+  function tab(which) {
+    $('#tab-rep').setAttribute('aria-selected', String(which === 'rep')); $('#tab-mgr').setAttribute('aria-selected', String(which === 'mgr'));
+    $('#f-rep').hidden = which !== 'rep'; $('#p-mgr').hidden = which !== 'mgr';
+    try { localStorage.setItem('sct_tab', which); } catch (e) {}
+  }
+  $('#tab-rep').addEventListener('click', function () { tab('rep'); }); $('#tab-mgr').addEventListener('click', function () { tab('mgr'); });
+  var who = $('#who');
+  fetch('/api/login-options').then(function (r) { return r.json(); }).then(function (j) {
+    who.appendChild(new Option('Choose your name', ''));
+    (j.reps || []).forEach(function (r) { who.appendChild(new Option(r, r)); });
+    if (j.pin_login) who.appendChild(new Option('Admin (COO PIN)', '__owner__'));
+    try { var last = localStorage.getItem('sct_who'); if (last && Array.from(who.options).some(function (o) { return o.value === last; })) who.value = last; } catch (e) {}
+    var t = null; try { t = localStorage.getItem('sct_tab'); } catch (e) {}
+    tab(t === 'mgr' || (!j.pin_login && j.managers && t !== 'rep') ? 'mgr' : 'rep');
+  });
+  $('#f-rep').addEventListener('submit', function (e) {
+    e.preventDefault(); show('#err-rep', ''); var b = $('#go'); b.disabled = true;
+    post('/api/login', { who: who.value, pin: $('#pin').value }).then(function () { try { localStorage.setItem('sct_who', who.value); } catch (x) {} location.href = who.value === '__owner__' && next() === '/' ? '/' : next(); })
+      .catch(function (j) { show('#err-rep', (j && j.error) || 'Could not sign in.'); b.disabled = false; $('#pin').select(); });
+  });
+  var ticket = null;
+  $('#f-mgr').addEventListener('submit', function (e) {
+    e.preventDefault(); show('#err-mgr', ''); var b = $('#go-mgr'); b.disabled = true;
+    post('/api/login/manager', { email: $('#email').value, password: $('#pw').value }).then(function (j) {
+      ticket = j.ticket; $('#f-mgr').hidden = true; $('#f-code').hidden = false; $('#code').value = ''; $('#code').focus();
+      try { localStorage.setItem('sct_email', $('#email').value); } catch (x) {}
+    }).catch(function (j) { show('#err-mgr', (j && j.error) || 'Could not sign in.'); }).finally(function () { b.disabled = false; });
+  });
+  $('#f-code').addEventListener('submit', function (e) {
+    e.preventDefault(); show('#err-mgr', ''); var b = $('#go-code'); b.disabled = true;
+    post('/api/login/code', { ticket: ticket, code: $('#code').value }).then(function (j) { location.href = next() === '/' && j.role === 'owner' ? '/admin' : next(); })
+      .catch(function (j) { show('#err-mgr', (j && j.error) || 'Could not sign in.'); b.disabled = false; $('#code').select(); });
+  });
+  $('#code').addEventListener('input', function () { if (/^\d{6}$/.test(this.value)) $('#f-code').requestSubmit(); });
+  $('#back').addEventListener('click', function () { $('#f-code').hidden = true; $('#f-mgr').hidden = false; show('#err-mgr', ''); });
+  try { var em = localStorage.getItem('sct_email'); if (em) $('#email').value = em; } catch (x) {}
+  var W = window.SimpleWebAuthnBrowser;
+  if (W && W.browserSupportsWebAuthn()) {
+    $('#face').hidden = false; $('#face-or').hidden = false;
+    if (!/Android|iPhone|iPad|iPod|Mac/i.test(ua)) $('#face').textContent = '🔑 Sign in with passkey / Windows Hello';
+    $('#face').addEventListener('click', function () {
+      show('#err-mgr', ''); var b = $('#face'); b.disabled = true;
+      post('/api/passkey/login/options', {}).then(function (o) {
+        return W.startAuthentication(o.options).then(function (resp) { return post('/api/passkey/login/verify', { ticket: o.ticket, response: resp }); });
+      }).then(function (j) { location.href = next() === '/' && j.role === 'owner' ? '/admin' : next(); })
+        .catch(function (j) { tab('mgr'); show('#err-mgr', (j && j.error) || (j && j.name === 'NotAllowedError' ? 'Face ID was cancelled.' : 'Face ID sign-in did not work. Use email and code.')); })
+        .finally(function () { b.disabled = false; });
+    });
+  }
+})();
 </script>
 </body></html>
