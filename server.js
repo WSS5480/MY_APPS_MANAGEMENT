@@ -37,6 +37,7 @@ async function initStore() {
   seed();
   await seedVideos().catch(e => console.error('video seed', e.message));
   await seedVideoLinks().catch(e => console.error('video link seed', e.message));
+  await seedStabilityPhotos().catch(e => console.error('photo seed', e.message));
 }
 /* large files (videos) live outside the in-memory docs: Postgres bytea, or a folder next to the data file */
 const FILE_DIR = path.join(path.dirname(DATA_FILE), 'sct360-files');
@@ -1098,6 +1099,27 @@ async function seedVideoLinks() {
   const v = (await resolveVideo('https://vimeo.com/1132641948?fl=pl&fe=cm')) || {};
   await addVideoLink(entry[0], { provider: 'vimeo', url: 'https://vimeo.com/1132641948/60cd6de7cc', embed: v.embed && /h=/.test(v.embed) ? v.embed : 'https://player.vimeo.com/video/1132641948?h=60cd6de7cc', title: 'Xtant Medical · Biologics', author: 'Xtant Medical', thumb: v.thumb || 'https://i.vimeocdn.com/video/2076944072-80c50880bdccecd432a20270a9ae747db565bd742f365a9b06374d24bb5f285e-d?f=webp&region=us', duration: v.duration || null });
   await put('_seed/vlinks', { at: new Date().toISOString() });
+}
+
+
+/* extra Stability Biologics photos (cleaned from the product page banner) */
+async function seedStabilityPhotos() {
+  if (docs.has('_seed/stab-photos')) return;
+  const dir = path.join(__dirname, 'seed', 'products', 'stability'), files = ['stability-dry-storage.jpg', 'stability-large-graft.jpg', 'stability-range-of-sizes.jpg'];
+  if (!files.every(f => fs.existsSync(path.join(dir, f)))) return;
+  const targets = [...docs].filter(([k, d]) => k.startsWith('products/') && /stability biologics/i.test(d.manufacturer || ''));
+  if (!targets.length) return;
+  for (const [k, d] of targets) {
+    const pid = k.slice(9), add = [];
+    for (const f of files) {
+      const id = 'img' + crypto.createHash('sha1').update(pid + f).digest('hex').slice(0, 18);
+      if (!docs.has('_img/' + id)) await put('_img/' + id, { type: 'image/jpeg', b64: fs.readFileSync(path.join(dir, f)).toString('base64'), product: pid });
+      add.push(id);
+    }
+    const next = Object.assign({}, docs.get(k)); next.photos = (next.photos || []).concat(add.filter(id => !(next.photos || []).includes(id))).slice(0, 12);
+    await put(k, next);
+  }
+  await put('_seed/stab-photos', { at: new Date().toISOString(), products: targets.length });
 }
 
 initStore().then(() => app.listen(PORT, () => console.log(`360 Medical tracker on :${PORT} (storage: ${dbMode})`)))
