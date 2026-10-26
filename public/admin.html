@@ -48,6 +48,10 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
 .ph .pb{display:flex;gap:4px;margin-top:4px}
 .drop{width:120px;height:84px;border:2px dashed var(--line);border-radius:8px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:.75rem;color:var(--muted);cursor:pointer;padding:6px}
 .drop.over{border-color:var(--accent);background:var(--hl)}
+.vrow{display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:8px}
+.vrow img{width:96px;height:54px;object-fit:cover;border-radius:6px;background:#000;flex:none}
+.vrow .field{flex:1;min-width:8rem}
+.vbar{height:6px;border-radius:3px;background:var(--line);overflow:hidden;margin-top:6px}.vbar i{display:block;height:100%;background:var(--accent);width:0}
 .pe-foot{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center;border-top:1px solid var(--line);padding-top:14px;position:sticky;bottom:0;background:var(--panel)}
 </style>
 </head><body>
@@ -96,6 +100,12 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
       <span class="f" style="font-size:.6875rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)">Photos · first photo is the cover</span>
       <div class="photos" id="pe-photos" style="margin-top:6px"></div>
       <input type="file" id="pe-file" accept="image/jpeg,image/png,image/webp" multiple hidden>
+    </div>
+    <div>
+      <span class="f" style="font-size:.6875rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)">Videos · MP4 works everywhere (up to 150 MB)</span>
+      <div id="pe-videos" style="display:flex;flex-direction:column;gap:8px;margin-top:6px"></div>
+      <input type="file" id="pe-vfile" accept="video/mp4,video/webm,video/quicktime" hidden>
+      <div class="msg" id="pe-vmsg" hidden style="margin-top:8px"></div>
     </div>
     <label class="f">Description<textarea class="field" id="pe-desc" maxlength="3000"></textarea></label>
     <div class="two">
@@ -440,7 +450,7 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
     rowsP.forEach(function (p) {
       var idx = PR.indexOf(p), r = el('div', 'prow' + (p.available === false ? ' off' : ''));
       if (p.photos && p.photos[0]) { var im = el('img', 'pthumb'); im.src = imgUrl(p.photos[0]); im.alt = ''; im.loading = 'lazy'; r.appendChild(im); } else r.appendChild(el('div', 'pthumb'));
-      var inf = el('div', 'pinfo'); inf.appendChild(el('b', '', p.name)); inf.appendChild(el('span', '', [p.manufacturer, p.section, (p.photos || []).length + ' photo' + ((p.photos || []).length === 1 ? '' : 's')].filter(Boolean).join(' · '))); r.appendChild(inf);
+      var inf = el('div', 'pinfo'); inf.appendChild(el('b', '', p.name)); inf.appendChild(el('span', '', [p.manufacturer, p.section, (p.photos || []).length + ' photo' + ((p.photos || []).length === 1 ? '' : 's'), (p.videos || []).length ? '▶ ' + p.videos.length + ' video' + (p.videos.length === 1 ? '' : 's') : ''].filter(Boolean).join(' · '))); r.appendChild(inf);
       var act = el('div', 'pact');
       var av = el('label', 'avail ' + (p.available === false ? 'offp' : 'on')), cb = el('input'); cb.type = 'checkbox'; cb.checked = p.available !== false;
       av.appendChild(cb); av.appendChild(document.createTextNode(p.available === false ? 'Unavailable' : 'Available'));
@@ -529,7 +539,7 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
     $('#pe-links').value = (ED.links || []).map(function (l) { return (l.label ? l.label + ' | ' : '') + l.url; }).join('\n');
     $('#pe-avail').checked = ED.available !== false;
     $('#pe-err').hidden = true;
-    drawPhotos(); $('#pdlg').showModal(); $('#pe-name').focus();
+    drawPhotos(); $('#pe-vmsg').hidden = true; drawVideos(); $('#pdlg').showModal(); $('#pe-name').focus();
   }
   function closeEditor(saved) {
     if (!saved) newImgs.forEach(function (id) { del('/api/admin/images/' + encodeURIComponent(id)).catch(function () {}); });
@@ -552,6 +562,59 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
     api('/api/admin/products', b).then(function (j) { closeEditor(true); say('#p-msg', 'ok', j.product.name + ' saved.'); return loadProducts(); }, function (e) { $('#pe-err').textContent = (e && e.error) || 'Could not save.'; $('#pe-err').hidden = false; }).finally(function () { btn.disabled = false; });
   });
 
+
+  /* ---------- product videos ---------- */
+  function drawVideos() {
+    var box = $('#pe-videos'); if (!box || !ED) return; box.replaceChildren();
+    if (!ED.id) { box.appendChild(el('p', 'note', 'Save the product first, then open it again to add videos.')); return; }
+    (ED.videos || []).forEach(function (v) {
+      var r = el('div', 'vrow'), im = el('img'); im.src = v.poster ? imgUrl(v.poster) : '/icon-192.png'; im.alt = ''; r.appendChild(im);
+      var t = el('input', 'field'); t.value = v.title || ''; t.setAttribute('aria-label', 'Video title');
+      t.addEventListener('change', function () { v.title = t.value; api('/api/admin/videos/' + encodeURIComponent(ED.id) + '/' + encodeURIComponent(v.id), { title: t.value }).catch(function () {}); });
+      r.appendChild(t);
+      r.appendChild(el('span', 'note', (v.size / 1048576).toFixed(1) + ' MB' + (v.duration ? ' · ' + Math.floor(v.duration / 60) + ':' + String(Math.round(v.duration % 60)).padStart(2, '0') : '')));
+      var pv = el('a', 'btn small', 'Play'); pv.href = '/media/' + encodeURIComponent(v.id); pv.target = '_blank'; pv.rel = 'noopener'; r.appendChild(pv);
+      var rm = el('button', 'btn small danger', 'Remove'); rm.type = 'button';
+      rm.addEventListener('click', function () { if (!confirm('Remove this video from the product for good?')) return; del('/api/admin/videos/' + encodeURIComponent(ED.id) + '/' + encodeURIComponent(v.id)).then(function () { ED.videos = ED.videos.filter(function (x) { return x.id !== v.id; }); drawVideos(); loadProducts(); }); });
+      r.appendChild(rm); box.appendChild(r);
+    });
+    var add = el('button', 'btn small', '🎬 Add video'); add.type = 'button'; add.addEventListener('click', function () { $('#pe-vfile').click(); }); box.appendChild(add);
+  }
+  function posterOf(file) {
+    return new Promise(function (ok) {
+      var v = document.createElement('video'), url = URL.createObjectURL(file), done = false;
+      var finish = function (x) { if (done) return; done = true; URL.revokeObjectURL(url); ok(x); };
+      v.muted = true; v.preload = 'auto'; v.src = url; v.setAttribute('playsinline', '');
+      v.onloadedmetadata = function () { var t = Math.min(Math.max(1, v.duration * 0.1), Math.max(0, v.duration - 0.5)); try { v.currentTime = t; } catch (e) { finish({ duration: v.duration }); } };
+      v.onseeked = function () { try { var c = document.createElement('canvas'), r = Math.min(1, 1280 / v.videoWidth); c.width = Math.round(v.videoWidth * r); c.height = Math.round(v.videoHeight * r); c.getContext('2d').drawImage(v, 0, 0, c.width, c.height); finish({ duration: v.duration, data: c.toDataURL('image/jpeg', 0.82) }); } catch (e) { finish({ duration: v.duration }); } };
+      v.onerror = function () { finish({ unplayable: true }); };
+      setTimeout(function () { finish({}); }, 15000);
+    });
+  }
+  $('#pe-vfile').addEventListener('change', function (e) {
+    var f = e.target.files[0]; e.target.value = ''; if (!f || !ED || !ED.id) return;
+    var msg = $('#pe-vmsg');
+    if (f.size > 150 * 1048576) { msg.className = 'msg err'; msg.textContent = 'That video is ' + Math.round(f.size / 1048576) + ' MB. The limit is 150 MB; export it smaller (1080p MP4) and try again.'; msg.hidden = false; return; }
+    var type = f.type || (/\.mov$/i.test(f.name) ? 'video/quicktime' : 'video/mp4');
+    msg.className = 'msg warn'; msg.hidden = false; msg.textContent = 'Preparing ' + f.name + '…';
+    posterOf(f).then(function (meta) {
+      var warn = meta.unplayable || type === 'video/quicktime' ? ' Heads up: this file may not play in every browser (iPhone HEVC/MOV videos often fail on Windows). If reps report a problem, export it as MP4 (H.264).' : '';
+      var pz = meta.data ? api('/api/admin/images', { data: meta.data }).then(function (j) { return j.id; }, function () { return null; }) : Promise.resolve(null);
+      return pz.then(function (poster) {
+        return new Promise(function (ok, bad) {
+          var x = new XMLHttpRequest(), title = f.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ');
+          x.open('POST', '/api/admin/videos?product=' + encodeURIComponent(ED.id) + '&title=' + encodeURIComponent(title) + '&name=' + encodeURIComponent(f.name) + (poster ? '&poster=' + poster : '') + (meta.duration ? '&duration=' + Math.round(meta.duration) : ''));
+          x.setRequestHeader('Content-Type', type);
+          msg.replaceChildren(document.createTextNode('Uploading ' + f.name + '…'));
+          var bar = el('div', 'vbar'), bi = el('i'); bar.appendChild(bi); msg.appendChild(bar);
+          x.upload.onprogress = function (ev) { if (ev.lengthComputable) bi.style.width = Math.round(ev.loaded / ev.total * 100) + '%'; };
+          x.onload = function () { var j = {}; try { j = JSON.parse(x.responseText); } catch (e2) {} if (x.status === 200) ok(j); else bad(j); };
+          x.onerror = function () { bad({ error: 'Upload failed. Check the connection and try again.' }); };
+          x.send(f);
+        }).then(function (j) { ED.videos = (ED.videos || []).concat([j.video]); msg.className = 'msg ok'; msg.textContent = 'Video added.' + warn; drawVideos(); loadProducts(); });
+      });
+    }).catch(function (er) { msg.className = 'msg err'; msg.textContent = (er && er.error) || 'Could not add the video.'; });
+  });
   loadProducts().catch(function () {});
   /* ---------- price book, settings, month close, digest ---------- */
   var DOCS = {}, PB = [], pbDirty = false;

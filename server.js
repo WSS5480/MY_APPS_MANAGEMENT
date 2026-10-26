@@ -33,7 +33,42 @@ async function initStore() {
     const j = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
     Object.keys(j).forEach(k => docs.set(k, j[k]));
   }
+  await fileInit();
   seed();
+  await seedVideos().catch(e => console.error('video seed', e.message));
+}
+/* large files (videos) live outside the in-memory docs: Postgres bytea, or a folder next to the data file */
+const FILE_DIR = path.join(path.dirname(DATA_FILE), 'sct360-files');
+async function fileInit() {
+  if (pool) await pool.query('CREATE TABLE IF NOT EXISTS sct360_files (id TEXT PRIMARY KEY, type TEXT NOT NULL, size INTEGER NOT NULL, data BYTEA NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())');
+  else fs.mkdirSync(FILE_DIR, { recursive: true });
+}
+async function filePut(id, type, buf, name) {
+  if (pool) await pool.query('INSERT INTO sct360_files(id,type,size,data) VALUES($1,$2,$3,$4) ON CONFLICT(id) DO UPDATE SET type=EXCLUDED.type,size=EXCLUDED.size,data=EXCLUDED.data', [id, type, buf.length, buf]);
+  else fs.writeFileSync(path.join(FILE_DIR, id), buf);
+  await put('_file/' + id, { type, size: buf.length, name: name || '', at: new Date().toISOString() });
+}
+async function fileRange(id, start, len) {
+  if (pool) { const r = await pool.query('SELECT substring(data from $2 for $3) AS d FROM sct360_files WHERE id=$1', [id, start + 1, len]); return r.rows[0] ? r.rows[0].d : null; }
+  const fp = path.join(FILE_DIR, id); if (!fs.existsSync(fp)) return null;
+  const fd = fs.openSync(fp, 'r'), b = Buffer.alloc(len); const n = fs.readSync(fd, b, 0, len, start); fs.closeSync(fd); return b.subarray(0, n);
+}
+async function fileDel(id) {
+  if (pool) await pool.query('DELETE FROM sct360_files WHERE id=$1', [id]); else { try { fs.unlinkSync(path.join(FILE_DIR, id)); } catch (e) {} }
+  if (docs.has('_file/' + id)) await del('_file/' + id);
+}
+async function seedVideos() {
+  if (docs.has('_seed/videos')) return;
+  const dir = path.join(__dirname, 'seed', 'videos'), vp = path.join(dir, 'amniosurge-asg.mp4');
+  const entry = [...docs].find(([k, d]) => k.startsWith('products/') && /amniosurge.*asg/i.test(d.name || ''));
+  if (!entry || !fs.existsSync(vp)) return;
+  const vid = 'vidseedasg', poster = 'imgvidseedasg';
+  await filePut(vid, 'video/mp4', fs.readFileSync(vp), 'AmnioSurge-Utilization-Video-MK-0062.mp4');
+  const pj = path.join(dir, 'amniosurge-asg.jpg'); if (fs.existsSync(pj)) await put('_img/' + poster, { type: 'image/jpeg', b64: fs.readFileSync(pj).toString('base64'), product: entry[0].slice(9) });
+  const prod = Object.assign({}, entry[1]);
+  prod.videos = (prod.videos || []).filter(v => v.id !== vid).concat([{ id: vid, title: 'AmnioSurge ASG utilization video', poster: fs.existsSync(pj) ? poster : null, type: 'video/mp4', size: docs.get('_file/' + vid).size, duration: 89 }]);
+  await put(entry[0], prod);
+  await put('_seed/videos', { at: new Date().toISOString() });
 }
 let fileTimer = null;
 function persist(p) {
@@ -195,6 +230,24 @@ app.get('/img/:id', (req, res) => {
   if (d.rep && s.role !== 'owner' && d.rep !== s.rep) return res.status(403).end();
   res.setHeader('Content-Type', d.type || 'image/jpeg'); res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
   res.end(Buffer.from(d.b64, 'base64'));
+});
+app.get('/media/:id', async (req, res) => {
+  if (!session(req)) return res.status(401).end();
+  const id = String(req.params.id).replace(/[^A-Za-z0-9_-]/g, ''), meta = docs.get('_file/' + id);
+  if (!meta) return res.status(404).end();
+  const size = meta.size, m = /bytes=(\d*)-(\d*)/.exec(req.headers.range || '');
+  res.setHeader('Accept-Ranges', 'bytes'); res.setHeader('Content-Type', meta.type || 'video/mp4'); res.setHeader('Cache-Control', 'private, max-age=86400');
+  try {
+    if (m) {
+      let start = m[1] === '' ? Math.max(0, size - Number(m[2])) : Number(m[1]);
+      let end = m[1] !== '' && m[2] !== '' ? Math.min(Number(m[2]), size - 1) : Math.min(start + 4 * 1024 * 1024 - 1, size - 1);
+      if (start >= size || start > end) { res.setHeader('Content-Range', 'bytes */' + size); return res.status(416).end(); }
+      const buf = await fileRange(id, start, end - start + 1); if (!buf) return res.status(404).end();
+      res.status(206); res.setHeader('Content-Range', `bytes ${start}-${start + buf.length - 1}/${size}`); res.setHeader('Content-Length', buf.length); return res.end(buf);
+    }
+    const buf = await fileRange(id, 0, size); if (!buf) return res.status(404).end();
+    res.setHeader('Content-Length', buf.length); res.end(buf);
+  } catch (e) { res.status(500).end(); }
 });
 app.get(['/logo.png', '/shim.js', '/plus.js', '/plus.css', '/visitcal.js', '/idle.js', '/zoom.js', '/webauthn.js', '/qrious.min.js', '/app.css', '/sw.js', '/favicon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'], (req, res) => { if (req.path === '/sw.js') res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, req.path)); });
 app.get('/manifest.webmanifest', (req, res) => { res.type('application/manifest+json'); res.sendFile(path.join(pub, 'manifest.webmanifest')); });
@@ -414,6 +467,7 @@ app.delete('/api/admin/products/:id', needApi('owner'), async (req, res) => {
   const k = 'products/' + req.params.id, prev = docs.get(k);
   if (!prev) return res.status(404).json({ error: 'No such product' });
   for (const img of prev.photos || []) await del('_img/' + img);
+  for (const v of prev.videos || []) { await fileDel(v.id); if (v.poster && docs.has('_img/' + v.poster)) await del('_img/' + v.poster); }
   await del(k);
   res.json({ ok: true });
 });
@@ -952,6 +1006,35 @@ app.get('/api/me/passkeys', needApi(), (req, res) => { const rec = acctOf(req.s)
 app.delete('/api/me/passkeys/:pid', needApi(), async (req, res) => {
   const m = Object.assign({}, mgrs()), rec = m[req.s.mgr || req.s.acct]; if (!rec) return res.status(400).json({ error: 'No account.' });
   m[rec.id] = Object.assign({}, rec, { passkeys: (rec.passkeys || []).filter(p => p.id.slice(0, 10) !== req.params.pid) }); await saveMgrs(m); res.json({ ok: true });
+});
+
+
+/* ---------------- product videos ---------------- */
+app.post('/api/admin/videos', needApi('owner'), express.raw({ type: () => true, limit: '160mb' }), async (req, res) => {
+  const pid = String(req.query.product || ''), k = 'products/' + pid, prod = docs.get(k);
+  if (!prod) return res.status(404).json({ error: 'Save the product first, then add videos.' });
+  const type = String(req.get('content-type') || '').split(';')[0];
+  if (!/^video\/(mp4|webm|quicktime)$/.test(type)) return res.status(400).json({ error: 'Upload an MP4 video (H.264). WebM and MOV also work in most browsers.' });
+  if (!req.body || !req.body.length) return res.status(400).json({ error: 'The video did not arrive. Try again.' });
+  const id = 'vid' + crypto.randomBytes(8).toString('hex');
+  await filePut(id, type, req.body, String(req.query.name || '').slice(0, 120));
+  const poster = /^img[a-f0-9]{18}$/.test(String(req.query.poster || '')) && docs.has('_img/' + req.query.poster) ? String(req.query.poster) : null;
+  const v = { id, title: String(req.query.title || 'Product video').slice(0, 120), poster, type, size: req.body.length, duration: Number(req.query.duration) || null };
+  const next = Object.assign({}, docs.get(k)); next.videos = (next.videos || []).concat([v]).slice(0, 8);
+  await put(k, next); res.json({ ok: true, video: v });
+});
+app.post('/api/admin/videos/:pid/:vid', needApi('owner'), async (req, res) => {
+  const k = 'products/' + req.params.pid, prod = docs.get(k); if (!prod) return res.status(404).json({ error: 'No such product' });
+  const next = Object.assign({}, prod); next.videos = (prod.videos || []).map(v => v.id === req.params.vid ? Object.assign({}, v, { title: String(req.body.title || v.title).slice(0, 120) }) : v);
+  await put(k, next); res.json({ ok: true });
+});
+app.delete('/api/admin/videos/:pid/:vid', needApi('owner'), async (req, res) => {
+  const k = 'products/' + req.params.pid, prod = docs.get(k); if (!prod) return res.status(404).json({ error: 'No such product' });
+  const v = (prod.videos || []).find(x => x.id === req.params.vid);
+  const next = Object.assign({}, prod); next.videos = (prod.videos || []).filter(x => x.id !== req.params.vid);
+  await put(k, next);
+  if (v) { await fileDel(v.id); if (v.poster && docs.has('_img/' + v.poster)) await del('_img/' + v.poster); }
+  res.json({ ok: true });
 });
 
 initStore().then(() => app.listen(PORT, () => console.log(`360 Medical tracker on :${PORT} (storage: ${dbMode})`)))

@@ -1,6 +1,6 @@
 /* 360 Cases service worker: works offline (pages, scripts and photos cached), plus push notifications.
    Data comes live from the server; when offline the page uses the copy saved on the device. */
-const V = 'v5';
+const V = 'v6';
 const SHELL = 'sct360-shell-' + V, PAGES = 'sct360-pages-' + V, IMG = 'sct360-img-' + V, CDN = 'sct360-cdn-' + V;
 const SHELL_FILES = ['/logo.png', '/shim.js', '/plus.js', '/plus.css', '/visitcal.js', '/idle.js', '/zoom.js', '/webauthn.js', '/app.css', '/icon-192.png', '/icon-512.png', '/favicon.png', '/manifest.webmanifest'];
 const PAGE_PATHS = ['/', '/products', '/download', '/login'];
@@ -13,7 +13,7 @@ self.addEventListener('fetch', e => {
   const req = e.request, u = new URL(req.url);
   if (req.method !== 'GET') return;
   if (u.origin === location.origin) {
-    if (u.pathname.startsWith('/api/') || u.pathname.startsWith('/cal/') || u.pathname.startsWith('/admin')) return;
+    if (u.pathname.startsWith('/api/') || u.pathname.startsWith('/cal/') || u.pathname.startsWith('/admin') || u.pathname.startsWith('/media/')) return;
     if (u.pathname.startsWith('/img/')) {
       e.respondWith(caches.open(IMG).then(c => c.match(req).then(hit => hit || fetch(req).then(r => { if (r.ok) c.put(req, r.clone()); return r; }))));
       return;
