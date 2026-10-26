@@ -679,15 +679,25 @@ app.post('/api/checkin', needApi(), async (req, res) => {
   if (ok === null && attempts === 1) notifyOwner('Visit not verifiable · ' + v.rep, 'Add an address for ' + (v.facility || 'the facility') + ' in Admin so check-ins there can be verified.').catch(() => {});
   res.json({ ok: true, check });
 });
-async function geocode(q) {
+async function censusGeocode(q) {
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 10000);
+  try {
+    const r = await fetch('https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?benchmark=Public_AR_Current&format=json&address=' + encodeURIComponent(q), { signal: ctl.signal });
+    const j = await r.json(), m = j && j.result && j.result.addressMatches && j.result.addressMatches[0];
+    if (!m || !m.coordinates) return null;
+    return { lat: Math.round(Number(m.coordinates.y) * 1e6) / 1e6, lng: Math.round(Number(m.coordinates.x) * 1e6) / 1e6, label: m.matchedAddress, source: 'US Census' };
+  } catch (e) { return null; } finally { clearTimeout(t); }
+}
+async function geocode(q) { return (await censusGeocode(q)) || (await osmGeocode(q)); }
+async function osmGeocode(q) {
   const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 8000);
   try {
     const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=' + encodeURIComponent(q), { signal: ctl.signal, headers: { 'User-Agent': '360-Medical-Case-Tracker/1.0 (' + (process.env.PUBLIC_URL || 'https://three60-medical-surgical-case-tracker.onrender.com') + ')', 'Accept-Language': 'en' } });
     const j = await r.json(); if (!Array.isArray(j) || !j[0]) return null;
-    return { lat: Math.round(Number(j[0].lat) * 1e6) / 1e6, lng: Math.round(Number(j[0].lon) * 1e6) / 1e6, label: j[0].display_name };
+    return { lat: Math.round(Number(j[0].lat) * 1e6) / 1e6, lng: Math.round(Number(j[0].lon) * 1e6) / 1e6, label: j[0].display_name, source: 'OpenStreetMap' };
   } catch (e) { return null; } finally { clearTimeout(t); }
 }
-app.get('/api/admin/geocode', needApi('owner'), async (req, res) => { const g = await geocode(String(req.query.q || '').slice(0, 300)); res.json(g ? Object.assign({ found: true }, g) : { found: false }); });
+app.get('/api/admin/geocode', needApi('owner'), async (req, res) => { const q = String(req.query.q || '').slice(0, 300); const g = req.query.src === 'census' ? await censusGeocode(q) : await geocode(q); res.json(g ? Object.assign({ found: true }, g) : { found: false }); });
 app.post('/api/admin/facilities', needApi('owner'), async (req, res) => {
   const b = req.body || {}, id = b.id && /^[A-Za-z0-9_-]{1,40}$/.test(b.id) ? b.id : 'f' + crypto.randomBytes(7).toString('hex');
   const name = String(b.name || '').trim().slice(0, 120); if (!name) return res.status(400).json({ error: 'Facility name is required.' });

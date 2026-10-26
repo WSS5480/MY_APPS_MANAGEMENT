@@ -137,8 +137,9 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
       <label class="f">Radius (meters)<input class="field" id="fc-radius" type="number" min="50" max="3000" placeholder="400"></label>
       <label class="f">Latitude<input class="field" id="fc-lat" inputmode="decimal" placeholder="auto"></label>
       <label class="f">Longitude<input class="field" id="fc-lng" inputmode="decimal" placeholder="auto"></label>
+      <button class="btn primary" type="button" id="fc-get">Get lat/long (US Census)</button>
       <label class="f" style="grid-column:span 2">Other names reps use · comma separated<input class="field" id="fc-aliases" placeholder="DHR, Doctors Hospital at Renaissance"></label>
-      <div class="tools" style="grid-column:1/-1"><button class="btn" type="button" id="fc-here">📍 Use my location</button><button class="btn" type="button" id="fc-find">Find address on map</button><button class="btn primary" type="submit">Save facility</button><button class="btn" type="button" id="fc-cancel">Cancel</button></div>
+      <div class="tools" style="grid-column:1/-1"><button class="btn" type="button" id="fc-here">📍 Use my location</button><button class="btn primary" type="submit">Save facility</button><button class="btn" type="button" id="fc-cancel">Cancel</button></div>
     </form>
     <datalist id="fc-names"></datalist>
     <div class="msg" id="fc-msg" hidden style="margin-top:12px"></div>
@@ -623,7 +624,7 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
       var tr = el('tr');
       tr.appendChild(el('td', 'strong', f.name + ((f.aliases || []).length ? ' (' + f.aliases.join(', ') + ')' : '')));
       tr.appendChild(el('td', '', f.address || '—'));
-      var mp = el('td'); if (f.lat != null) { var a = el('a', '', f.lat.toFixed(4) + ', ' + f.lng.toFixed(4)); a.href = 'https://www.openstreetmap.org/?mlat=' + f.lat + '&mlon=' + f.lng + '#map=17/' + f.lat + '/' + f.lng; a.target = '_blank'; a.rel = 'noopener'; mp.appendChild(a); } else mp.appendChild(el('span', 'pill warn', 'Not on map')); tr.appendChild(mp);
+      var mp = el('td'); if (f.lat != null) { var a = el('a', '', f.lat.toFixed(4) + ', ' + f.lng.toFixed(4)); a.href = 'https://www.openstreetmap.org/?mlat=' + f.lat + '&mlon=' + f.lng + '#map=17/' + f.lat + '/' + f.lng; a.target = '_blank'; a.rel = 'noopener'; mp.appendChild(a); } else if (f.address) { var gb = el('button', 'btn small primary', 'Get lat/long'); gb.type = 'button'; gb.title = 'Look up with the US Census and save'; gb.addEventListener('click', function () { gb.disabled = true; gb.textContent = 'Getting…'; census(f.address).then(function (g) { if (!g.found) { say('#fc-msg', 'err', 'US Census could not match ' + f.address + '. Edit the address.'); gb.disabled = false; gb.textContent = 'Get lat/long'; return; } return api('/api/admin/facilities', { id: f.id, name: f.name, address: f.address, radius_m: f.radius_m, aliases: f.aliases, lat: g.lat, lng: g.lng }).then(function () { say('#fc-msg', 'ok', f.name + ': ' + g.lat + ', ' + g.lng + ' (US Census: ' + g.label + ')'); loadVisits(); }); }, function () { gb.disabled = false; gb.textContent = 'Get lat/long'; }); }); mp.appendChild(gb); } else mp.appendChild(el('span', 'pill warn', 'Not on map')); tr.appendChild(mp);
       tr.appendChild(el('td', '', (f.radius_m || VD.settings.geo_radius_m || 400) + ' m'));
       var x = el('td'), e = el('button', 'btn small', 'Edit'), d = el('button', 'btn small danger', 'Delete'); e.type = d.type = 'button';
       e.addEventListener('click', function () { openFac(f); });
@@ -648,13 +649,15 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
   $('#fc-add').addEventListener('click', function () { openFac(null); });
   $('#fc-cancel').addEventListener('click', function () { $('#fc-form').hidden = true; fcEdit = null; });
   $('#fc-address').addEventListener('input', function () { $('#fc-lat').value = ''; $('#fc-lng').value = ''; });
-  $('#fc-find').addEventListener('click', function () {
-    var q = $('#fc-address').value.trim(); if (!q) { $('#fc-address').focus(); return; }
-    say('#fc-msg', 'warn', 'Looking up the address…');
-    fetch('/api/admin/geocode?q=' + encodeURIComponent(q)).then(function (r) { return r.json(); }).then(function (g) {
-      if (!g.found) return say('#fc-msg', 'err', 'Address not found on the map. Check it, or use your location when you are there.');
-      $('#fc-lat').value = g.lat; $('#fc-lng').value = g.lng; say('#fc-msg', 'ok', 'Found: ' + g.label);
-    }, function () { say('#fc-msg', 'err', 'Map lookup is not answering. Try again, or enter latitude/longitude.'); });
+  function census(q) { return fetch('/api/admin/geocode?src=census&q=' + encodeURIComponent(q)).then(function (r) { return r.json(); }); }
+  $('#fc-get').addEventListener('click', function () {
+    var q = $('#fc-address').value.trim(); if (!q) { say('#fc-msg', 'err', 'Type the street address first (street, city, state, ZIP).'); $('#fc-address').focus(); return; }
+    var b = $('#fc-get'); b.disabled = true; b.textContent = 'Getting…';
+    census(q).then(function (g) {
+      if (!g.found) return say('#fc-msg', 'err', 'The US Census could not match that address. Check the street, city, state and ZIP, or use your location when you are there.');
+      $('#fc-lat').value = g.lat; $('#fc-lng').value = g.lng; say('#fc-msg', 'ok', 'US Census match: ' + g.label + ' → ' + g.lat + ', ' + g.lng + '. Click Save facility.');
+    }, function () { say('#fc-msg', 'err', 'The US Census lookup is not answering. Try again in a minute.'); })
+      .finally(function () { b.disabled = false; b.textContent = 'Get lat/long (US Census)'; });
   });
   $('#fc-here').addEventListener('click', function () {
     if (!navigator.geolocation) return say('#fc-msg', 'err', 'This device cannot share its location.');
