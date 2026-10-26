@@ -83,6 +83,7 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
       <div class="tools"><input class="field" id="p-q" type="search" placeholder="Search products" aria-label="Search products" style="width:14rem"><a class="btn" href="/products">View product demo</a><button class="btn primary" id="p-add" type="button">+ Add product</button></div>
     </div>
     <p class="note">Everything reps see on the product demo page. Click <b>Available</b> to switch a product on or off: unavailable products are hidden from the demo and from the case log product list, but nothing is deleted. <b>Delete</b> removes a product and its photos for good. Use the arrows to set the order shown to reps.</p>
+    <div class="msg warn" id="p-missing" hidden style="display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:10px"><span id="p-missing-t"></span><button class="btn primary small" id="p-restore" type="button">Restore brochure products</button></div>
     <div class="plist" id="plist"></div>
     <div class="msg" id="p-msg" hidden style="margin-top:12px"></div>
   </section>
@@ -435,12 +436,23 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
   var PR = [], ED = null, newImgs = [];
   var imgUrl = function (id) { return '/img/' + encodeURIComponent(id); };
   var del = function (url) { return fetch(url, { method: 'DELETE' }).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw j; return j; }); }); };
+  document.addEventListener('click', function (e) {
+    if (!e.target || e.target.id !== 'p-restore') return;
+    var b = e.target; b.disabled = true;
+    api('/api/admin/products/restore-brochure', {}).then(function (j) { b.disabled = false; loadProducts(); }, function () { b.disabled = false; alert('Could not restore the products.'); });
+  });
   function loadProducts() {
     return fetch('/api/sync?v=-1').then(function (r) { if (r.status === 401) { location.href = '/login?next=/admin'; throw {}; } return r.json(); }).then(function (j) {
       PR = Object.keys(j.docs || {}).filter(function (k) { return k.indexOf('products/') === 0; }).map(function (k) { return Object.assign({ id: k.slice(9) }, j.docs[k]); })
         .sort(function (a, b) { return (a.sort || 0) - (b.sort || 0); });
-      drawProducts();
+      drawProducts(); checkBrochure();
     });
+  }
+  function checkBrochure() {
+    fetch('/api/admin/products/brochure-missing').then(function (r) { return r.ok ? r.json() : { missing: [] }; }).then(function (j) {
+      var m = j.missing || [], box = $('#p-missing'); box.hidden = !m.length; if (!m.length) return;
+      $('#p-missing-t').textContent = m.length + ' product' + (m.length === 1 ? ' from the Q4 2026 brochure is' : 's from the Q4 2026 brochure are') + ' not in the list: ' + m.map(function (x) { return x.name; }).join(', ') + '.';
+    }).catch(function () {});
   }
   function drawProducts() {
     var box = $('#plist'); box.replaceChildren();

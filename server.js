@@ -64,12 +64,12 @@ const SEED_VIDEOS = [
   { key: '_seed/videos', file: 'amniosurge-asg', match: /amniosurge.*asg/i, vid: 'vidseedasg', name: 'AmnioSurge-Utilization-Video-MK-0062.mp4', title: 'AmnioSurge ASG utilization video', duration: 89 },
   { key: '_seed/video-hemoblast', file: 'hemoblast', match: /hemoblast/i, vid: 'vidseedhemo', name: 'HEMOBLAST-homepage.mp4', title: 'HEMOBLAST Bellows overview', duration: 11 },
 ];
-async function seedVideos() {
+async function seedVideos(only) {
   const dir = path.join(__dirname, 'seed', 'videos');
   for (const v of SEED_VIDEOS) {
-    if (docs.has(v.key)) continue;
+    if (!only && docs.has(v.key)) continue;
     const vp = path.join(dir, v.file + '.mp4');
-    const entry = [...docs].find(([k, d]) => k.startsWith('products/') && v.match.test(d.name || ''));
+    const entry = [...docs].find(([k, d]) => k.startsWith('products/') && (!only || only.has(k)) && v.match.test(d.name || ''));
     if (!entry || !fs.existsSync(vp)) continue;
     const poster = 'img' + v.vid;
     await filePut(v.vid, 'video/mp4', fs.readFileSync(vp), v.name);
@@ -84,12 +84,12 @@ async function seedVideos() {
 const SEED_SPINS = [
   { key: '_seed/spin-skeletal', file: 'skeletal-dynamics', match: d => /skeletal dynamics/i.test(d.manufacturer || ''), id: 'spinseedsd', title: '360° construct rotation' },
 ];
-async function seedSpins() {
+async function seedSpins(only) {
   const dir = path.join(__dirname, 'seed', 'spins');
   for (const s of SEED_SPINS) {
-    if (docs.has(s.key)) continue;
+    if (!only && docs.has(s.key)) continue;
     const bin = path.join(dir, s.file + '.bin'), meta = path.join(dir, s.file + '.json');
-    const entry = [...docs].find(([k, d]) => k.startsWith('products/') && s.match(d));
+    const entry = [...docs].find(([k, d]) => k.startsWith('products/') && (!only || only.has(k)) && s.match(d));
     if (!entry || !fs.existsSync(bin) || !fs.existsSync(meta)) continue;
     const m = JSON.parse(fs.readFileSync(meta, 'utf8'));
     await filePut(s.id, 'application/octet-stream', fs.readFileSync(bin), s.file + '.bin');
@@ -123,12 +123,15 @@ async function put(p, d) { docs.set(p, d); await persist(p); }
 async function del(p) { docs.delete(p); await persist(p); }
 
 const pin6 = () => String(crypto.randomInt(100000, 1000000));
-function seedProducts() {
-  if (docs.has('_seed/products')) return;
+function brochureList() {
+  try { return JSON.parse(fs.readFileSync(path.join(__dirname, 'seed', 'products.json'), 'utf8')); } catch (e) { console.error('no product seed', e.message); return []; }
+}
+function seedProducts(onlyIdx) {
+  if (!onlyIdx && docs.has('_seed/products')) return;
   const dir = path.join(__dirname, 'seed');
-  let list = [];
-  try { list = JSON.parse(fs.readFileSync(path.join(dir, 'products.json'), 'utf8')); } catch (e) { console.error('no product seed', e.message); }
+  const list = brochureList();
   list.forEach((p, i) => {
+    if (onlyIdx && !onlyIdx.has(i)) return;
     const id = 'seed' + String(i + 1).padStart(2, '0');
     const photos = [];
     if (p.photo) {
@@ -140,6 +143,7 @@ function seedProducts() {
     const doc = { name: p.name, manufacturer: p.manufacturer || '', section: p.section || '', category: p.category || '', description: p.description || '', highlights: p.highlights || [], indications: '', sizes: '', badges: p.badges || [], codes: p.codes || '', case_names: p.case_names || [], talking_points: '', links: [], photos, available: true, sort: (i + 1) * 10, source: '360 Medical Product Portfolio, Q4 2026', updated_at: new Date().toISOString() };
     docs.set('products/' + id, doc); persist('products/' + id);
   });
+  if (onlyIdx) return;
   docs.set('_seed/products', { at: new Date().toISOString(), count: list.length }); persist('_seed/products');
 }
 function seed() {
@@ -512,6 +516,25 @@ app.delete('/api/admin/products/:id/spin', needApi('owner'), async (req, res) =>
   if (!prev) return res.status(404).json({ error: 'No such product' });
   const next = Object.assign({}, prev); delete next.spin; await put(k, next); await dropSpin(prev);
   res.json({ ok: true });
+});
+/* put back brochure products that were removed, with their photos, videos and 360 views */
+const normName = x => String(x || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+function missingBrochure() {
+  const have = new Set([...docs].filter(([k]) => k.startsWith('products/')).map(([, d]) => normName(d.name)));
+  return brochureList().map((p, i) => ({ i, name: p.name, manufacturer: p.manufacturer || '' })).filter(x => !have.has(normName(x.name)) && !docs.has('products/seed' + String(x.i + 1).padStart(2, '0')));
+}
+app.get('/api/admin/products/brochure-missing', needApi('owner'), (req, res) => res.json({ missing: missingBrochure() }));
+app.post('/api/admin/products/restore-brochure', needApi('owner'), async (req, res) => {
+  const want = Array.isArray(req.body.names) ? new Set(req.body.names.map(normName)) : null;
+  const miss = missingBrochure().filter(x => !want || want.has(normName(x.name)));
+  if (!miss.length) return res.json({ ok: true, restored: [] });
+  seedProducts(new Set(miss.map(x => x.i)));
+  const only = new Set(miss.map(x => 'products/seed' + String(x.i + 1).padStart(2, '0')));
+  await seedVideos(only).catch(e => console.error('restore video', e.message));
+  await seedSpins(only).catch(e => console.error('restore spin', e.message));
+  await seedVideoLinks(only).catch(e => console.error('restore link', e.message));
+  await seedStabilityPhotos(only).catch(e => console.error('restore photos', e.message));
+  res.json({ ok: true, restored: miss.map(x => x.name) });
 });
 app.delete('/api/admin/images/:id', needApi('owner'), async (req, res) => {
   const k = '_img/' + req.params.id; const inUse = [...docs].some(([p, d]) => p.startsWith('products/') && (d.photos || []).includes(req.params.id));
@@ -1132,9 +1155,9 @@ app.delete('/api/admin/products/:id/video-links/:lid', needApi('owner'), async (
   const next = Object.assign({}, prod); next.video_links = (prod.video_links || []).filter(x => x.id !== req.params.lid);
   await put(k, next); res.json({ ok: true });
 });
-async function seedVideoLinks() {
-  if (docs.has('_seed/vlinks')) return;
-  const entry = [...docs].find(([k, d]) => k.startsWith('products/') && /xtant medical portfolio/i.test(d.name || ''));
+async function seedVideoLinks(only) {
+  if (!only && docs.has('_seed/vlinks')) return;
+  const entry = [...docs].find(([k, d]) => k.startsWith('products/') && (!only || only.has(k)) && /xtant medical portfolio/i.test(d.name || ''));
   if (!entry) return;
   const v = (await resolveVideo('https://vimeo.com/1132641948?fl=pl&fe=cm')) || {};
   await addVideoLink(entry[0], { provider: 'vimeo', url: 'https://vimeo.com/1132641948/60cd6de7cc', embed: v.embed && /h=/.test(v.embed) ? v.embed : 'https://player.vimeo.com/video/1132641948?h=60cd6de7cc', title: 'Xtant Medical · Biologics', author: 'Xtant Medical', thumb: v.thumb || 'https://i.vimeocdn.com/video/2076944072-80c50880bdccecd432a20270a9ae747db565bd742f365a9b06374d24bb5f285e-d?f=webp&region=us', duration: v.duration || null });
@@ -1143,11 +1166,11 @@ async function seedVideoLinks() {
 
 
 /* extra Stability Biologics photos (cleaned from the product page banner) */
-async function seedStabilityPhotos() {
-  if (docs.has('_seed/stab-photos')) return;
+async function seedStabilityPhotos(only) {
+  if (!only && docs.has('_seed/stab-photos')) return;
   const dir = path.join(__dirname, 'seed', 'products', 'stability'), files = ['stability-dry-storage.jpg', 'stability-large-graft.jpg', 'stability-range-of-sizes.jpg'];
   if (!files.every(f => fs.existsSync(path.join(dir, f)))) return;
-  const targets = [...docs].filter(([k, d]) => k.startsWith('products/') && /stability biologics/i.test(d.manufacturer || ''));
+  const targets = [...docs].filter(([k, d]) => k.startsWith('products/') && (!only || only.has(k)) && /stability biologics/i.test(d.manufacturer || ''));
   if (!targets.length) return;
   for (const [k, d] of targets) {
     const pid = k.slice(9), add = [];
