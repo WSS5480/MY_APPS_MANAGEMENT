@@ -137,7 +137,7 @@ function visible(s) {
     const col = p.split('/')[0];
     if (COLS.includes(col) && p.split('/').length === 2 && d && d.rep === s.rep) out[p] = d;
   }
-  for (const [p, d] of docs) if (p.startsWith('products/')) out[p] = d;
+  for (const [p, d] of docs) if (p.startsWith('products/') || p.startsWith('facilities/')) out[p] = d;
   SHARED_CONFIG.forEach(k => { if (docs.has(k)) out[k] = docs.get(k); });
   out['config/quotas'] = { rows: quotaRows().filter(r => r.rep === s.rep && r.role !== 'Team') };
   out[`data/users/${uidOf(s)}/profile`] = { rep: s.rep };
@@ -175,7 +175,7 @@ app.get('/img/:id', (req, res) => {
   res.setHeader('Content-Type', d.type || 'image/jpeg'); res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
   res.end(Buffer.from(d.b64, 'base64'));
 });
-app.get(['/logo.png', '/shim.js', '/plus.js', '/plus.css', '/app.css', '/sw.js', '/favicon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'], (req, res) => { if (req.path === '/sw.js') res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, req.path)); });
+app.get(['/logo.png', '/shim.js', '/plus.js', '/plus.css', '/visitcal.js', '/app.css', '/sw.js', '/favicon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'], (req, res) => { if (req.path === '/sw.js') res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, req.path)); });
 app.get('/manifest.webmanifest', (req, res) => { res.type('application/manifest+json'); res.sendFile(path.join(pub, 'manifest.webmanifest')); });
 
 app.get('/api/login-options', (req, res) => {
@@ -201,6 +201,7 @@ const needApi = role => (req, res, next) => { const s = session(req); if (!s) re
 
 app.get('/api/me', needApi(), (req, res) => res.json({ role: req.s.role, rep: req.s.rep || null, uid: uidOf(req.s), db: dbMode }));
 app.get('/api/sync', needApi(), (req, res) => {
+  sweepVisits();
   if (Number(req.query.v) === version) return res.json({ v: version, unchanged: true });
   res.json({ v: version, docs: visible(req.s) });
 });
@@ -218,6 +219,15 @@ app.post('/api/doc', needApi(), async (req, res) => {
       let next = op === 'delete' ? null : op === 'update' ? Object.assign({}, prev, clean(req.body.data)) : clean(req.body.data);
       if (next && s.role !== 'owner') next.rep = s.rep;
       if (next && !prev && !next.created_by) next.created_by = uidOf(s);
+      if (col === 'visits') {
+        sweepVisits();
+        const pv = docs.get(p);
+        if (next) {
+          delete next.check; delete next.check_attempts;
+          if (pv && pv.check) { next.check = pv.check; next.check_attempts = pv.check_attempts; ['date', 'time', 'duration', 'facility', 'target_id'].forEach(f => { if (pv[f] !== undefined) next[f] = pv[f]; }); }
+          if (pv && pv.status === 'planned' && next.status === 'cancelled' && s.role !== 'owner' && visitWindow(pv).start <= Date.now()) return res.status(409).json({ code: 'failed_precondition', error: 'This visit has already started, so it cannot be cancelled. Check in, or ask the COO.' });
+        } else if (pv && pv.check && s.role !== 'owner') return res.status(403).json({ code: 'permission_denied', error: 'A visit with a check-in record cannot be deleted.' });
+      }
       if (col === 'cases') {
         const lock = closedMonth(prev && prev.date) || closedMonth(next && next.date);
         if (lock) return res.status(423).json({ code: 'failed_precondition', error: monthLabel(lock) + ' is closed. Ask the COO to reopen it to make changes.' });
@@ -310,7 +320,7 @@ app.post('/api/admin/restore', needApi('owner'), async (req, res) => {
   let n = 0;
   for (const k of Object.keys(inc)) {
     const parts = k.split('/');
-    if (k.startsWith('_auth/') || !((COLS.includes(parts[0]) && parts.length === 2) || k === 'config/quotas' || SHARED_CONFIG.includes(k) || k.startsWith('_audit/') || ((parts[0] === 'coonotes' || parts[0] === 'products' || parts[0] === '_img') && parts.length === 2))) continue;
+    if (k.startsWith('_auth/') || !((COLS.includes(parts[0]) && parts.length === 2) || k === 'config/quotas' || SHARED_CONFIG.includes(k) || k.startsWith('_audit/') || ((parts[0] === 'coonotes' || parts[0] === 'products' || parts[0] === 'facilities' || parts[0] === '_img') && parts.length === 2))) continue;
     await put(k, inc[k]); n++;
   }
   const p = JSON.parse(JSON.stringify(pins()));
@@ -601,6 +611,102 @@ setInterval(() => {
   const dow = new Date(today + 'T12:00:00Z').getUTCDay();
   if (dow === 1 && hour >= 8 && hour < 12 && (docs.get('_auth/digest') || {}).last !== today) sendDigests().catch(e => console.error('digest', e.message));
 }, 10 * 60e3).unref();
+
+
+/* ---------------- target visits: facilities, geo check-in, missed sweep ---------------- */
+function chiEpoch(date, time) {
+  const [y, m, d] = String(date).split('-').map(Number), [hh, mm] = String(time || '00:00').split(':').map(Number);
+  const guess = Date.UTC(y, m - 1, d, hh || 0, mm || 0);
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).formatToParts(new Date(guess));
+  const g = k => Number(parts.find(x => x.type === k).value);
+  return guess - (Date.UTC(g('year'), g('month') - 1, g('day'), g('hour'), g('minute')) - guess);
+}
+function geoSet() { const st = docs.get('config/settings') || {}; return { early: Number(st.checkin_early_min) || 30, late: Number(st.checkin_late_min) || 30, radius: Number(st.geo_radius_m) || 400 }; }
+function visitWindow(v) {
+  const g = geoSet(), start = chiEpoch(v.date, v.time || '08:00'), end = start + (Number(v.duration) || 60) * 60e3;
+  return { start, end, open: start - g.early * 60e3, close: end + g.late * 60e3 };
+}
+const lcs = v => String(v || '').trim().toLowerCase();
+function facilityFor(name) { const n = lcs(name); if (!n) return null; for (const [k, d] of docs) if (k.startsWith('facilities/') && (lcs(d.name) === n || (d.aliases || []).some(a => lcs(a) === n))) return Object.assign({ id: k.slice(11) }, d); return null; }
+function metersBetween(a, b, c, d) { const R = 6371000, r = x => x * Math.PI / 180, dl = r(c - a), dg = r(d - b); const h = Math.sin(dl / 2) ** 2 + Math.cos(r(a)) * Math.cos(r(c)) * Math.sin(dg / 2) ** 2; return Math.round(2 * R * Math.asin(Math.sqrt(h))); }
+const fmtClock = ms => new Date(ms).toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit' });
+async function notifyOwner(title, body) {
+  for (const [k, d] of [...docs]) if (k.startsWith('_push/') && d.role === 'owner' && d.v === adminV()) await sendTo(d, { title, body, url: '/admin#visits' });
+}
+let lastSweep = 0;
+function sweepVisits() {
+  if (Date.now() - lastSweep < 30e3) return; lastSweep = Date.now();
+  for (const [k, v] of [...docs]) {
+    if (!k.startsWith('visits/') || !v || v.status !== 'planned' || v.check || !v.date || !v.time) continue;
+    const w = visitWindow(v);
+    if (Date.now() > w.close) {
+      const check = { at: new Date().toISOString(), ok: false, missed: true, reason: 'Missed: no check-in between ' + fmtClock(w.open) + ' and ' + fmtClock(w.close) };
+      docs.set(k, Object.assign({}, v, { check })); persist(k);
+      notifyOwner('Visit not verified · ' + v.rep, v.rep + ' did not check in for ' + v.surgeon + (v.facility ? ' at ' + v.facility : '') + ' (' + v.date + ' ' + v.time + ').').catch(() => {});
+    }
+  }
+}
+setInterval(sweepVisits, 5 * 60e3).unref();
+app.post('/api/checkin', needApi(), async (req, res) => {
+  sweepVisits();
+  const k = 'visits/' + String(req.body.id || ''), v = docs.get(k);
+  if (!v) return res.status(404).json({ error: 'Visit not found.' });
+  if (req.s.role !== 'owner' && v.rep !== req.s.rep) return res.status(403).json({ error: 'Not your visit.' });
+  if (req.s.role === 'owner') return res.status(403).json({ error: 'Only the rep checks in to their own visit.' });
+  if (v.status !== 'planned') return res.status(400).json({ error: 'Only planned visits can be checked in.' });
+  if (v.check && v.check.ok === true) return res.json({ ok: true, check: v.check });
+  if (v.check && v.check.missed) return res.status(409).json({ error: 'The check-in window for this visit has closed.', check: v.check });
+  const lat = Number(req.body.lat), lng = Number(req.body.lng), acc = Math.max(0, Number(req.body.acc) || 0);
+  if (!isFinite(lat) || !isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return res.status(400).json({ error: 'No location received.' });
+  const g = geoSet(), w = visitWindow(v), now = Date.now(), fac = facilityFor(v.facility);
+  const inWindow = now >= w.open && now <= w.close;
+  let ok, reason, dist = null;
+  if (!fac || fac.lat == null || fac.lng == null) { ok = null; reason = 'Cannot verify: no address on file for ' + (v.facility || 'this facility') + '.'; }
+  else {
+    dist = metersBetween(lat, lng, fac.lat, fac.lng);
+    const radius = Number(fac.radius_m) || g.radius, slack = Math.min(acc, 150);
+    const near = acc <= 1500 && dist - slack <= radius;
+    ok = near && inWindow;
+    reason = !inWindow ? (now < w.open ? 'Too early: check-in opens at ' + fmtClock(w.open) + '.' : 'Too late: check-in closed at ' + fmtClock(w.close) + '.')
+      : acc > 1500 ? 'Location too imprecise (±' + Math.round(acc) + ' m). Turn on precise location and try again.'
+      : !near ? 'Not at ' + fac.name + ': ' + (dist >= 1000 ? (dist / 1609.34).toFixed(1) + ' mi' : dist + ' m') + ' away.' : 'At ' + fac.name + ' (' + dist + ' m from the address) during the visit window.';
+  }
+  if (!inWindow && now < w.open) return res.status(400).json({ error: reason });
+  const check = { at: new Date(now).toISOString(), lat: Math.round(lat * 1e5) / 1e5, lng: Math.round(lng * 1e5) / 1e5, acc: Math.round(acc), dist_m: dist, ok, reason, in_window: inWindow, facility_id: fac ? fac.id : null };
+  const attempts = (v.check_attempts || 0) + 1, wasBad = v.check && v.check.ok === false;
+  await put(k, Object.assign({}, v, { check, check_attempts: attempts }));
+  if (ok === false && !wasBad) notifyOwner('Visit check failed · ' + v.rep, v.rep + ' · ' + v.surgeon + ': ' + reason).catch(() => {});
+  if (ok === null && attempts === 1) notifyOwner('Visit not verifiable · ' + v.rep, 'Add an address for ' + (v.facility || 'the facility') + ' in Admin so check-ins there can be verified.').catch(() => {});
+  res.json({ ok: true, check });
+});
+async function geocode(q) {
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 8000);
+  try {
+    const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=' + encodeURIComponent(q), { signal: ctl.signal, headers: { 'User-Agent': '360-Medical-Case-Tracker/1.0 (' + (process.env.PUBLIC_URL || 'https://three60-medical-surgical-case-tracker.onrender.com') + ')', 'Accept-Language': 'en' } });
+    const j = await r.json(); if (!Array.isArray(j) || !j[0]) return null;
+    return { lat: Math.round(Number(j[0].lat) * 1e6) / 1e6, lng: Math.round(Number(j[0].lon) * 1e6) / 1e6, label: j[0].display_name };
+  } catch (e) { return null; } finally { clearTimeout(t); }
+}
+app.get('/api/admin/geocode', needApi('owner'), async (req, res) => { const g = await geocode(String(req.query.q || '').slice(0, 300)); res.json(g ? Object.assign({ found: true }, g) : { found: false }); });
+app.post('/api/admin/facilities', needApi('owner'), async (req, res) => {
+  const b = req.body || {}, id = b.id && /^[A-Za-z0-9_-]{1,40}$/.test(b.id) ? b.id : 'f' + crypto.randomBytes(7).toString('hex');
+  const name = String(b.name || '').trim().slice(0, 120); if (!name) return res.status(400).json({ error: 'Facility name is required.' });
+  const dupe = [...docs].find(([k, d]) => k.startsWith('facilities/') && k !== 'facilities/' + id && lcs(d.name) === lcs(name));
+  if (dupe) return res.status(400).json({ error: name + ' is already in the list.' });
+  const address = String(b.address || '').trim().slice(0, 300);
+  let lat = b.lat === '' || b.lat == null ? null : Number(b.lat), lng = b.lng === '' || b.lng == null ? null : Number(b.lng), label = null;
+  if ((lat == null || lng == null || b.geocode) && address) { const g = await geocode(address); if (!g) return res.status(400).json({ error: 'Could not find that address on the map. Check it, or enter latitude and longitude.' }); lat = g.lat; lng = g.lng; label = g.label; }
+  if (lat != null && (!isFinite(lat) || !isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180)) return res.status(400).json({ error: 'Latitude/longitude look wrong.' });
+  const doc = { name, address, lat, lng, map_label: label || (docs.get('facilities/' + id) || {}).map_label || '', radius_m: num(b.radius_m) || null, aliases: strList(b.aliases), updated_at: new Date().toISOString() };
+  await put('facilities/' + id, doc); res.json({ ok: true, id, facility: doc });
+});
+app.delete('/api/admin/facilities/:id', needApi('owner'), async (req, res) => { const k = 'facilities/' + req.params.id; if (docs.has(k)) await del(k); res.json({ ok: true }); });
+app.post('/api/admin/visit-ack', needApi('owner'), async (req, res) => {
+  const k = 'visits/' + String(req.body.id || ''), v = docs.get(k);
+  if (!v || !v.check) return res.status(404).json({ error: 'No check-in record.' });
+  await put(k, Object.assign({}, v, { check: Object.assign({}, v.check, { ack: { at: new Date().toISOString(), note: String(req.body.note || '').slice(0, 500) } }) }));
+  res.json({ ok: true });
+});
 
 initStore().then(() => app.listen(PORT, () => console.log(`360 Medical tracker on :${PORT} (storage: ${dbMode})`)))
   .catch(e => { console.error('startup failed', e); process.exit(1); });

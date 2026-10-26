@@ -18,6 +18,7 @@ Lives on branch `surgical-case-tracker` of MY_APPS_MANAGEMENT; Render service `3
 - Commission statement per rep and month, printable to PDF.
 - Upcoming 14 days + private calendar feed (/cal/…ics) for iPhone/Google/Outlook.
 - Surgeon preference cards (prefill cases), pathway visit log with next steps, hospital vendor credential tracker.
+- Target visit calendar (month + agenda) for each rep and for all reps in Admin. Reps plan visits; at the visit they tap Check in and the phone's location (one reading, at that moment) is compared with the facility address (Admin → Facilities, geocoded with OpenStreetMap) and the visit window. Green = verified, red = not at the facility / outside the window / missed (COO gets a push alert), amber = facility has no address.
 - Voice dictation on notes; works offline (changes queue on the device and sync later).
 - Weekly digest push notifications (Monday morning) via web push; Render cron job `360-medical-weekly-digest` wakes the service.
 

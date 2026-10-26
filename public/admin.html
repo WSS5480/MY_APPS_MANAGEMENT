@@ -55,7 +55,7 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
   <header class="head">
     <img class="logo" src="/logo.png" alt="360 Medical">
     <div class="headtxt"><h1>Admin</h1><span class="conf">360 MEDICAL - SURGICAL CASE TRACKER</span><p class="sub">Reps, PINs, quotas and commission plans. Changes here show in the tracker within seconds.</p></div>
-    <div class="tools"><a class="btn" href="/">Open tracker</a><a class="btn" href="/products">Products</a><a class="btn" href="/download">Download app</a><button class="btn" id="logout" type="button">Log out</button></div>
+    <div class="tools"><a class="btn" href="/">Open tracker</a><a class="btn" href="#visits">Visits</a><a class="btn" href="/products">Products</a><a class="btn" href="/download">Download app</a><button class="btn" id="logout" type="button">Log out</button></div>
   </header>
 
   <div class="msg warn" id="dbwarn" hidden></div>
@@ -119,6 +119,31 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
     </div>
   </form></dialog>
 
+  <section class="card" id="visits">
+    <div class="cardhead"><h2>Target visits · all reps</h2><span class="pill mute" id="av-count"></span></div>
+    <p class="note">Every planned target-surgeon visit. When a rep checks in, their phone's location at that moment is compared with the facility address and the visit time. <b style="color:#12805A">Green</b> = at the facility during the visit. <b style="color:#B93426">Red</b> = somewhere else, outside the time window, or no check-in; you also get a push notification (turn on notifications in the tracker's Weekly digest card). <b style="color:#8A5A00">Amber</b> = the facility has no address yet, so it can't be checked.</p>
+    <div id="av-alerts"></div>
+    <div id="av-cal" style="margin-top:12px"></div>
+  </section>
+
+  <section class="card" id="facilities">
+    <div class="cardhead"><h2>Facilities &amp; addresses</h2><button class="btn primary" id="fc-add" type="button">+ Add facility</button></div>
+    <p class="note">The address each check-in is compared against. Type the address and it is found on the map automatically, or stand at the facility and use <b>Use my location</b>. The radius is how far from that point still counts as "at the facility" (large hospital campuses need more).</p>
+    <div id="fc-missing"></div>
+    <div class="scroll"><table id="fc"><thead><tr><th>Facility</th><th>Address</th><th>Map point</th><th>Radius</th><th></th></tr></thead><tbody></tbody></table></div>
+    <form class="form" id="fc-form" hidden style="display:grid;grid-template-columns:repeat(auto-fit,minmax(12rem,1fr));gap:10px;margin-top:12px;align-items:end">
+      <label class="f">Facility name (as reps type it)<input class="field" id="fc-name" list="fc-names" required></label>
+      <label class="f" style="grid-column:span 2">Street address<input class="field" id="fc-address" placeholder="1102 W Trenton Rd, Edinburg, TX 78539"></label>
+      <label class="f">Radius (meters)<input class="field" id="fc-radius" type="number" min="50" max="3000" placeholder="400"></label>
+      <label class="f">Latitude<input class="field" id="fc-lat" inputmode="decimal" placeholder="auto"></label>
+      <label class="f">Longitude<input class="field" id="fc-lng" inputmode="decimal" placeholder="auto"></label>
+      <label class="f" style="grid-column:span 2">Other names reps use · comma separated<input class="field" id="fc-aliases" placeholder="DHR, Doctors Hospital at Renaissance"></label>
+      <div class="tools" style="grid-column:1/-1"><button class="btn" type="button" id="fc-here">📍 Use my location</button><button class="btn" type="button" id="fc-find">Find address on map</button><button class="btn primary" type="submit">Save facility</button><button class="btn" type="button" id="fc-cancel">Cancel</button></div>
+    </form>
+    <datalist id="fc-names"></datalist>
+    <div class="msg" id="fc-msg" hidden style="margin-top:12px"></div>
+  </section>
+
   <section class="card" id="pricebook">
     <div class="cardhead">
       <h2>Price book</h2>
@@ -144,6 +169,9 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
         <label class="f">Invoice late after PO (days)<input class="field" id="st-inv" type="number" min="1" max="90"></label>
         <label class="f">Target stuck on a step (days)<input class="field" id="st-stuck" type="number" min="7" max="180"></label>
         <label class="f">Credential warning (days before)<input class="field" id="st-cred" type="number" min="7" max="120"></label>
+        <label class="f">Visit radius (meters)<input class="field" id="st-radius" type="number" min="50" max="3000"></label>
+        <label class="f">Check-in opens (min before)<input class="field" id="st-early" type="number" min="0" max="180"></label>
+        <label class="f">Check-in closes (min after)<input class="field" id="st-late" type="number" min="0" max="240"></label>
         <button class="btn primary" type="submit">Save settings</button>
       </form>
       <div class="msg" id="st-msg" hidden style="margin-top:10px"></div>
@@ -206,6 +234,7 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
   </div>
   <footer class="foot">Never enter patient names, MRNs, dates of birth or other patient identifiers. Confidential: 360 Medical internal sales data, not for distribution outside the company.</footer>
 </div>
+<script src="/visitcal.js"></script>
 <script>
 (function () {
   'use strict';
@@ -474,7 +503,7 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
       PB = ((DOCS['config/pricebook'] || {}).rows || []).map(function (r) { return { product: r.product || '', facility: r.facility || '', price: r.price }; });
       drawPB(); setPB(false);
       var st = DOCS['config/settings'] || {};
-      $('#st-po').value = st.po_alert_days || 3; $('#st-inv').value = st.invoice_alert_days || 7; $('#st-stuck').value = st.stuck_step_days || 30; $('#st-cred').value = st.cred_warn_days || 30;
+      $('#st-po').value = st.po_alert_days || 3; $('#st-inv').value = st.invoice_alert_days || 7; $('#st-stuck').value = st.stuck_step_days || 30; $('#st-cred').value = st.cred_warn_days || 30; $('#st-radius').value = st.geo_radius_m || 400; $('#st-early').value = st.checkin_early_min || 30; $('#st-late').value = st.checkin_late_min || 30;
       drawMonths();
       var names = {}; Object.keys(DOCS).forEach(function (k) { if (k.indexOf('products/') === 0) (DOCS[k].case_names || [DOCS[k].name]).forEach(function (n) { names[n] = 1; }); if (k.indexOf('cases/') === 0 && DOCS[k].product) names[DOCS[k].product] = 1; });
       var dl = $('#pb-names'); dl.replaceChildren(); Object.keys(names).sort().forEach(function (n) { var o = el('option'); o.value = n; dl.appendChild(o); });
@@ -514,7 +543,7 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
   $('#st-form').addEventListener('submit', function (e) {
     e.preventDefault();
     var n = function (id, lo, hi, d) { var v = Math.round(Number($(id).value)); return isNaN(v) ? d : Math.min(hi, Math.max(lo, v)); };
-    setDoc('config/settings', { po_alert_days: n('#st-po', 1, 60, 3), invoice_alert_days: n('#st-inv', 1, 90, 7), stuck_step_days: n('#st-stuck', 7, 180, 30), cred_warn_days: n('#st-cred', 7, 120, 30) })
+    setDoc('config/settings', { po_alert_days: n('#st-po', 1, 60, 3), invoice_alert_days: n('#st-inv', 1, 90, 7), stuck_step_days: n('#st-stuck', 7, 180, 30), cred_warn_days: n('#st-cred', 7, 120, 30), geo_radius_m: n('#st-radius', 50, 3000, 400), checkin_early_min: n('#st-early', 0, 180, 30), checkin_late_min: n('#st-late', 0, 240, 30) })
       .then(function () { say('#st-msg', 'ok', 'Settings saved.'); }, function () { say('#st-msg', 'err', 'Could not save.'); });
   });
   function drawMonths() {
@@ -543,6 +572,105 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
     api('/api/cron/digest', {}).then(function (j) { say('#dg-msg', j.sent ? 'ok' : 'warn', j.sent ? 'Sent to ' + j.sent + ' device' + (j.sent === 1 ? '' : 's') + '.' : 'Nobody has turned on notifications yet. Each person turns them on in the tracker\'s Weekly digest card.'); }, function () { say('#dg-msg', 'err', 'Could not send.'); }).finally(function () { b.disabled = false; });
   });
   loadConfig().catch(function () {});
+
+  /* ---------- target visits (all reps) + facilities ---------- */
+  var VD = { visits: [], facilities: [], reps: [], settings: {}, names: [] }, avCal = null, fcEdit = null;
+  function loadVisits() {
+    return fetch('/api/sync?v=-1').then(function (r) { return r.json(); }).then(function (j) {
+      var d = j.docs || {}, names = {};
+      VD.visits = []; VD.facilities = [];
+      Object.keys(d).forEach(function (k) {
+        var c = k.split('/')[0];
+        if (c === 'visits') VD.visits.push(Object.assign({ id: k.slice(7) }, d[k]));
+        if (c === 'facilities') VD.facilities.push(Object.assign({ id: k.slice(11) }, d[k]));
+        if ((c === 'cases' || c === 'targets' || c === 'visits' || c === 'credentials' || c === 'prefcards') && d[k].facility) names[d[k].facility.trim()] = 1;
+      });
+      VD.reps = ((d['config/quotas'] || {}).rows || []).filter(function (r) { return r.role !== 'Team'; }).map(function (r) { return r.rep; });
+      VD.settings = d['config/settings'] || {};
+      VD.names = Object.keys(names).sort();
+      drawVisitAdmin(); drawFacilities();
+    });
+  }
+  function lc(v) { return String(v || '').trim().toLowerCase(); }
+  function facKnown(n) { return VD.facilities.some(function (f) { return lc(f.name) === lc(n) || (f.aliases || []).some(function (a) { return lc(a) === lc(n); }); }); }
+  function drawVisitAdmin() {
+    if (!avCal && window.VisitCal) avCal = window.VisitCal.mount($('#av-cal'), { repFilter: true, showRep: true, getData: function () { return { visits: VD.visits, reps: VD.reps, settings: VD.settings }; }, actions: function (v, st, close) {
+      var a = [];
+      if (v.check && v.check.ok !== true && !v.check.ack) a.push({ label: 'Mark reviewed', cls: 'primary', fn: function () { var note = prompt('Note for the record (optional), e.g. "Called Brandon, surgeon moved the meeting":', ''); if (note === null) return; api('/api/admin/visit-ack', { id: v.id, note: note }).then(function () { close(); loadVisits(); }); } });
+      if (v.check && v.check.lat != null) a.push({ label: 'Show on map', fn: function () { window.open('https://www.openstreetmap.org/?mlat=' + v.check.lat + '&mlon=' + v.check.lng + '#map=16/' + v.check.lat + '/' + v.check.lng, '_blank', 'noopener'); } });
+      return a;
+    } });
+    if (avCal) avCal.render();
+    var bad = VD.visits.filter(function (v) { return v.check && v.check.ok === false && !v.check.ack; }).sort(function (a, b) { return a.date < b.date ? 1 : -1; });
+    var box = $('#av-alerts'); box.replaceChildren();
+    $('#av-count').textContent = bad.length ? bad.length + ' need review' : 'All clear';
+    $('#av-count').className = 'pill ' + (bad.length ? 'bad' : 'ok');
+    if (!bad.length) return;
+    var h = el('div', 'msg err'); h.style.marginBottom = '8px'; h.textContent = pl(bad.length, 'visit was', 'visits were') + ' not verified. Review each one with the rep, then mark it reviewed.'; box.appendChild(h);
+    var tb = el('table'), body = el('tbody'); tb.appendChild(body);
+    bad.forEach(function (v) {
+      var tr = el('tr');
+      [v.date + (v.time ? ' ' + v.time : ''), v.rep, v.surgeon + (v.facility ? ' @ ' + v.facility : ''), v.check.reason].forEach(function (x, i) { tr.appendChild(el('td', i === 1 ? 'strong' : '', x)); });
+      var td = el('td'), b = el('button', 'btn small', 'Open'); b.type = 'button'; b.addEventListener('click', function () { avCal.open(v); }); td.appendChild(b); tr.appendChild(td);
+      body.appendChild(tr);
+    });
+    var w = el('div', 'scroll'); w.appendChild(tb); box.appendChild(w);
+  }
+  function pl(n, a, b) { return n + ' ' + (n === 1 ? a : b); }
+  function drawFacilities() {
+    var b = $('#fc tbody'); b.replaceChildren();
+    VD.facilities.sort(function (a, c) { return lc(a.name) < lc(c.name) ? -1 : 1; }).forEach(function (f) {
+      var tr = el('tr');
+      tr.appendChild(el('td', 'strong', f.name + ((f.aliases || []).length ? ' (' + f.aliases.join(', ') + ')' : '')));
+      tr.appendChild(el('td', '', f.address || '—'));
+      var mp = el('td'); if (f.lat != null) { var a = el('a', '', f.lat.toFixed(4) + ', ' + f.lng.toFixed(4)); a.href = 'https://www.openstreetmap.org/?mlat=' + f.lat + '&mlon=' + f.lng + '#map=17/' + f.lat + '/' + f.lng; a.target = '_blank'; a.rel = 'noopener'; mp.appendChild(a); } else mp.appendChild(el('span', 'pill warn', 'Not on map')); tr.appendChild(mp);
+      tr.appendChild(el('td', '', (f.radius_m || VD.settings.geo_radius_m || 400) + ' m'));
+      var x = el('td'), e = el('button', 'btn small', 'Edit'), d = el('button', 'btn small danger', 'Delete'); e.type = d.type = 'button';
+      e.addEventListener('click', function () { openFac(f); });
+      d.addEventListener('click', function () { if (!d.dataset.armed) { d.dataset.armed = '1'; d.textContent = 'Confirm'; return; } fetch('/api/admin/facilities/' + encodeURIComponent(f.id), { method: 'DELETE' }).then(loadVisits); });
+      x.appendChild(e); x.appendChild(document.createTextNode(' ')); x.appendChild(d); tr.appendChild(x); b.appendChild(tr);
+    });
+    if (!VD.facilities.length) { var tr0 = el('tr'), td0 = el('td', 'note', 'No facilities yet.'); td0.colSpan = 5; tr0.appendChild(td0); b.appendChild(tr0); }
+    var miss = VD.names.filter(function (n) { return !facKnown(n); }), mb = $('#fc-missing'); mb.replaceChildren();
+    var dl = $('#fc-names'); dl.replaceChildren(); VD.names.forEach(function (n) { var o = el('option'); o.value = n; dl.appendChild(o); });
+    if (miss.length) {
+      var m = el('div', 'msg warn'); m.style.marginBottom = '10px'; m.appendChild(document.createTextNode('Reps use these facilities but they have no address yet, so check-ins there can\'t be verified: '));
+      miss.forEach(function (n, i) { var bb = el('button', 'btn small', '+ ' + n); bb.type = 'button'; bb.style.margin = '4px 4px 0 0'; bb.addEventListener('click', function () { openFac({ name: n }); }); m.appendChild(bb); });
+      mb.appendChild(m);
+    }
+  }
+  function openFac(f) {
+    fcEdit = f && f.id ? f : null; $('#fc-form').hidden = false;
+    $('#fc-name').value = (f && f.name) || ''; $('#fc-address').value = (f && f.address) || ''; $('#fc-radius').value = (f && f.radius_m) || '';
+    $('#fc-lat').value = f && f.lat != null ? f.lat : ''; $('#fc-lng').value = f && f.lng != null ? f.lng : ''; $('#fc-aliases').value = ((f && f.aliases) || []).join(', ');
+    $('#fc-form').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); $((f && f.name) ? '#fc-address' : '#fc-name').focus();
+  }
+  $('#fc-add').addEventListener('click', function () { openFac(null); });
+  $('#fc-cancel').addEventListener('click', function () { $('#fc-form').hidden = true; fcEdit = null; });
+  $('#fc-address').addEventListener('input', function () { $('#fc-lat').value = ''; $('#fc-lng').value = ''; });
+  $('#fc-find').addEventListener('click', function () {
+    var q = $('#fc-address').value.trim(); if (!q) { $('#fc-address').focus(); return; }
+    say('#fc-msg', 'warn', 'Looking up the address…');
+    fetch('/api/admin/geocode?q=' + encodeURIComponent(q)).then(function (r) { return r.json(); }).then(function (g) {
+      if (!g.found) return say('#fc-msg', 'err', 'Address not found on the map. Check it, or use your location when you are there.');
+      $('#fc-lat').value = g.lat; $('#fc-lng').value = g.lng; say('#fc-msg', 'ok', 'Found: ' + g.label);
+    }, function () { say('#fc-msg', 'err', 'Map lookup is not answering. Try again, or enter latitude/longitude.'); });
+  });
+  $('#fc-here').addEventListener('click', function () {
+    if (!navigator.geolocation) return say('#fc-msg', 'err', 'This device cannot share its location.');
+    say('#fc-msg', 'warn', 'Getting your location…');
+    navigator.geolocation.getCurrentPosition(function (p) { $('#fc-lat').value = Math.round(p.coords.latitude * 1e6) / 1e6; $('#fc-lng').value = Math.round(p.coords.longitude * 1e6) / 1e6; say('#fc-msg', 'ok', 'Using your current location (±' + Math.round(p.coords.accuracy) + ' m). Save to keep it.'); },
+      function () { say('#fc-msg', 'err', 'Location blocked or unavailable.'); }, { enableHighAccuracy: true, timeout: 20000 });
+  });
+  $('#fc-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var body = { id: fcEdit && fcEdit.id, name: $('#fc-name').value.trim(), address: $('#fc-address').value.trim(), radius_m: $('#fc-radius').value, lat: $('#fc-lat').value, lng: $('#fc-lng').value, aliases: $('#fc-aliases').value.split(',') };
+    if (!body.address && (body.lat === '' || body.lng === '')) return say('#fc-msg', 'err', 'Add an address, or use your location at the facility.');
+    say('#fc-msg', 'warn', 'Saving…');
+    api('/api/admin/facilities', body).then(function (j) { $('#fc-form').hidden = true; fcEdit = null; say('#fc-msg', 'ok', j.facility.name + ' saved' + (j.facility.map_label ? ': ' + j.facility.map_label : '.')); loadVisits(); }, function (er) { say('#fc-msg', 'err', (er && er.error) || 'Could not save.'); });
+  });
+  loadVisits().catch(function () {});
+  setInterval(function () { if (!document.hidden && $('#fc-form').hidden) loadVisits().catch(function () {}); }, 30000);
 
 
   load().catch(function () {});

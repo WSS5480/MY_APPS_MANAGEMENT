@@ -345,6 +345,12 @@
       var d = daysBetween(since, TODAY);
       if (d >= st.stuck_step_days) out.push({ level: 'info', text: t.surgeon + ' has been at ' + (t.step ? 'pathway step ' + t.step : 'Not started') + ' for ' + d + ' days' + (you ? '' : ' (' + t.rep + ')') + '. Plan the next step.' });
     });
+    var badV = X.visits.filter(mine).filter(function (v) { return v.check && v.check.ok === false && !v.check.ack && String(v.date).slice(0, 7) === S.month; });
+    if (badV.length) out.push({ level: you ? 'warn' : 'bad', text: pl(badV.length, 'target visit was', 'target visits were') + ' not verified at the facility this month: ' + badV.slice(0, 3).map(function (v) { return (you ? '' : v.rep + ' · ') + v.surgeon + ' (' + dayName(v.date) + ')'; }).join(', ') + (badV.length > 3 ? ' and more' : '') + '.' });
+    var nov = X.visits.filter(mine).filter(function (v) { return v.check && v.check.ok === null && String(v.date).slice(0, 7) === S.month; });
+    if (nov.length && !you) out.push({ level: 'info', text: pl(nov.length, 'check-in', 'check-ins') + " couldn't be verified because the facility has no address. Add it in Admin → Facilities." });
+    var openNow = X.visits.filter(mine).filter(function (v) { return v.status === 'planned' && !v.check && v.time && window.VisitCal && window.VisitCal.state(v, X.settings) === 'open'; });
+    if (openNow.length && you) out.push({ level: 'info', text: 'Check-in is open for ' + openNow.map(function (v) { return v.surgeon; }).join(', ') + '. Open it in the visit calendar and tap Check in.' });
     var due = openNextSteps().filter(mine).filter(function (v) { return v.next_date < TODAY; });
     if (due.length) out.push({ level: 'warn', text: pl(due.length, 'next step is', 'next steps are') + ' overdue: ' + due.slice(0, 3).map(function (v) { return v.surgeon + (v.next_step ? ' (' + v.next_step + ')' : ''); }).join(', ') + (due.length > 3 ? ' and more' : '') + '.' });
     return out;
@@ -413,6 +419,7 @@
     var list = $('#x-up-list'); list.replaceChildren();
     var end = addDays(TODAY, 13), items = [];
     S.cases.filter(function (c) { return inView(c) && c.date >= TODAY && c.date <= end && c.status !== 'Cancelled'; }).forEach(function (c) { items.push({ date: c.date, time: c.time || '', kind: 'case', c: c }); });
+    X.visits.filter(inView).filter(function (v) { return v.status === 'planned' && v.date >= TODAY && v.date <= end; }).forEach(function (v) { items.push({ date: v.date, time: v.time || '', kind: 'visit', v: v }); });
     openNextSteps().filter(inView).filter(function (v) { return v.next_date <= end; }).forEach(function (v) { items.push({ date: v.next_date < TODAY ? TODAY : v.next_date, time: '', kind: 'step', v: v, late: v.next_date < TODAY }); });
     items.sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : (a.time || '99') < (b.time || '99') ? -1 : 1; });
     if (!items.length) { list.appendChild(el('div', 'empty', 'Nothing scheduled in the next two weeks. Log upcoming cases with status Scheduled to see them here.')); return; }
@@ -425,6 +432,13 @@
         left.appendChild(el('div', 'strong', (c.time ? fmtTime(c.time) + ' · ' : '') + (c.surgeon || 'Surgeon TBD') + (c.product ? ' · ' + c.product : '')));
         left.appendChild(el('div', 'meta', [c.facility, ctx.viewRep ? '' : c.rep, c.status].filter(Boolean).join(' · ')));
         li.appendChild(left); li.appendChild(btn('Open', 'small', function () { T.openEditor(c.id); $('#sec-log').scrollIntoView({ behavior: 'smooth' }); }));
+      } else if (it.kind === 'visit') {
+        var pv = it.v, pst = window.VisitCal ? window.VisitCal.state(pv, X.settings) : 'planned';
+        left.appendChild(el('div', 'strong', (pv.time ? fmtTime(pv.time) + ' · ' : '') + 'Target visit · ' + pv.surgeon));
+        left.appendChild(el('div', 'meta', [pv.facility, ctx.viewRep ? '' : pv.rep, pv.purpose].filter(Boolean).join(' · ')));
+        li.appendChild(left);
+        var pb = btn(pst === 'open' && !T.isLead() ? '📍 Check in' : 'Open', 'small' + (pst === 'open' && !T.isLead() ? ' primary' : ''), function () { if (vcal) vcal.open(pv); });
+        li.appendChild(pb);
       } else {
         var v = it.v;
         left.appendChild(el('div', 'strong', 'Next step · ' + v.surgeon + (v.next_step ? ': ' + v.next_step : '')));
@@ -486,7 +500,7 @@
     var ul = el('ul', 'x-list');
     rows.slice(0, 15).forEach(function (v) {
       var li = el('li'), l = el('div');
-      l.appendChild(el('div', 'strong', dayName(v.date) + ' · ' + v.surgeon + ' · ' + (v.type || 'Visit') + (v.step_to != null && v.step_to !== v.step_from ? ' · moved to step ' + v.step_to : '')));
+      l.appendChild(el('div', 'strong', (v.status === 'planned' ? 'Planned · ' : v.status === 'cancelled' ? 'Cancelled · ' : '') + dayName(v.date) + ' · ' + v.surgeon + ' · ' + (v.type || 'Visit') + (v.step_to != null && v.step_to !== v.step_from ? ' · moved to step ' + v.step_to : '')));
       if (v.notes) l.appendChild(el('div', '', v.notes));
       var meta = [ctx.viewRep ? '' : v.rep, v.next_step || v.next_date ? 'Next: ' + [v.next_step, v.next_date ? dayName(v.next_date) : ''].filter(Boolean).join(' by ') : ''].filter(Boolean).join(' · ');
       if (meta) l.appendChild(el('div', 'meta', meta));
@@ -661,6 +675,102 @@
     }, function () { msg.textContent = 'Notifications need a connection to set up.'; });
   }
 
+
+  /* ---------- target visit calendar: plan, check in (geo), complete ---------- */
+  var vcal = null;
+  function drawVCal(ctx) {
+    var sec = $('#sec-vcal'), targets = S.targets.filter(inView);
+    if (!X.built.vcal) {
+      X.built.vcal = true; sec.replaceChildren();
+      sec.appendChild(el('h2', '', 'Target visit calendar'));
+      sec.appendChild(el('p', 'note', 'Plan visits with your target surgeons. At the visit, open it and tap Check in: your phone shares its location once, at that moment, to confirm you are at the facility during the visit time. Green = verified, red = not verified or missed.'));
+      var f = el('div', 'x-form'); f.id = 'xvc-form';
+      var lab = function (t, node, cls) { var l = el('label', cls || '', t); l.appendChild(node); f.appendChild(l); return node; };
+      lab('Target surgeon', el('select', 'field')).id = 'xvc-target';
+      var fa = lab('Facility', el('input', 'field')); fa.id = 'xvc-fac'; fa.setAttribute('list', 'dl-facilities');
+      var d = lab('Date', el('input', 'field')); d.type = 'date'; d.id = 'xvc-date'; d.value = TODAY;
+      var t = lab('Time', el('input', 'field')); t.type = 'time'; t.id = 'xvc-time'; t.value = '09:00';
+      opt(lab('Length', el('select', 'field')), [['30', '30 min'], ['45', '45 min'], ['60', '1 hour'], ['90', '1½ hours'], ['120', '2 hours'], ['240', 'Half day (case)']], '60').id = 'xvc-dur';
+      opt(lab('Type', el('select', 'field')), VISIT_TYPES).id = 'xvc-type';
+      var pu = lab('Purpose', el('input', 'field'), 'full'); pu.id = 'xvc-purpose'; pu.placeholder = 'e.g. Observe a colorectal case, drop off samples';
+      var b = btn('Plan visit', 'primary', planVisit); b.id = 'xvc-btn'; f.appendChild(b);
+      sec.appendChild(f);
+      var m = el('div', 'msg'); m.id = 'xvc-msg'; m.hidden = true; sec.appendChild(m);
+      var root = el('div'); root.style.marginTop = '14px'; sec.appendChild(root);
+      vcal = window.VisitCal.mount(root, { repFilter: T.isLead(), showRep: T.isLead(), getData: function () { return { visits: X.visits.filter(inView), reps: T.repNames(), settings: X.settings }; }, actions: visitActions });
+      $('#xvc-target').addEventListener('change', function () { var tg = S.targets.find(function (x) { return x.id === $('#xvc-target').value; }); if (tg && tg.facility) $('#xvc-fac').value = tg.facility; });
+    }
+    var tsel = $('#xvc-target');
+    if (tsel !== document.activeElement) {
+      var keep = tsel.value;
+      opt(tsel, targets.length ? targets.map(function (t) { return [t.id, t.surgeon + (ctx.viewRep ? '' : ' (' + t.rep + ')')]; }) : [['', 'Add a target surgeon first']]);
+      if (targets.some(function (t) { return t.id === keep; })) tsel.value = keep;
+      else { var tg = targets[0]; if (tg && $('#xvc-fac') !== document.activeElement) $('#xvc-fac').value = tg.facility || ''; }
+    }
+    $('#xvc-btn').disabled = !targets.length;
+    if (vcal) vcal.render();
+  }
+  function planVisit() {
+    var t = S.targets.find(function (x) { return x.id === $('#xvc-target').value; }), msg = $('#xvc-msg');
+    if (!t) return;
+    var date = $('#xvc-date').value, time = $('#xvc-time').value, fac = $('#xvc-fac').value.trim();
+    if (!date || !time) { msg.className = 'msg err'; msg.textContent = 'Pick a date and time.'; msg.hidden = false; return; }
+    if (!fac) { msg.className = 'msg err'; msg.textContent = 'Add the facility so the check-in can be verified.'; msg.hidden = false; $('#xvc-fac').focus(); return; }
+    if (window.VisitCal.windowOf({ date: date, time: time, duration: $('#xvc-dur').value }, X.settings).close < Date.now()) { msg.className = 'msg err'; msg.textContent = 'That time has already passed. Use the visit log below for visits that already happened.'; msg.hidden = false; return; }
+    var id = S.db.collection('visits').doc().id;
+    var body = { rep: t.rep, target_id: t.id, surgeon: t.surgeon, facility: fac, date: date, time: time, duration: Number($('#xvc-dur').value), type: $('#xvc-type').value, purpose: $('#xvc-purpose').value.trim(), status: 'planned', created_at: new Date().toISOString() };
+    X.visits = X.visits.concat([Object.assign({ id: id }, body)]);
+    save('visits', id, 'set', body);
+    $('#xvc-purpose').value = '';
+    msg.className = 'msg ok'; msg.textContent = 'Planned: ' + t.surgeon + ' on ' + dayName(date) + ' at ' + fmtTime(time) + '. Check in from the calendar when you arrive.'; msg.hidden = false; setTimeout(function () { msg.hidden = true; }, 5000);
+    T.render();
+  }
+  function visitActions(v, st, close) {
+    var acts = [], mine = !T.isLead() || v.rep === S.myRep;
+    if (!T.isLead() && v.status === 'planned' && !(v.check && (v.check.ok === true || v.check.missed))) {
+      var w = window.VisitCal.windowOf(v, X.settings);
+      if (Date.now() >= w.open && Date.now() <= w.close) acts.push({ label: '📍 Check in now', cls: 'primary', fn: function () { checkIn(v, close); } });
+      if (Date.now() < w.start) acts.push({ label: 'Cancel visit', cls: 'danger', fn: function () { if (!confirm('Cancel this visit?')) return; v.status = 'cancelled'; save('visits', v.id, 'update', { status: 'cancelled', updated_at: new Date().toISOString() }); close(); T.render(); } });
+    }
+    if (!T.isLead() && v.status === 'planned' && v.check) acts.push({ label: 'Complete visit (notes)', cls: v.check.ok ? 'primary' : '', fn: function () { completeForm(v, close); } });
+    if (T.isLead() && v.check && v.check.ok !== true && !v.check.ack) acts.push({ label: 'Mark reviewed', fn: function () { var note = prompt('Note for the record (optional):', '') ; if (note === null) return; api('/api/admin/visit-ack', { id: v.id, note: note }).then(function () { close(); T.setStatus('saved', 'Marked reviewed'); }, function () { T.setStatus('err', 'Could not save'); }); } });
+    return acts;
+  }
+  function checkIn(v, close) {
+    var box = document.querySelector('.vc-box'), status = box && box.querySelector('.vc-status');
+    if (!navigator.geolocation) { alert('This device cannot share its location.'); return; }
+    if (status) { status.className = 'vc-status st-planned'; status.textContent = 'Getting your location…'; }
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      api('/api/checkin', { id: v.id, lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy }).then(function (j) {
+        v.check = j.check;
+        var st = window.VisitCal.state(v, X.settings);
+        if (status) { status.className = 'vc-status st-' + st; status.textContent = window.VisitCal.LABEL[st] + ' — ' + j.check.reason; }
+        X.visits = X.visits.map(function (x) { return x.id === v.id ? Object.assign({}, x, { check: j.check }) : x; });
+        T.render();
+      }, function (e) { if (status) { status.className = 'vc-status st-failed'; status.textContent = (e && e.error) || 'Check-in failed. Check your connection and try again.'; } });
+    }, function (err) {
+      if (status) { status.className = 'vc-status st-failed'; status.textContent = err.code === 1 ? 'Location is blocked. Allow location for this app in your phone settings, then try again.' : 'Could not get your location. Step outside or near a window and try again.'; }
+    }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+  }
+  function completeForm(v, close) {
+    var box = document.querySelector('.vc-box'); if (!box) return;
+    var f = el('div', 'x-form'); f.style.gridTemplateColumns = '1fr';
+    var lab = function (t, node) { var l = el('label', '', t); l.appendChild(node); f.appendChild(l); return node; };
+    var n = lab('What happened', el('textarea', 'field')); n.value = v.notes || '';
+    var t = S.targets.find(function (x) { return x.id === v.target_id; });
+    var sp = opt(lab('Pathway step after this', el('select', 'field')), T.STEPS.map(function (l, i) { return [String(i), l]; }), String(t ? t.step || 0 : 0));
+    var ns = lab('Next step', el('input', 'field')); ns.value = v.next_step || '';
+    var nd = lab('Next step date', el('input', 'field')); nd.type = 'date'; nd.value = v.next_date || '';
+    f.appendChild(btn('Save visit', 'primary', function () {
+      if (phiHit(n.value)) { alert('Those notes look like they include a patient identifier. Remove it first.'); return; }
+      var step = Number(sp.value), upd = { status: 'done', notes: n.value.trim(), next_step: ns.value.trim(), next_date: nd.value || '', step_from: t ? t.step || 0 : 0, step_to: step, updated_at: new Date().toISOString() };
+      Object.assign(v, upd); save('visits', v.id, 'update', upd);
+      if (t && step !== (t.step || 0)) { t.step = step; t.step_changed_at = TODAY; save('targets', t.id, 'update', { step: step, step_changed_at: TODAY, updated_at: new Date().toISOString() }); }
+      close(); T.render();
+    }));
+    box.appendChild(f); addMic(n); n.focus();
+  }
+
   /* ---------- commission statement ---------- */
   function qualifies(c, row) {
     var s = (c.status || '').toLowerCase();
@@ -742,7 +852,7 @@
   function render(M, ctx) {
     if (!S.db) return;
     var ec = curCase(); if (ec && attSig !== ec.id + ':' + (ec.attachments || []).join(',')) drawAtt();
-    drawBilling(ctx); drawUpcoming(ctx); drawVisits(ctx); drawPrefs(ctx); drawCreds(ctx); drawNotify();
+    drawBilling(ctx); drawUpcoming(ctx); drawVCal(ctx); drawVisits(ctx); drawPrefs(ctx); drawCreds(ctx); drawNotify();
     var anyComm = S.quotas.some(function (q) { return q.role !== 'Team' && q.comm_rate; });
     $('#btn-statement').hidden = !ctx.loaded || !anyComm;
   }
