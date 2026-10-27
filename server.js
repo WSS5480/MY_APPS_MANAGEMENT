@@ -614,7 +614,7 @@ app.get('/cal/:tok', (req, res) => {
   const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//360 Medical//Surgical Case Tracker//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
     'X-WR-CALNAME:' + icsEsc(s.role === 'owner' ? '360 Medical cases (team)' : '360 Medical cases · ' + s.rep), 'X-WR-TIMEZONE:America/Chicago', 'REFRESH-INTERVAL;VALUE=DURATION:PT1H'];
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
-  const ev = (uid, date, time, mins, summary, desc) => {
+  const ev = (uid, date, time, mins, summary, desc, alarmMin, where) => {
     lines.push('BEGIN:VEVENT', 'UID:' + uid + '@360medical-tracker', 'DTSTAMP:' + stamp);
     if (time && /^\d{2}:\d{2}$/.test(time)) {
       const [h, m] = time.split(':').map(Number), end = h * 60 + m + mins;
@@ -623,13 +623,21 @@ app.get('/cal/:tok', (req, res) => {
       const nd = new Date(Date.parse(date + 'T00:00:00Z') + 864e5).toISOString().slice(0, 10);
       lines.push('DTSTART;VALUE=DATE:' + icsDate(date), 'DTEND;VALUE=DATE:' + icsDate(nd));
     }
-    lines.push('SUMMARY:' + icsEsc(summary)); if (desc) lines.push('DESCRIPTION:' + icsEsc(desc)); lines.push('END:VEVENT');
+    lines.push('SUMMARY:' + icsEsc(summary)); if (desc) lines.push('DESCRIPTION:' + icsEsc(desc)); if (where) lines.push('LOCATION:' + icsEsc(where));
+    if (alarmMin != null) lines.push('BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:' + icsEsc(summary), 'TRIGGER:-PT' + alarmMin + 'M', 'END:VALARM');
+    lines.push('END:VEVENT');
   };
   for (const [k, d] of docs) {
     const col = k.split('/')[0];
     if (!d || !mine(d) || !d.date && !d.next_date && !d.expires) continue;
     if (col === 'cases' && d.date >= lo && d.date <= hi && String(d.status).toLowerCase() !== 'cancelled')
       ev(k.replace('/', '-'), d.date, d.time, 90, 'Case: ' + (d.surgeon || 'Surgeon TBD') + (d.product ? ' · ' + d.product : '') + (d.facility ? ' @ ' + d.facility : ''), [s.role === 'owner' ? 'Rep: ' + d.rep : '', 'Status: ' + (d.status || ''), d.service_line ? 'Service line: ' + d.service_line : ''].filter(Boolean).join('\n'));
+    if (col === 'visits' && d.date && d.date >= lo && d.date <= hi && d.status !== 'cancelled') {
+      const fac = facilityFor(d.facility), g = geoSet(), st = d.check ? (d.check.ok === true ? (d.check.left_at ? 'Left early' : 'Verified at facility') : d.check.ok === null ? "Can't verify (no address)" : d.check.missed ? 'Missed check-in' : 'Not verified') : 'Planned';
+      ev(k.replace('/', '-') + '-visit', d.date, d.time, Number(d.duration) || 60, 'Visit: ' + (d.surgeon || 'Target surgeon') + (d.facility ? ' @ ' + d.facility : ''),
+        [s.role === 'owner' ? 'Rep: ' + d.rep : '', d.type ? 'Type: ' + d.type : '', d.purpose ? 'Purpose: ' + d.purpose : '', d.time ? 'Check in from the 360 Cases app between ' + g.early + ' min before and ' + g.late + ' min after the visit.' : '', 'Status: ' + st].filter(Boolean).join('\n'),
+        d.status === 'planned' && !d.check && d.time ? g.early : null, fac && fac.address ? fac.address : (d.facility || ''));
+    }
     if (col === 'visits' && d.next_date && d.next_date >= lo && d.next_date <= hi)
       ev(k.replace('/', '-') + '-next', d.next_date, null, 0, 'Next step: ' + (d.surgeon || '') + (d.next_step ? ' · ' + d.next_step : ''), s.role === 'owner' ? 'Rep: ' + d.rep : '');
     if (col === 'credentials' && d.expires && d.expires >= lo && d.expires <= hi)

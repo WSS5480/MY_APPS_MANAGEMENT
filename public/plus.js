@@ -419,7 +419,7 @@
       X.built.upcoming = true; sec.replaceChildren();
       var h = el('div', 'cardhead'); h.appendChild(el('h2', '', 'Upcoming · next 14 days'));
       h.appendChild(btn('📅 Add to my phone calendar', 'small', calLink)); sec.appendChild(h);
-      sec.appendChild(el('p', 'note', 'Scheduled cases and pathway next steps. Add a time to a case in the case log and it shows on your phone calendar at that time.'));
+      sec.appendChild(el('p', 'note', 'Scheduled cases, target visits and pathway next steps. Add a time to a case in the case log and it shows on your phone calendar at that time.'));
       var list = el('div'); list.id = 'x-up-list'; sec.appendChild(list);
       var cal = el('div', 'x-cal'); cal.id = 'x-cal'; cal.hidden = true; sec.appendChild(cal);
     }
