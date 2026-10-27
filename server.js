@@ -1227,5 +1227,17 @@ async function seedStabilityPhotos(only) {
   await put('_seed/stab-photos', { at: new Date().toISOString(), products: targets.length });
 }
 
-initStore().then(() => app.listen(PORT, () => console.log(`360 Medical tracker on :${PORT} (storage: ${dbMode})`)))
+function diagDump() {
+  // read-only support aid: set DIAG_GREP on the service to print matching records to the log once at startup
+  const q = String(process.env.DIAG_GREP || '').toLowerCase().split(',').map(x => x.trim()).filter(Boolean); if (!q.length) return;
+  for (const [k, d] of docs) {
+    if (!/^(visits|targets|surgeons|facilities)\//.test(k)) continue;
+    const j = JSON.stringify(d).toLowerCase(); if (!q.some(x => j.includes(x))) continue;
+    const pick = {}; ['rep', 'surgeon', 'name', 'facility', 'date', 'time', 'duration', 'status', 'check', 'check_attempts', 'reminded', 'created_by', 'target_id', 'address', 'lat', 'lng', 'approved', 'added_by', 'aliases'].forEach(f => { if (d[f] !== undefined) pick[f] = d[f]; });
+    console.log('DIAG', k, JSON.stringify(pick));
+  }
+  const m = (docs.get('_auth/managers') || {}).m || {}; Object.values(m).forEach(a => { if (q.some(x => (a.rep || a.name || '').toLowerCase().includes(x))) console.log('DIAG account', JSON.stringify({ kind: a.kind, rep: a.rep, name: a.name, active: a.active, totp_on: a.totp_on, passkeys: (a.passkeys || []).length })); });
+  console.log('DIAG settings', JSON.stringify(docs.get('config/settings') || {}), 'now', new Date().toISOString());
+}
+initStore().then(() => { diagDump(); app.listen(PORT, () => console.log(`360 Medical tracker on :${PORT} (storage: ${dbMode})`)); })
   .catch(e => { console.error('startup failed', e); process.exit(1); });
