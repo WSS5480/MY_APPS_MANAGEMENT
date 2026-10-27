@@ -804,6 +804,11 @@ function sweepVisits() {
   for (const [k, v] of [...docs]) {
     if (!k.startsWith('visits/') || !v || v.status !== 'planned' || v.check || !v.date || !v.time) continue;
     const w = visitWindow(v);
+    if (!v.reminded && Date.now() >= w.open && Date.now() <= w.close) {
+      docs.set(k, Object.assign({}, v, { reminded: new Date().toISOString() })); persist(k);
+      notifyRep(v.rep, 'Check-in open · ' + (v.surgeon || 'visit'), (v.facility ? v.facility + ': ' : '') + 'open the app when you arrive and it checks you in. Window closes ' + fmtClock(w.close) + '.').catch(() => {});
+      continue;
+    }
     if (Date.now() > w.close) {
       const check = { at: new Date().toISOString(), ok: false, missed: true, reason: 'Missed: no check-in between ' + fmtClock(w.open) + ' and ' + fmtClock(w.close) };
       docs.set(k, Object.assign({}, v, { check })); persist(k);
@@ -838,12 +843,37 @@ app.post('/api/checkin', needApi(), async (req, res) => {
       : !near ? 'Not at ' + fac.name + ': ' + (dist >= 1000 ? (dist / 1609.34).toFixed(1) + ' mi' : dist + ' m') + ' away.' : 'At ' + fac.name + ' (' + dist + ' m from the address) during the visit window.';
   }
   if (!inWindow && now < w.open) return res.status(400).json({ error: reason });
-  const check = { at: new Date(now).toISOString(), lat: Math.round(lat * 1e5) / 1e5, lng: Math.round(lng * 1e5) / 1e5, acc: Math.round(acc), dist_m: dist, ok, reason, in_window: inWindow, facility_id: fac ? fac.id : null };
+  const check = { at: new Date(now).toISOString(), lat: Math.round(lat * 1e5) / 1e5, lng: Math.round(lng * 1e5) / 1e5, acc: Math.round(acc), dist_m: dist, ok, reason: ok === true && req.body.auto ? reason.replace(/^At /, 'Auto check-in: arrived at ') : reason, in_window: inWindow, facility_id: fac ? fac.id : null, auto: !!req.body.auto };
   const attempts = (v.check_attempts || 0) + 1, wasBad = v.check && v.check.ok === false;
   await put(k, Object.assign({}, v, { check, check_attempts: attempts }));
   if (ok === false && !wasBad) notifyOwner('Visit check failed · ' + v.rep, v.rep + ' · ' + v.surgeon + ': ' + reason).catch(() => {});
   if (ok === null && attempts === 1) notifyOwner('Visit not verifiable · ' + v.rep, 'Add an address for ' + (v.facility || 'the facility') + ' in Admin so check-ins there can be verified.').catch(() => {});
   res.json({ ok: true, check });
+});
+/* geofence: the app (while open during a verified visit) reports when the rep leaves the facility before the visit ends */
+app.post('/api/visit-left', needApi(), async (req, res) => {
+  const k = 'visits/' + String(req.body.id || ''), v = docs.get(k);
+  if (!v) return res.status(404).json({ error: 'Visit not found.' });
+  if (req.s.role === 'owner' || v.rep !== req.s.rep) return res.status(403).json({ error: 'Not your visit.' });
+  if (!v.check || v.check.ok !== true) return res.status(400).json({ error: 'Visit is not checked in.' });
+  if (v.check.left_at) return res.json({ ok: true, check: v.check });
+  const lat = Number(req.body.lat), lng = Number(req.body.lng), acc = Math.max(0, Number(req.body.acc) || 0);
+  if (!isFinite(lat) || !isFinite(lng)) return res.status(400).json({ error: 'No location received.' });
+  const fac = facilityFor(v.facility), w = visitWindow(v), now = Date.now();
+  if (!fac || fac.lat == null) return res.status(400).json({ error: 'No facility location.' });
+  if (now >= w.end) return res.json({ ok: true, check: v.check, after_end: true });
+  const radius = Number(fac.radius_m) || geoSet().radius, dist = metersBetween(lat, lng, fac.lat, fac.lng);
+  if (acc > 1500 || dist - Math.min(acc, 150) <= radius * 1.5) return res.json({ ok: true, check: v.check, still_here: true });
+  const mins = Math.round((w.end - now) / 60e3);
+  const check = Object.assign({}, v.check, { left_at: new Date(now).toISOString(), left_dist_m: dist, left_early_min: mins, reason: v.check.reason + ' · Left at ' + fmtClock(now) + ', ' + mins + ' min before the visit ended.' });
+  await put(k, Object.assign({}, v, { check }));
+  notifyOwner('Left visit early · ' + v.rep, v.rep + ' left ' + (fac.name || v.facility) + ' at ' + fmtClock(now) + ', ' + mins + ' min before the ' + (v.surgeon || '') + ' visit ended.').catch(() => {});
+  res.json({ ok: true, check });
+});
+app.post('/api/cron/sweep', (req, res) => {
+  const ok = (process.env.CRON_SECRET && req.get('x-cron-secret') === process.env.CRON_SECRET) || (session(req) || {}).role === 'owner';
+  if (!ok) return res.status(403).json({ error: 'forbidden' });
+  lastSweep = 0; sweepVisits(); res.json({ ok: true });
 });
 async function geocode(q) {
   const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 8000);

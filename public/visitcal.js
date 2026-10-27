@@ -16,7 +16,7 @@
     '.vc-num{font-size:.75rem;font-weight:600;color:var(--muted)}' +
     '.vc-chip{display:block;width:100%;text-align:left;border:1px solid transparent;border-radius:5px;padding:2px 5px;font:inherit;font-size:.6875rem;line-height:1.3;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
     '.vc-more{font-size:.6875rem;color:var(--muted);background:none;border:none;cursor:pointer;text-align:left;padding:0 4px}' +
-    '.st-verified{background:#1FA971;color:#fff}.st-failed,.st-missed{background:#D9483B;color:#fff}.st-unverifiable{background:#E0A019;color:#2b1d00}' +
+    '.st-verified{background:#1FA971;color:#fff}.st-failed,.st-missed{background:#D9483B;color:#fff}.st-unverifiable{background:#E0A019;color:#2b1d00}.st-left{background:#E46A2E;color:#fff}' +
     '.st-planned{background:var(--hl);color:var(--fg);border-color:var(--accent)}.st-open{background:var(--accent);color:#fff}' +
     '.st-logged{background:var(--mute-bg);color:var(--fg)}.st-cancelled{background:transparent;color:var(--muted);text-decoration:line-through;border-color:var(--line)}' +
     '.vc-agenda{list-style:none;margin:0;padding:0}.vc-agenda .vc-dhead{font-size:.6875rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin:12px 0 4px}' +
@@ -42,12 +42,12 @@
     return guess - (Date.UTC(g('year'), g('month') - 1, g('day'), g('hour'), g('minute')) - guess);
   }
   function windowOf(v, set) { set = set || {}; var s = chiEpoch(v.date, v.time), e = s + (Number(v.duration) || 60) * 60e3; return { start: s, end: e, open: s - (Number(set.checkin_early_min) || 30) * 60e3, close: e + (Number(set.checkin_late_min) || 30) * 60e3 }; }
-  var LABEL = { verified: 'Verified at facility', failed: 'Not verified', missed: 'Missed check-in', unverifiable: "Can't verify (no address)", planned: 'Planned', open: 'Check-in open now', logged: 'Logged (no plan)', cancelled: 'Cancelled' };
-  var COLOR = { verified: '#1FA971', failed: '#D9483B', missed: '#D9483B', unverifiable: '#E0A019', planned: '#079FE9', open: '#079FE9', logged: '#8FA6B8', cancelled: '#8FA6B8' };
+  var LABEL = { left: 'Left early', verified: 'Verified at facility', failed: 'Not verified', missed: 'Missed check-in', unverifiable: "Can't verify (no address)", planned: 'Planned', open: 'Check-in open now', logged: 'Logged (no plan)', cancelled: 'Cancelled' };
+  var COLOR = { left: '#E46A2E', verified: '#1FA971', failed: '#D9483B', missed: '#D9483B', unverifiable: '#E0A019', planned: '#079FE9', open: '#079FE9', logged: '#8FA6B8', cancelled: '#8FA6B8' };
   function state(v, set) {
     if (v.status === 'cancelled') return 'cancelled';
     var c = v.check;
-    if (c) return c.ok === true ? 'verified' : c.ok === null ? 'unverifiable' : c.missed ? 'missed' : 'failed';
+    if (c) return c.ok === true ? (c.left_at ? 'left' : 'verified') : c.ok === null ? 'unverifiable' : c.missed ? 'missed' : 'failed';
     if (v.status !== 'planned') return 'logged';
     if (!v.time) return 'planned';
     var w = windowOf(v, set), now = Date.now();
@@ -75,7 +75,7 @@
     right.appendChild(vm); right.appendChild(va);
     head.appendChild(nav); head.appendChild(right); root.appendChild(head);
     var legend = el('div', 'vc-legend');
-    ['verified', 'failed', 'unverifiable', 'planned', 'logged'].forEach(function (k) { var s = el('span'), i = el('i'); i.style.background = COLOR[k]; s.appendChild(i); s.appendChild(document.createTextNode(k === 'failed' ? 'Not verified / missed' : LABEL[k])); legend.appendChild(s); });
+    ['verified', 'left', 'failed', 'unverifiable', 'planned', 'logged'].forEach(function (k) { var s = el('span'), i = el('i'); i.style.background = COLOR[k]; s.appendChild(i); s.appendChild(document.createTextNode(k === 'failed' ? 'Not verified / missed' : LABEL[k])); legend.appendChild(s); });
     root.appendChild(legend);
     var body = el('div'); root.appendChild(body);
     var summary = el('p', 'note'); root.appendChild(summary);

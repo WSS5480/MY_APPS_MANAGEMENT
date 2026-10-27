@@ -927,10 +927,85 @@
     $('#btn-statement').addEventListener('click', function () { openStatement(); });
     addMic($('#note-text'));
   }
+  /* ---------- geofence: only around the facility, only during the visit window, only while the app is open ---------- */
+  var GF = { watch: null, busy: false, lastTry: 0, outside: [], key: '' };
+  function facOf(name) { var n = String(name || '').trim().toLowerCase(); if (!n) return null; return (S.dirFacilities || []).find(function (f) { return String(f.name || '').trim().toLowerCase() === n || (f.aliases || []).some(function (a) { return String(a).trim().toLowerCase() === n; }); }) || null; }
+  function meters(a, b, c, d) { var R = 6371000, r = function (x) { return x * Math.PI / 180; }, dl = r(c - a), dg = r(d - b); var h = Math.pow(Math.sin(dl / 2), 2) + Math.cos(r(a)) * Math.cos(r(c)) * Math.pow(Math.sin(dg / 2), 2); return Math.round(2 * R * Math.asin(Math.sqrt(h))); }
+  function geoJobs() {
+    if (T.isLead() || !X.visits || document.hidden) return [];
+    var now = Date.now(), out = [];
+    X.visits.forEach(function (v) {
+      if (v.rep !== S.myRep || v.status !== 'planned' || !v.time) return;
+      var f = facOf(v.facility); if (!f || f.lat == null || f.lng == null || f.approved === false) return;
+      var w = window.VisitCal.windowOf(v, X.settings), c = v.check, r = Number(f.radius_m) || Number((X.settings || {}).geo_radius_m) || 400;
+      if (now >= w.open && now <= w.close && (!c || (c.ok === false && !c.missed))) out.push({ kind: 'arrive', v: v, f: f, r: r, w: w });
+      else if (c && c.ok === true && !c.left_at && now < w.end) out.push({ kind: 'stay', v: v, f: f, r: r, w: w });
+    });
+    return out;
+  }
+  function geoBanner(jobs) {
+    var b = $('#geo-banner');
+    if (!b) { b = el('div', 'msg'); b.id = 'geo-banner'; b.setAttribute('role', 'status'); b.style.margin = '0 0 10px'; var j = $('#jump'); if (j && j.parentNode) j.parentNode.insertBefore(b, j.nextSibling); else return; }
+    if (!jobs.length) { b.hidden = true; return; }
+    var a = jobs.find(function (x) { return x.kind === 'arrive'; }), s = jobs.find(function (x) { return x.kind === 'stay'; });
+    b.hidden = false;
+    if (a) { b.className = 'msg'; b.textContent = '📍 Geofence on for ' + a.v.surgeon + ' at ' + a.f.name + '. Keep the app open when you arrive and it checks you in automatically (until ' + fmtTime(new Date(a.w.close).toLocaleTimeString('en-GB', { timeZone: 'America/Chicago', hour: '2-digit', minute: '2-digit' })) + ').'; }
+    else { b.className = 'msg ok'; b.textContent = '✅ Checked in at ' + s.f.name + '. Visit ends ' + fmtTime(new Date(s.w.end).toLocaleTimeString('en-GB', { timeZone: 'America/Chicago', hour: '2-digit', minute: '2-digit' })) + '. Leaving the facility before then is flagged.'; }
+  }
+  function geoOnPos(pos) {
+    var lat = pos.coords.latitude, lng = pos.coords.longitude, acc = pos.coords.accuracy || 0, now = Date.now();
+    geoJobs().forEach(function (j) {
+      var d = meters(lat, lng, j.f.lat, j.f.lng), slack = Math.min(acc, 150);
+      if (j.kind === 'arrive' && acc <= 1500 && d - slack <= j.r && !GF.busy && now - GF.lastTry > 20000) {
+        GF.busy = true; GF.lastTry = now;
+        api('/api/checkin', { id: j.v.id, lat: lat, lng: lng, acc: acc, auto: true }).then(function (r) {
+          X.visits = X.visits.map(function (x) { return x.id === j.v.id ? Object.assign({}, x, { check: r.check }) : x; });
+          T.setStatus('saved', r.check.ok === true ? 'Checked in automatically at ' + j.f.name : 'Check-in: ' + r.check.reason); T.render();
+          if (r.check.ok === true) geoPopup(j);
+        }, function () {}).then(function () { GF.busy = false; });
+      }
+      if (j.kind === 'stay') {
+        var out = acc <= 1500 && d - slack > j.r * 1.5;
+        GF.outside = out ? GF.outside.concat([now]).filter(function (t) { return now - t < 10 * 60e3; }) : [];
+        if (out && GF.outside.length >= 2 && now - GF.outside[0] >= 90e3 && !GF.busy) {
+          GF.busy = true;
+          api('/api/visit-left', { id: j.v.id, lat: lat, lng: lng, acc: acc }).then(function (r) {
+            if (r.check) X.visits = X.visits.map(function (x) { return x.id === j.v.id ? Object.assign({}, x, { check: r.check }) : x; });
+            GF.outside = []; T.render();
+          }, function () {}).then(function () { GF.busy = false; });
+        }
+      }
+    });
+  }
+  function geoPopup(j) {
+    var endT = fmtTime(new Date(j.w.end).toLocaleTimeString('en-GB', { timeZone: 'America/Chicago', hour: '2-digit', minute: '2-digit' }));
+    try { if (navigator.vibrate) navigator.vibrate([120, 80, 120]); } catch (e) {}
+    try { if (window.Notification && Notification.permission === 'granted' && navigator.serviceWorker) navigator.serviceWorker.getRegistration().then(function (reg) { if (reg) reg.showNotification('Checked in · ' + j.f.name, { body: j.v.surgeon + ' visit. Stay until ' + endT + '.', icon: '/icon-192.png', tag: 'geo-' + j.v.id }); }); } catch (e) {}
+    var old = $('#geo-pop'); if (old) old.remove();
+    var o = el('div'); o.id = 'geo-pop'; o.setAttribute('role', 'alertdialog'); o.setAttribute('aria-label', 'Checked in');
+    o.style.cssText = 'position:fixed;inset:0;z-index:85;background:rgba(3,18,31,.55);display:flex;align-items:center;justify-content:center;padding:16px';
+    var c = el('div'); c.style.cssText = 'background:#fff;color:#081F33;border-radius:16px;padding:24px 22px;max-width:360px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.35);font-family:Inter,system-ui,sans-serif';
+    var ic = el('div', '', '✓'); ic.style.cssText = 'width:56px;height:56px;border-radius:50%;background:#1FA971;color:#fff;font-size:30px;font-weight:700;display:flex;align-items:center;justify-content:center;margin:0 auto 12px';
+    c.appendChild(ic);
+    var h = el('div', '', "You're checked in"); h.style.cssText = 'font-weight:700;font-size:1.2rem;margin-bottom:6px'; c.appendChild(h);
+    var b = el('div', '', j.v.surgeon + ' at ' + j.f.name + '. Visit ends ' + endT + ': leaving before then is flagged.'); b.style.cssText = 'font-size:.92rem;color:#5C6E7D;margin-bottom:16px'; c.appendChild(b);
+    var okb = btn('OK', 'primary', function () { o.remove(); }); okb.style.minWidth = '120px'; okb.style.justifyContent = 'center'; c.appendChild(okb);
+    o.appendChild(c); o.addEventListener('click', function (e) { if (e.target === o) o.remove(); }); document.body.appendChild(o); okb.focus();
+  }
+  function geoTick() {
+    var jobs = geoJobs(); geoBanner(jobs);
+    var key = jobs.map(function (j) { return j.kind + j.v.id; }).join(',');
+    if (!jobs.length || !navigator.geolocation) { if (GF.watch != null) { navigator.geolocation.clearWatch(GF.watch); GF.watch = null; } GF.key = ''; return; }
+    if (GF.watch == null) GF.watch = navigator.geolocation.watchPosition(geoOnPos, function () {}, { enableHighAccuracy: true, maximumAge: 15000, timeout: 30000 });
+    GF.key = key;
+  }
+  document.addEventListener('visibilitychange', function () { if (document.hidden && GF.watch != null) { navigator.geolocation.clearWatch(GF.watch); GF.watch = null; } else if (!document.hidden) geoTick(); });
+  setInterval(function () { if (S.db) geoTick(); }, 60e3);
+
   function render(M, ctx) {
     if (!S.db) return;
     var ec = curCase(); if (ec && attSig !== ec.id + ':' + (ec.attachments || []).join(',')) drawAtt();
-    drawBilling(ctx); drawUpcoming(ctx); drawVCal(ctx); drawVisits(ctx); drawDir(ctx); drawPrefs(ctx); drawCreds(ctx); drawNotify();
+    drawBilling(ctx); drawUpcoming(ctx); drawVCal(ctx); drawVisits(ctx); drawDir(ctx); drawPrefs(ctx); drawCreds(ctx); drawNotify(); geoTick();
     var anyComm = S.quotas.some(function (q) { return q.role !== 'Team' && q.comm_rate; });
     $('#btn-statement').hidden = !ctx.loaded || !anyComm;
   }
