@@ -155,11 +155,11 @@
     document.addEventListener('visibilitychange', function () { if (!document.hidden) sync(); });
   });
   window.claudeShim = {
-    logout: function () {
+    logout: function (next) {
       if (queue().length && !confirm(queue().length + ' change(s) on this device have not synced yet. Log out anyway and lose them?')) return;
       LS.del(qKey()); LS.del(cKey()); LS.del('sct_me');
       if (window.caches) caches.keys().then(function (ks) { ks.forEach(function (k) { if (/^sct360-(pages|img)/.test(k)) caches.delete(k); }); });
-      api('/api/logout', { method: 'POST' }).finally(function () { location.href = '/login'; });
+      api('/api/logout', { method: 'POST' }).finally(function () { location.href = next ? '/login?next=' + encodeURIComponent(next) : '/login'; });
     },
     pending: function () { return queue().length; }
   };
