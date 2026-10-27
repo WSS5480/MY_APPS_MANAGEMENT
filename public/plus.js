@@ -594,7 +594,23 @@
     var fa2 = (S.dirFacilities || []).filter(match).sort(function (x, y) { return lc(x.name) < lc(y.name) ? -1 : 1; });
     var col = function (title, rows, fmt) { var d = el('div'); d.appendChild(el('div', 'x-sub', title + ' · ' + rows.length)); var ul = el('ul', 'x-list'); ul.style.maxHeight = '16rem'; ul.style.overflow = 'auto'; rows.forEach(function (r) { ul.appendChild(fmt(r)); }); if (!rows.length) ul.appendChild(el('li', 'note', 'None yet.')); d.appendChild(ul); L.appendChild(d); };
     col('Surgeons', su, function (r) { var li = el('li'), l = el('div'); l.appendChild(el('div', 'strong', r.name)); l.appendChild(el('div', 'meta', [r.specialty, r.facility, r.added_by && r.added_by !== 'COO' ? 'added by ' + r.added_by : ''].filter(Boolean).join(' · '))); li.appendChild(l); return li; });
-    col('Facilities', fa2, function (r) { var li = el('li'), l = el('div'); l.appendChild(el('div', 'strong', r.name)); l.appendChild(el('div', 'meta', [r.address || 'No address yet', r.added_by && r.added_by !== 'COO' ? 'added by ' + r.added_by : ''].filter(Boolean).join(' · '))); li.appendChild(l); li.appendChild(el('span', 'pill ' + (r.approved === false ? 'warn' : r.lat != null ? 'ok' : 'mute'), r.approved === false ? 'Pending COO' : r.lat != null ? 'On map' : 'No address')); return li; });
+    col('Facilities', fa2, function (r) { var li = el('li'), l = el('div'); l.appendChild(el('div', 'strong', r.name)); l.appendChild(el('div', 'meta', [r.address || 'No address yet', r.added_by && r.added_by !== 'COO' ? 'added by ' + r.added_by : ''].filter(Boolean).join(' · '))); li.appendChild(l); li.appendChild(el('span', 'pill ' + (r.approved === false ? 'warn' : r.lat != null ? 'ok' : 'mute'), r.approved === false ? 'Pending COO' : r.lat != null ? 'On map' : 'No address'));
+      if (r.lat == null) {
+        var ab = btn('📍 Add address', 'small', function () {
+          if (li.querySelector('.fa-edit')) return;
+          var row = el('div', 'fa-edit'); row.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;width:100%;margin-top:6px';
+          var inp = el('input', 'field'); inp.placeholder = 'Street, city, TX ZIP'; inp.style.flex = '1 1 14rem'; inp.setAttribute('aria-label', 'Address for ' + r.name);
+          var sv = btn('Save', 'small primary', function () {
+            var v = inp.value.trim(); if (!v) { inp.focus(); return; } sv.disabled = true; sv.textContent = 'Finding…';
+            api('/api/directory/facility', { name: r.name, address: v }).then(function (j) {
+              dirMsg('ok', 'Address saved for ' + r.name + (j.facility && j.facility.approved === false ? '. The COO will confirm it before it counts for check-ins.' : ' and placed on the map.')); row.remove();
+            }, function (e) { sv.disabled = false; sv.textContent = 'Save'; dirMsg('err', (e && e.error) || 'Could not save the address.'); });
+          });
+          row.appendChild(inp); row.appendChild(sv); li.appendChild(row); inp.focus();
+        });
+        ab.classList.add('fa-add'); li.appendChild(ab); li.style.flexWrap = 'wrap';
+      }
+      return li; });
   }
   function dirMsg(kind, t) { var m = $('#xd-msg'); m.className = 'msg ' + kind; m.textContent = t; m.hidden = false; setTimeout(function () { m.hidden = true; }, 5000); }
   function addSurgeon() {
@@ -607,7 +623,7 @@
   function addFacility() {
     var name = $('#xd-fname').value.trim(); if (!name) { $('#xd-fname').focus(); return; }
     api('/api/directory/facility', { name: name, address: $('#xd-faddr').value.trim() }).then(function (j) {
-      dirMsg(j.existed ? 'warn' : 'ok', j.existed ? j.facility.name + ' is already in the directory.' : j.facility.name + ' added' + (j.facility.approved === false ? '. The COO will confirm the address before it counts for check-ins.' : '.'));
+      dirMsg(j.updated ? 'ok' : j.existed || j.not_found ? 'warn' : 'ok', j.updated ? 'Address saved for ' + j.facility.name + (j.facility.approved === false ? '. The COO will confirm it before it counts for check-ins.' : ' and placed on the map.') : j.existed ? j.facility.name + ' is already in the directory' + (j.facility.lat != null ? ' with an address.' : '. Tap Add address next to it below.') : j.not_found ? j.facility.name + ' added, but that address wasn\'t found on the map. Tap Add address to try again.' : j.facility.name + ' added' + (j.facility.approved === false ? '. The COO will confirm the address before it counts for check-ins.' : '.'));
       $('#xd-fname').value = ''; $('#xd-faddr').value = '';
     }, function (e) { dirMsg('err', (e && e.error) || (navigator.onLine ? 'Could not add.' : 'Adding to the directory needs a connection.')); });
   }

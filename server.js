@@ -255,6 +255,8 @@ const page = f => (req, res) => res.sendFile(path.join(pub, f));
 const needPage = role => (req, res, next) => { const s = session(req); if (!s) return res.redirect('/login?next=' + encodeURIComponent(req.path)); if (role === 'owner' && s.role !== 'owner') return res.redirect('/'); if (s.sid) lastActive.set(s.sid, Date.now()); req.s = s; next(); };
 
 app.get('/healthz', (req, res) => res.json({ ok: true }));
+const BUILD = process.env.RENDER_GIT_COMMIT || String(Date.now());
+app.get('/api/version', (req, res) => { res.setHeader('Cache-Control', 'no-store'); res.json({ build: BUILD }); });
 app.get('/login', page('login.html'));
 app.get('/', needPage(), page('tracker.html'));
 app.get('/admin', needPage('owner'), page('admin.html'));
@@ -288,7 +290,7 @@ app.get('/media/:id', async (req, res) => {
     res.setHeader('Content-Length', buf.length); res.end(buf);
   } catch (e) { res.status(500).end(); }
 });
-app.get(['/logo.png', '/shim.js', '/plus.js', '/plus.css', '/visitcal.js', '/idle.js', '/zoom.js', '/spin.js', '/install.js', '/ptr.js', '/webauthn.js', '/qrious.min.js', '/app.css', '/sw.js', '/favicon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'], (req, res) => { if (req.path === '/sw.js') res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, req.path)); });
+app.get(['/logo.png', '/shim.js', '/plus.js', '/plus.css', '/visitcal.js', '/idle.js', '/zoom.js', '/spin.js', '/install.js', '/ptr.js', '/update.js', '/webauthn.js', '/qrious.min.js', '/app.css', '/sw.js', '/favicon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'], (req, res) => { if (req.path === '/sw.js') res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, req.path)); });
 app.get('/manifest.webmanifest', (req, res) => { res.type('application/manifest+json'); res.sendFile(path.join(pub, 'manifest.webmanifest')); });
 
 app.get('/api/login-options', (req, res) => {
@@ -935,8 +937,18 @@ app.post('/api/directory/surgeon', needApi(), async (req, res) => {
 });
 app.post('/api/directory/facility', needApi(), async (req, res) => {
   const b = req.body || {}; if (!String(b.name || '').trim()) return res.status(400).json({ error: 'Facility name is required.' });
-  const existed = findDir('facilities', b.name);
-  const d = existed || await ensureFacility(b.name, b.address, req.s);
+  const existed = findDir('facilities', b.name), address = String(b.address || '').trim().slice(0, 300);
+  if (existed && address && existed.lat == null) {
+    // fill in the missing address on a facility that's already in the list
+    const g = await geocode(address);
+    if (!g) return res.status(400).json({ error: 'Could not find that address on the map. Check the street, city and ZIP.' });
+    const k = 'facilities/' + existed.id, doc = Object.assign({}, docs.get(k), { address, lat: g.lat, lng: g.lng, map_label: g.label, approved: req.s.role === 'owner', address_by: byName(req.s), updated_at: new Date().toISOString() });
+    await put(k, doc);
+    if (req.s.role !== 'owner') notifyOwner('Facility address to approve', byName(req.s) + ' added the address for ' + doc.name + '. Approve it in Admin → Facilities.').catch(() => {});
+    return res.json({ ok: true, existed: true, updated: true, facility: Object.assign({ id: existed.id }, doc) });
+  }
+  const d = existed || await ensureFacility(b.name, address, req.s);
+  if (!existed && d && address && d.lat == null) return res.json({ ok: true, existed: false, facility: d, not_found: true });
   res.json({ ok: true, existed: !!existed, facility: d });
 });
 app.post('/api/admin/surgeons', needApi('owner'), async (req, res) => {

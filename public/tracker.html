@@ -13,7 +13,8 @@
 .jump{position:sticky;top:0;z-index:20;display:flex;gap:6px;overflow-x:auto;padding:8px 2px;margin:0 0 10px;background:var(--bg);scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .jump::-webkit-scrollbar{display:none}
 .jump a{flex:none;padding:8px 12px;border-radius:999px;background:var(--panel);border:1px solid var(--line);color:var(--fg);font-size:.8125rem;font-weight:600;text-decoration:none;white-space:nowrap}
-.jump a:first-child{background:var(--accent);border-color:var(--accent);color:#fff}
+.jump a[href="#sec-vcal"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.jump a.jr{font-size:1.05rem;padding:6px 12px;line-height:1.2}
 .jump a[hidden]{display:none}
 section[id^="sec-"]{scroll-margin-top:62px}
 </style>
@@ -176,7 +177,7 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 
   <div id="main">
     <nav class="jump" id="jump" aria-label="Jump to section">
-      <a href="#sec-vcal">📅 Calendar</a><a href="/products">🛍 Products</a><a href="#sec-upcoming">Upcoming</a><a href="#sec-log">Cases</a><a href="#sec-visits">Visit log</a><a href="#sec-dir">Directory</a><a href="#sec-pref">Pref cards</a><a href="#sec-score">Scorecard</a><a href="#sec-cred">Credentials</a>
+      <a href="#refresh" class="jr" aria-label="Refresh" title="Refresh">⟳</a><a href="#sec-vcal">📅 Calendar</a><a href="/products">🛍 Products</a><a href="#sec-upcoming">Upcoming</a><a href="#sec-log">Cases</a><a href="#sec-visits">Visit log</a><a href="#sec-dir">Directory</a><a href="#sec-pref">Pref cards</a><a href="#sec-score">Scorecard</a><a href="#sec-cred">Credentials</a>
     </nav>
     <div class="stack">
       <section class="tiles" id="tiles"></section>
@@ -1111,8 +1112,8 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 <script>
 (function () {
   var nav = document.getElementById('jump'); if (!nav) return;
-  function sync() { nav.querySelectorAll('a[href^="#"]').forEach(function (a) { var t = document.querySelector(a.getAttribute('href')); a.hidden = !t || t.hidden || !t.childElementCount; }); }
-  nav.addEventListener('click', function (e) { var a = e.target.closest('a'); if (!a || a.getAttribute('href').charAt(0) !== '#') return; var t = document.querySelector(a.getAttribute('href')); if (t) { e.preventDefault(); t.scrollIntoView({ behavior: 'smooth', block: 'start' }); } });
+  function sync() { nav.querySelectorAll('a[href^="#sec"]').forEach(function (a) { var t = document.querySelector(a.getAttribute('href')); a.hidden = !t || t.hidden || !t.childElementCount; }); }
+  nav.addEventListener('click', function (e) { var a = e.target.closest('a'); if (a && a.getAttribute('href') === '#refresh') { e.preventDefault(); a.textContent = '…'; location.reload(); return; } if (!a || a.getAttribute('href').charAt(0) !== '#') return; var t = document.querySelector(a.getAttribute('href')); if (t) { e.preventDefault(); t.scrollIntoView({ behavior: 'smooth', block: 'start' }); } });
   sync(); setInterval(sync, 2000);
   var rb = document.getElementById('btn-refresh'); if (rb) rb.addEventListener('click', function () { rb.disabled = true; rb.textContent = '⟳ Refreshing…'; location.reload(); });
   // reps in the field: calendar, upcoming and case log first; COO/managers keep the numbers-first order
@@ -1141,9 +1142,10 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
     REP_ORDER.forEach(function (id) { (groups[id] || []).forEach(function (k) { if (k.tagName !== 'FOOTER') stack.appendChild(k); }); });
     foot.forEach(function (k) { stack.appendChild(k); });
     var links = { 'sec-vcal': 1, '/products': 1.5, 'sec-upcoming': 2, 'sec-log': 3, 'sec-score': 4, 'sec-visits': 5, 'sec-pref': 6, 'sec-dir': 7, 'sec-cred': 8 };
-    Array.from(nav.children).sort(function (x, y) { var w = function (el) { var h = el.getAttribute('href'); return links[h.charAt(0) === '#' ? h.slice(1) : h] || 99; }; return w(x) - w(y); }).forEach(function (a) { nav.appendChild(a); });
+    Array.from(nav.children).sort(function (x, y) { var w = function (el) { var h = el.getAttribute('href'); if (h === '#refresh') return 0; return links[h.charAt(0) === '#' ? h.slice(1) : h] || 99; }; return w(x) - w(y); }).forEach(function (a) { nav.appendChild(a); });
   }).catch(function () {});
 })();
 </script>
 <script src="/ptr.js"></script>
+<script src="/update.js"></script>
 </body></html>
