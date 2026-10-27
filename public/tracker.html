@@ -1,4 +1,12 @@
-<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style><style>
+.jump{position:sticky;top:0;z-index:20;display:flex;gap:6px;overflow-x:auto;padding:8px 2px;margin:0 0 10px;background:var(--bg);scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.jump::-webkit-scrollbar{display:none}
+.jump a{flex:none;padding:8px 12px;border-radius:999px;background:var(--panel);border:1px solid var(--line);color:var(--fg);font-size:.8125rem;font-weight:600;text-decoration:none;white-space:nowrap}
+.jump a:first-child{background:var(--accent);border-color:var(--accent);color:#fff}
+.jump a[hidden]{display:none}
+section[id^="sec-"]{scroll-margin-top:62px}
+</style>
+</head><body>
 <title>360 MEDICAL - SURGICAL CASE TRACKER</title>
 <link rel="icon" href="/favicon.png"><link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="360 Cases">
 <meta name="theme-color" content="#081F33">
@@ -154,6 +162,9 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
   </section>
 
   <div id="main">
+    <nav class="jump" id="jump" aria-label="Jump to section">
+      <a href="#sec-vcal">📅 Calendar</a><a href="#sec-upcoming">Upcoming</a><a href="#sec-log">Cases</a><a href="#sec-visits">Visit log</a><a href="#sec-dir">Directory</a><a href="#sec-pref">Pref cards</a><a href="#sec-score">Scorecard</a><a href="#sec-cred">Credentials</a>
+    </nav>
     <div class="stack">
       <section class="tiles" id="tiles"></section>
 
@@ -225,7 +236,7 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
         </section>
       </div>
 
-      <section class="card">
+      <section class="card" id="sec-conv">
         <h2>Target surgeon conversion · <span class="vname"></span></h2>
         <p class="note">Q4 target surgeons, where each sits on the six-step Sales Pathway, and whether a first case has landed. Change the step here and it saves.</p>
         <div class="scroll"><table id="targets"><thead><tr><th class="col-rep">Rep</th><th>Target surgeon</th><th>Facility</th><th>Pathway step</th><th class="r">Cases</th><th>First case</th><th class="r">Net sales</th><th></th></tr></thead><tbody></tbody></table></div>
@@ -1083,4 +1094,27 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 <script src="/visitcal.js"></script>
 <script src="/plus.js"></script>
 
+<script>
+(function () {
+  var nav = document.getElementById('jump'); if (!nav) return;
+  function sync() { nav.querySelectorAll('a').forEach(function (a) { var t = document.querySelector(a.getAttribute('href')); a.hidden = !t || t.hidden || !t.childElementCount; }); }
+  nav.addEventListener('click', function (e) { var a = e.target.closest('a'); if (!a) return; var t = document.querySelector(a.getAttribute('href')); if (t) { e.preventDefault(); t.scrollIntoView({ behavior: 'smooth', block: 'start' }); } });
+  sync(); setInterval(sync, 2000);
+  // reps in the field: calendar, upcoming and case log first; COO/managers keep the numbers-first order
+  var REP_ORDER = ['tiles', 'sec-vcal', 'sec-upcoming', 'sec-log', 'sec-score', 'sec-comm', 'sec-billing', 'sec-visits', 'sec-pref', 'sec-dir', 'sec-surgeons', 'sec-conv', 'sec-mix', 'sec-sim', 'sec-notes', 'sec-cred', 'sec-notify'];
+  fetch('/api/me', { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (me) {
+    if (!me || me.role !== 'rep') return;
+    var stack = document.querySelector('#main .stack'); if (!stack) return;
+    // unnamed blocks (pace box, footer) travel with the section they follow
+    var kids = Array.from(stack.children), groups = {}, cur = null, lead = [];
+    kids.forEach(function (k) { if (REP_ORDER.indexOf(k.id) >= 0) { cur = k.id; groups[cur] = [k]; } else if (cur) groups[cur].push(k); else lead.push(k); });
+    var tail = groups[kids.filter(function (k) { return REP_ORDER.indexOf(k.id) >= 0; }).pop().id];
+    var foot = tail.filter(function (k) { return k.tagName === 'FOOTER'; });
+    REP_ORDER.forEach(function (id) { (groups[id] || []).forEach(function (k) { if (k.tagName !== 'FOOTER') stack.appendChild(k); }); });
+    foot.forEach(function (k) { stack.appendChild(k); });
+    var links = { 'sec-vcal': 1, 'sec-upcoming': 2, 'sec-log': 3, 'sec-score': 4, 'sec-visits': 5, 'sec-pref': 6, 'sec-dir': 7, 'sec-cred': 8 };
+    Array.from(nav.children).sort(function (x, y) { return (links[x.getAttribute('href').slice(1)] || 99) - (links[y.getAttribute('href').slice(1)] || 99); }).forEach(function (a) { nav.appendChild(a); });
+  }).catch(function () {});
+})();
+</script>
 </body></html>
