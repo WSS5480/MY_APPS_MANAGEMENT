@@ -86,4 +86,5 @@ window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault()
 btn.addEventListener('click', function () { if (!prompt) return; prompt.prompt(); prompt.userChoice.then(function (c) { if (c.outcome === 'accepted') { btn.hidden = true; st.textContent = 'Installed. Look for 360 Cases on your home screen or Start menu.'; } prompt = null; }); });
 window.addEventListener('appinstalled', function () { btn.hidden = true; st.textContent = 'Installed. Look for 360 Cases on your home screen or Start menu.'; });
 </script>
+<script src="/ptr.js"></script>
 </body></html>
