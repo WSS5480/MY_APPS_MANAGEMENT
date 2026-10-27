@@ -277,16 +277,23 @@
       x.addEventListener('click', function () { if (!confirm('Remove this photo from the case?')) return; var list = (c.attachments || []).filter(function (i) { return i !== id; }); setAtt(c, list); api('/api/upload/' + encodeURIComponent(id), null, 'DELETE').catch(function () {}); drawAtt(); });
       w.appendChild(x); box.appendChild(w);
     });
-    var inp = el('input'); inp.type = 'file'; inp.accept = 'image/*'; inp.multiple = true; inp.hidden = true;
-    var add = btn('📎 Add photo', 'small', function () { inp.click(); });
-    inp.addEventListener('change', function () {
-      var files = Array.from(inp.files || []); if (!files.length) return; add.disabled = true; add.textContent = 'Uploading…';
-      var chain = Promise.resolve(), ids = [];
-      files.forEach(function (f) { chain = chain.then(function () { return shrink(f); }).then(function (data) { return api('/api/upload', { data: data, rep: c.rep }); }).then(function (j) { ids.push(j.id); }); });
-      chain.then(function () {}, function (e) { T.setStatus('err', (e && e.error) || (navigator.onLine ? 'Photo upload failed' : 'Photos need a connection: try again when online')); })
-        .then(function () { if (ids.length) { var cc = curCase() || c; setAtt(cc, (cc.attachments || []).concat(ids)); } drawAtt(); });
-    });
-    box.appendChild(add); box.appendChild(inp);
+    function picker(label, camera) {
+      var inp = el('input'); inp.type = 'file'; inp.accept = 'image/*'; inp.hidden = true;
+      if (camera) inp.setAttribute('capture', 'environment'); else inp.multiple = true;
+      var b = btn(label, 'small', function () { inp.click(); });
+      inp.addEventListener('change', function () {
+        var files = Array.from(inp.files || []); if (!files.length) return;
+        box.querySelectorAll('button.att-add').forEach(function (x) { x.disabled = true; }); b.textContent = 'Uploading…';
+        var chain = Promise.resolve(), ids = [];
+        files.forEach(function (f) { chain = chain.then(function () { return shrink(f); }).then(function (data) { return api('/api/upload', { data: data, rep: c.rep }); }).then(function (j) { ids.push(j.id); }); });
+        chain.then(function () {}, function (e) { T.setStatus('err', (e && e.error) || (navigator.onLine ? 'Photo upload failed' : 'Photos need a connection: try again when online')); })
+          .then(function () { if (ids.length) { var cc = curCase() || c; setAtt(cc, (cc.attachments || []).concat(ids)); } drawAtt(); });
+      });
+      b.classList.add('att-add'); box.appendChild(b); box.appendChild(inp);
+    }
+    // phones and tablets: open the camera straight away; everyone: pick from photos/files
+    if (window.matchMedia && matchMedia('(pointer: coarse)').matches) picker('📷 Take photo', true);
+    picker('📎 Add photo', false);
   }
 
   /* ---------- history ---------- */
