@@ -54,12 +54,22 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
 .vbar{height:6px;border-radius:3px;background:var(--line);overflow:hidden;margin-top:6px}.vbar i{display:block;height:100%;background:var(--accent);width:0}
 .pe-foot{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center;border-top:1px solid var(--line);padding-top:14px;position:sticky;bottom:0;background:var(--panel)}
 </style>
+<style>
+.who-badge{position:absolute;top:14px;right:16px;display:flex;align-items:center;gap:8px;max-width:46%;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.22);border-radius:999px;padding:5px 12px 5px 6px;color:var(--on-navy)}
+.who-badge .wb-ic{width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:700;flex:none}
+.who-badge b{display:block;font-size:.85rem;font-weight:700;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.who-badge small{display:block;font-size:.65rem;letter-spacing:.06em;text-transform:uppercase;color:var(--on-navy-muted);line-height:1.2}
+.who-badge>span:last-child{min-width:0}
+header.head.has-who{padding-top:58px}
+@media (max-width:700px){.who-badge{top:12px;right:12px;max-width:calc(100% - 24px)}}
+</style>
 </head><body>
 <div class="wrap">
-  <header class="head">
+  <header class="head" style="position:relative">
+    <div class="who-badge" id="who-badge" hidden title=""><span class="wb-ic" id="wb-ic" aria-hidden="true"></span><span><b id="wb-name"></b><small id="wb-role"></small></span></div>
     <img class="logo" src="/logo.png" alt="360 Medical">
     <div class="headtxt"><h1>Admin</h1><span class="conf">360 MEDICAL - SURGICAL CASE TRACKER</span><p class="sub">Reps, PINs, quotas and commission plans. Changes here show in the tracker within seconds.</p></div>
-    <div class="tools"><a class="btn" href="/">Open tracker</a><a class="btn" href="#managers">Managers</a><a class="btn" href="#visits">Visits</a><a class="btn" href="#surgeons">Surgeons</a><a class="btn" href="#facilities">Facilities</a><a class="btn" href="/products">Products</a><a class="btn" href="/download">Download app</a><button class="btn" id="logout" type="button">Log out</button></div>
+    <div class="tools"><button class="btn" id="btn-refresh" type="button" onclick="this.disabled=true;this.textContent='⟳ Refreshing…';location.reload()">⟳ Refresh</button><a class="btn" href="/">Open tracker</a><a class="btn" href="#managers">Managers</a><a class="btn" href="#visits">Visits</a><a class="btn" href="#surgeons">Surgeons</a><a class="btn" href="#facilities">Facilities</a><a class="btn" href="/products">Products</a><a class="btn" href="/download">Download app</a><button class="btn" id="logout" type="button">Log out</button></div>
   </header>
 
   <div class="msg warn" id="dbwarn" hidden></div>
@@ -300,6 +310,23 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
   </div>
   <footer class="foot">Never enter patient names, MRNs, dates of birth or other patient identifiers. Confidential: 360 Medical internal sales data, not for distribution outside the company.</footer>
 </div>
+<script>
+/* If this browser's sign-in changed to a rep (another tab / the app), don't show "Admin only" errors:
+   go back to the admin sign-in instead. */
+(function () {
+  var gone = false, toLogin = function () { if (gone) return; gone = true; try { localStorage.setItem('sct_tab', 'mgr'); } catch (e) {} location.href = '/login?next=%2Fadmin&admin=1'; };
+  var f = window.fetch;
+  window.fetch = function (u, o) {
+    return f.apply(this, arguments).then(function (r) {
+      if (r.status === 403 && /^\/api\//.test(String(u))) r.clone().json().then(function (j) { if (j && j.error === 'Admin only.') toLogin(); }, function () {});
+      return r;
+    });
+  };
+  var check = function () { f('/api/me', { credentials: 'same-origin' }).then(function (r) { return r.status === 401 ? { role: null } : r.json(); }).then(function (me) { if (!me || me.role !== 'owner') toLogin(); }, function () {}); };
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) check(); });
+  window.addEventListener('focus', check);
+})();
+</script>
 <script src="/webauthn.js"></script>
 <script src="/idle.js"></script>
 <script src="/zoom.js"></script>
@@ -431,7 +458,7 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
       .finally(function () { e.target.value = ''; });
   });
 
-  $('#logout').addEventListener('click', function () { fetch('/api/logout', { method: 'POST' }).finally(function () { location.href = '/login'; }); });
+  $('#logout').addEventListener('click', function () { try { localStorage.setItem('sct_tab', 'mgr'); } catch (x) {} fetch('/api/logout', { method: 'POST' }).finally(function () { location.href = '/login?next=%2Fadmin'; }); });
   /* ---------- products ---------- */
   var PR = [], ED = null, newImgs = [];
   var imgUrl = function (id) { return '/img/' + encodeURIComponent(id); };
@@ -982,4 +1009,13 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
 })();
 </script>
 <script src="/ptr.js"></script>
+<script>
+fetch('/api/me', { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (me) {
+  if (!me || !me.name) return;
+  document.getElementById('wb-name').textContent = me.name;
+  document.getElementById('wb-ic').textContent = String(me.name).trim().charAt(0).toUpperCase();
+  document.getElementById('wb-role').textContent = me.manager ? (me.super ? 'Admin · full access' : 'Manager') : 'Admin';
+  var b = document.getElementById('who-badge'); b.title = 'Signed in as ' + me.name; b.hidden = false; b.parentNode.classList.add('has-who');
+}).catch(function () {});
+</script>
 </body></html>

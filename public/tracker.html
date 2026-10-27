@@ -158,6 +158,8 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
     <div class="ctl">
       <label>Month<select id="sel-month" aria-label="Month"></select></label>
       <label id="lab-view" hidden>View<select id="sel-view" aria-label="View"></select></label>
+      <button class="btn small" id="btn-refresh" type="button" title="Load the latest data">⟳ Refresh</button>
+      <a class="btn small" id="btn-admin" href="/admin" hidden>⚙️ Admin</a>
       <a class="btn small" href="/products">Products</a>
       <button class="btn small" id="btn-notme" type="button">Log out</button>
       <span class="save" id="save" role="status">Autosave on</span>
@@ -1112,6 +1114,7 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
   function sync() { nav.querySelectorAll('a[href^="#"]').forEach(function (a) { var t = document.querySelector(a.getAttribute('href')); a.hidden = !t || t.hidden || !t.childElementCount; }); }
   nav.addEventListener('click', function (e) { var a = e.target.closest('a'); if (!a || a.getAttribute('href').charAt(0) !== '#') return; var t = document.querySelector(a.getAttribute('href')); if (t) { e.preventDefault(); t.scrollIntoView({ behavior: 'smooth', block: 'start' }); } });
   sync(); setInterval(sync, 2000);
+  var rb = document.getElementById('btn-refresh'); if (rb) rb.addEventListener('click', function () { rb.disabled = true; rb.textContent = '⟳ Refreshing…'; location.reload(); });
   // reps in the field: calendar, upcoming and case log first; COO/managers keep the numbers-first order
   var REP_ORDER = ['tiles', 'sec-vcal', 'sec-upcoming', 'sec-log', 'sec-score', 'sec-comm', 'sec-billing', 'sec-visits', 'sec-pref', 'sec-dir', 'sec-surgeons', 'sec-conv', 'sec-mix', 'sec-sim', 'sec-notes', 'sec-cred', 'sec-notify'];
   fetch('/api/me', { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (me) {
@@ -1120,7 +1123,7 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
       document.getElementById('wb-role').textContent = me.role === 'rep' ? 'Sales rep' : me.manager ? 'Manager' : 'Admin';
       var wb = document.getElementById('who-badge'); wb.title = 'Signed in as ' + me.name; wb.hidden = false; wb.parentNode.classList.add('has-who');
       var menu = document.getElementById('who-menu'), isAdmin = me.role === 'owner';
-      document.getElementById('wm-admin').hidden = !isAdmin; document.getElementById('wm-adminlogin').hidden = isAdmin;
+      document.getElementById('wm-admin').hidden = !isAdmin; document.getElementById('btn-admin').hidden = !isAdmin; document.getElementById('wm-adminlogin').hidden = isAdmin;
       var setOpen = function (o) { menu.hidden = !o; wb.setAttribute('aria-expanded', String(o)); };
       wb.addEventListener('click', function (e) { e.stopPropagation(); setOpen(menu.hidden); });
       document.addEventListener('click', function (e) { if (!menu.hidden && !menu.contains(e.target)) setOpen(false); });

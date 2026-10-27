@@ -494,12 +494,10 @@
     }
     var tsel = $('#xv-target');
     if (tsel !== document.activeElement) {
-      var keep = tsel.value;
-      opt(tsel, targets.length ? targets.map(function (t) { return [t.id, t.surgeon + (t.facility ? ' · ' + t.facility : '') + (ctx.viewRep ? '' : ' (' + t.rep + ')')]; }) : [['', 'Add a target surgeon first']]);
-      if (targets.some(function (t) { return t.id === keep; })) tsel.value = keep;
+      fillTargetSelect(tsel, targets, ctx, true);
       syncStep();
     }
-    $('#xv-btn').disabled = !targets.length;
+    $('#xv-btn').disabled = !$('#xv-target').value;
     var list = $('#xv-list'); list.replaceChildren();
     var rows = X.visits.filter(inView).sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : (a.created_at || '') < (b.created_at || '') ? 1 : -1; });
     if (!rows.length) { list.appendChild(el('div', 'empty', 'No visits logged yet.')); return; }
@@ -517,12 +515,37 @@
     });
     list.appendChild(ul);
   }
+  /* target-surgeon pickers list the rep's targets plus every surgeon in the shared directory;
+     picking a directory surgeon makes them that rep's target automatically */
+  function pickRep(ctx) { return T.isLead() ? (ctx && ctx.viewRep) || '' : S.myRep; }
+  function fillTargetSelect(tsel, targets, ctx, withFacility) {
+    var keep = tsel.value, rep = pickRep(ctx), mine = {};
+    targets.forEach(function (t) { if (t.rep === rep) mine[dirKey(t.surgeon)] = 1; });
+    var dir = rep ? (S.dirSurgeons || []).filter(function (d) { return d.name && !mine[dirKey(d.name)]; }).sort(function (a, b) { return dirKey(a.name) < dirKey(b.name) ? -1 : 1; }) : [];
+    tsel.replaceChildren();
+    if (!targets.length && !dir.length) { tsel.appendChild(new Option(rep || !T.isLead() ? 'Add a surgeon to the directory first' : 'Pick a rep in View to plan', '')); return; }
+    var g1 = document.createElement('optgroup'); g1.label = T.isLead() && !ctx.viewRep ? 'Target surgeons' : 'My target surgeons';
+    targets.forEach(function (t) { g1.appendChild(new Option(t.surgeon + (withFacility && t.facility ? ' · ' + t.facility : '') + (ctx.viewRep ? '' : ' (' + t.rep + ')'), t.id)); });
+    if (targets.length) tsel.appendChild(g1);
+    if (dir.length) { var g2 = document.createElement('optgroup'); g2.label = 'Surgeon directory'; dir.forEach(function (d) { g2.appendChild(new Option(d.name + (d.facility ? ' · ' + d.facility : ''), 'dir:' + d.id)); }); tsel.appendChild(g2); }
+    if (Array.from(tsel.options).some(function (o) { return o.value === keep; })) tsel.value = keep;
+  }
+  function resolveTarget(val, ctx) {
+    if (!val) return null;
+    if (val.indexOf('dir:') !== 0) return S.targets.find(function (x) { return x.id === val; }) || null;
+    var d = (S.dirSurgeons || []).find(function (x) { return 'dir:' + x.id === val; }), rep = pickRep(ctx || T.ctx || {});
+    if (!d || !rep) return null;
+    var ex = S.targets.find(function (t) { return t.rep === rep && dirKey(t.surgeon) === dirKey(d.name); }); if (ex) return ex;
+    var id = S.db.collection('targets').doc().id, body = { rep: rep, surgeon: d.name, facility: d.facility || '', step: 0, step_changed_at: TODAY, updated_at: new Date().toISOString() };
+    var t = Object.assign({ id: id }, body); S.targets = S.targets.concat([t]); save('targets', id, 'set', body); return t;
+  }
+  function selFacility(val) { if (!val) return ''; if (val.indexOf('dir:') === 0) { var d = (S.dirSurgeons || []).find(function (x) { return 'dir:' + x.id === val; }); return d ? d.facility || '' : ''; } var t = S.targets.find(function (x) { return x.id === val; }); return t ? t.facility || '' : ''; }
   function syncStep() {
     var t = S.targets.find(function (x) { return x.id === $('#xv-target').value; }), s = $('#xv-step');
     opt(s, T.STEPS.map(function (lab, i) { return [String(i), lab]; }), String(t ? t.step || 0 : 0));
   }
   function logVisit() {
-    var t = S.targets.find(function (x) { return x.id === $('#xv-target').value; }), msg = $('#xv-msg');
+    var t = resolveTarget($('#xv-target').value, X.ctx), msg = $('#xv-msg');
     if (!t) return;
     var date = $('#xv-date').value, notes = $('#xv-notes').value.trim();
     if (!date) { $('#xv-date').focus(); return; }
@@ -774,20 +797,19 @@
       var m = el('div', 'msg'); m.id = 'xvc-msg'; m.hidden = true; sec.appendChild(m);
       var root = el('div'); root.style.marginTop = '14px'; sec.appendChild(root);
       vcal = window.VisitCal.mount(root, { repFilter: T.isLead(), showRep: T.isLead(), getData: function () { return { visits: X.visits.filter(inView), reps: T.repNames(), settings: X.settings }; }, actions: visitActions });
-      $('#xvc-target').addEventListener('change', function () { var tg = S.targets.find(function (x) { return x.id === $('#xvc-target').value; }); if (tg && tg.facility) $('#xvc-fac').value = tg.facility; });
+      $('#xvc-target').addEventListener('change', function () { var f = selFacility($('#xvc-target').value); if (f) $('#xvc-fac').value = f; });
     }
     var tsel = $('#xvc-target');
     if (tsel !== document.activeElement) {
-      var keep = tsel.value;
-      opt(tsel, targets.length ? targets.map(function (t) { return [t.id, t.surgeon + (ctx.viewRep ? '' : ' (' + t.rep + ')')]; }) : [['', 'Add a target surgeon first']]);
-      if (targets.some(function (t) { return t.id === keep; })) tsel.value = keep;
-      else { var tg = targets[0]; if (tg && $('#xvc-fac') !== document.activeElement) $('#xvc-fac').value = tg.facility || ''; }
+      var before = tsel.value;
+      fillTargetSelect(tsel, targets, ctx, false);
+      if (tsel.value !== before && $('#xvc-fac') !== document.activeElement) $('#xvc-fac').value = selFacility(tsel.value);
     }
-    $('#xvc-btn').disabled = !targets.length;
+    $('#xvc-btn').disabled = !tsel.value;
     if (vcal) vcal.render();
   }
   function planVisit() {
-    var t = S.targets.find(function (x) { return x.id === $('#xvc-target').value; }), msg = $('#xvc-msg');
+    var t = resolveTarget($('#xvc-target').value, X.ctx), msg = $('#xvc-msg');
     if (!t) return;
     var date = $('#xvc-date').value, time = $('#xvc-time').value, fac = $('#xvc-fac').value.trim();
     if (!date || !time) { msg.className = 'msg err'; msg.textContent = 'Pick a date and time.'; msg.hidden = false; return; }
@@ -1003,7 +1025,7 @@
   setInterval(function () { if (S.db) geoTick(); }, 60e3);
 
   function render(M, ctx) {
-    if (!S.db) return;
+    if (!S.db) return; X.ctx = ctx;
     var ec = curCase(); if (ec && attSig !== ec.id + ':' + (ec.attachments || []).join(',')) drawAtt();
     drawBilling(ctx); drawUpcoming(ctx); drawVCal(ctx); drawVisits(ctx); drawDir(ctx); drawPrefs(ctx); drawCreds(ctx); drawNotify(); geoTick();
     var anyComm = S.quotas.some(function (q) { return q.role !== 'Team' && q.comm_rate; });

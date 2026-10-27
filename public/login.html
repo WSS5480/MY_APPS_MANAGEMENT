@@ -25,6 +25,7 @@ form{display:flex;flex-direction:column;gap:14px}
     <div class="headtxt"><h1>Surgical Case Tracker</h1><span class="conf">Confidential · Internal use only</span></div>
   </header>
   <div class="msg warn box" id="idle" hidden>You were signed out after 10 minutes without activity on this computer.</div>
+  <div class="msg warn box" id="adminmsg" hidden>This browser is now signed in as someone else (a rep). Sign in as an admin to keep using Admin.</div>
   <section class="card box">
     <h2 style="margin-bottom:12px">Sign in</h2>
     <button class="btn primary face" type="button" id="face" hidden>🙂 Sign in with Face ID / fingerprint</button>
@@ -71,6 +72,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').cat
   var DEV = /Android|iPhone|iPad|iPod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) || standalone ? 'phone' : 'computer';
   var qs = new URLSearchParams(location.search);
   if (qs.get('idle')) $('#idle').hidden = false;
+  if (qs.get('admin')) $('#adminmsg').hidden = false;
   var next = function () { var n = qs.get('next') || '/'; return /^\/[a-z]*$/.test(n) ? n : '/'; };
   var post = function (url, body) { return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ dev: DEV }, body)) }).then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw j; return j; }); }); };
   var show = function (id, t) { var e = $(id); e.textContent = t; e.hidden = !t; };
@@ -91,7 +93,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').cat
   });
   $('#f-rep').addEventListener('submit', function (e) {
     e.preventDefault(); show('#err-rep', ''); var b = $('#go'); b.disabled = true;
-    post('/api/login', { who: who.value, pin: $('#pin').value }).then(function () { try { localStorage.setItem('sct_who', who.value); } catch (x) {} location.href = who.value === '__owner__' && next() === '/' ? '/' : next(); })
+    post('/api/login', { who: who.value, pin: $('#pin').value }).then(function () { try { localStorage.setItem('sct_who', who.value); } catch (x) {} location.href = who.value === '__owner__' && next() === '/' ? '/admin' : next(); })
       .catch(function (j) { show('#err-rep', (j && j.error) || 'Could not sign in.'); b.disabled = false; $('#pin').select(); });
   });
   var ticket = null;
