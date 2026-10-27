@@ -161,7 +161,7 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 
   <div id="main">
     <nav class="jump" id="jump" aria-label="Jump to section">
-      <a href="#sec-vcal">📅 Calendar</a><a href="#sec-upcoming">Upcoming</a><a href="#sec-log">Cases</a><a href="#sec-visits">Visit log</a><a href="#sec-dir">Directory</a><a href="#sec-pref">Pref cards</a><a href="#sec-score">Scorecard</a><a href="#sec-cred">Credentials</a>
+      <a href="#sec-vcal">📅 Calendar</a><a href="/products">🛍 Products</a><a href="#sec-upcoming">Upcoming</a><a href="#sec-log">Cases</a><a href="#sec-visits">Visit log</a><a href="#sec-dir">Directory</a><a href="#sec-pref">Pref cards</a><a href="#sec-score">Scorecard</a><a href="#sec-cred">Credentials</a>
     </nav>
     <div class="stack">
       <section class="tiles" id="tiles"></section>
@@ -1096,8 +1096,8 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 <script>
 (function () {
   var nav = document.getElementById('jump'); if (!nav) return;
-  function sync() { nav.querySelectorAll('a').forEach(function (a) { var t = document.querySelector(a.getAttribute('href')); a.hidden = !t || t.hidden || !t.childElementCount; }); }
-  nav.addEventListener('click', function (e) { var a = e.target.closest('a'); if (!a) return; var t = document.querySelector(a.getAttribute('href')); if (t) { e.preventDefault(); t.scrollIntoView({ behavior: 'smooth', block: 'start' }); } });
+  function sync() { nav.querySelectorAll('a[href^="#"]').forEach(function (a) { var t = document.querySelector(a.getAttribute('href')); a.hidden = !t || t.hidden || !t.childElementCount; }); }
+  nav.addEventListener('click', function (e) { var a = e.target.closest('a'); if (!a || a.getAttribute('href').charAt(0) !== '#') return; var t = document.querySelector(a.getAttribute('href')); if (t) { e.preventDefault(); t.scrollIntoView({ behavior: 'smooth', block: 'start' }); } });
   sync(); setInterval(sync, 2000);
   // reps in the field: calendar, upcoming and case log first; COO/managers keep the numbers-first order
   var REP_ORDER = ['tiles', 'sec-vcal', 'sec-upcoming', 'sec-log', 'sec-score', 'sec-comm', 'sec-billing', 'sec-visits', 'sec-pref', 'sec-dir', 'sec-surgeons', 'sec-conv', 'sec-mix', 'sec-sim', 'sec-notes', 'sec-cred', 'sec-notify'];
@@ -1111,8 +1111,8 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
     var foot = tail.filter(function (k) { return k.tagName === 'FOOTER'; });
     REP_ORDER.forEach(function (id) { (groups[id] || []).forEach(function (k) { if (k.tagName !== 'FOOTER') stack.appendChild(k); }); });
     foot.forEach(function (k) { stack.appendChild(k); });
-    var links = { 'sec-vcal': 1, 'sec-upcoming': 2, 'sec-log': 3, 'sec-score': 4, 'sec-visits': 5, 'sec-pref': 6, 'sec-dir': 7, 'sec-cred': 8 };
-    Array.from(nav.children).sort(function (x, y) { return (links[x.getAttribute('href').slice(1)] || 99) - (links[y.getAttribute('href').slice(1)] || 99); }).forEach(function (a) { nav.appendChild(a); });
+    var links = { 'sec-vcal': 1, '/products': 1.5, 'sec-upcoming': 2, 'sec-log': 3, 'sec-score': 4, 'sec-visits': 5, 'sec-pref': 6, 'sec-dir': 7, 'sec-cred': 8 };
+    Array.from(nav.children).sort(function (x, y) { var w = function (el) { var h = el.getAttribute('href'); return links[h.charAt(0) === '#' ? h.slice(1) : h] || 99; }; return w(x) - w(y); }).forEach(function (a) { nav.appendChild(a); });
   }).catch(function () {});
 })();
 </script>
