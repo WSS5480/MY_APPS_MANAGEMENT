@@ -204,6 +204,8 @@ const acctOf = s => mgrs()[s.mgr || s.acct];
 function setSession(res, obj, dev) {
   dev = dev === 'phone' ? 'phone' : 'computer';
   const days = dev === 'phone' ? 30 : 1, sid = crypto.randomBytes(9).toString('base64url');
+  for (const [id, t] of lastActive) if (Date.now() - t > 2 * 864e5) lastActive.delete(id);
+  for (const [ip, t] of tries) if (Date.now() - t.at > 60 * 60e3) tries.delete(ip);
   lastActive.set(sid, Date.now());
   res.setHeader('Set-Cookie', `sct_session=${encodeURIComponent(sign(Object.assign({}, obj, { sid, dev, exp: Date.now() + days * 864e5 })))}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${days * 86400}${PROD ? '; Secure' : ''}`);
 }
@@ -663,6 +665,7 @@ app.get('/api/udi/:di', needApi(), async (req, res) => {
     if (!r.ok) { const out = { found: false, di }; udiCache.set(di, out); return res.json(out); }
     const j = await r.json(), dv = (j.gudid && j.gudid.device) || {};
     const out = { found: !!dv.brandName || !!dv.companyName, di, brand: dv.brandName || '', company: dv.companyName || '', model: dv.versionModelNumber || '', description: dv.deviceDescription || '', source: 'FDA AccessGUDID' };
+    if (udiCache.size > 500) udiCache.delete(udiCache.keys().next().value);
     udiCache.set(di, out); res.json(out);
   } catch (e) { res.json({ found: false, di, error: 'The FDA lookup did not answer. Pick the product by hand.' }); }
 });
@@ -1222,7 +1225,7 @@ async function seedStabilityPhotos(only) {
   if (!files.every(f => fs.existsSync(path.join(dir, f)))) return;
   const targets = [...docs].filter(([k, d]) => k.startsWith('products/') && (!only || only.has(k)) && /stability biologics/i.test(d.manufacturer || ''));
   if (!targets.length) return;
-  for (const [k, d] of targets) {
+  for (const [k] of targets) {
     const pid = k.slice(9), add = [];
     for (const f of files) {
       const id = 'img' + crypto.createHash('sha1').update(pid + f).digest('hex').slice(0, 18);

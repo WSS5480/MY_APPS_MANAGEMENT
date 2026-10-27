@@ -125,7 +125,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').cat
   'use strict';
   var $ = function (s) { return document.querySelector(s); };
   var el = function (t, c, x) { var n = document.createElement(t); if (c) n.className = c; if (x != null) n.textContent = x; return n; };
-  var P = [], owner = false, section = 'All', slide = 0, deck = [];
+  var P = [], section = 'All', slide = 0, deck = [];
   var SECTIONS = ['Hospital & Surgical', 'Outpatient & Wound Care', 'Clinic Programs'];
   var img = function (id) { return '/img/' + encodeURIComponent(id); };
 
@@ -265,7 +265,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').cat
   $('#pres').addEventListener('touchend', function (e) { if (sx == null) return; var dx = e.changedTouches[0].clientX - sx; if (Math.abs(dx) > 50) (dx < 0 ? $('#p-next') : $('#p-prev')).click(); sx = null; });
 
   $('#q').addEventListener('input', draw); $('#show-off').addEventListener('change', draw);
-  window.claude.use('user').then(function (u) { return u.isOwner(); }).then(function (o) { owner = o; $('#to-admin').hidden = !o; });
+  window.claude.use('user').then(function (u) { return u.isOwner(); }).then(function (o) { $('#to-admin').hidden = !o; });
   window.claude.use('db').then(function (db) {
     db.collection('products').onSnapshot(function (snap) {
       P = snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }).sort(function (a, b) { return (a.sort || 0) - (b.sort || 0) || (a.name < b.name ? -1 : 1); });

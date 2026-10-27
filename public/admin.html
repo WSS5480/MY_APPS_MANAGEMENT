@@ -683,7 +683,7 @@ header.head.has-who{padding-top:58px}
   });
   loadProducts().catch(function () {});
   /* ---------- price book, settings, month close, digest ---------- */
-  var DOCS = {}, PB = [], pbDirty = false;
+  var DOCS = {}, PB = [];
   var setDoc = function (path, data) { return api('/api/doc', { op: 'set', path: path, data: data }); };
   function loadConfig() {
     return fetch('/api/sync?v=-1').then(function (r) { return r.json(); }).then(function (j) {
@@ -697,7 +697,7 @@ header.head.has-who{padding-top:58px}
       var dl = $('#pb-names'); dl.replaceChildren(); Object.keys(names).sort().forEach(function (n) { var o = el('option'); o.value = n; dl.appendChild(o); });
     });
   }
-  function setPB(v) { pbDirty = v; $('#pb-save').disabled = !v; }
+  function setPB(v) { $('#pb-save').disabled = !v; }
   function drawPB() {
     var b = $('#pb tbody'); b.replaceChildren();
     if (!PB.length) { var tr0 = el('tr'), td0 = el('td', '', 'No prices yet. Add one, or paste a list below.'); td0.colSpan = 4; td0.className = 'note'; tr0.appendChild(td0); b.appendChild(tr0); }

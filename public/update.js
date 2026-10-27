@@ -6,7 +6,7 @@
   function busy() {
     var a = document.activeElement;
     if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && a.value) return true;
-    return !!document.querySelector('dialog[open], #editor:not([hidden]) .form, .vc-box, [role="alertdialog"]');
+    return !!document.querySelector('dialog[open], #editor:not([hidden]) .form, .vc-modal:not([hidden]) .vc-box, [role="alertdialog"], #install-sheet');
   }
   function show() {
     if (bar) return;

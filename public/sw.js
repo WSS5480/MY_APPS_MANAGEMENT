@@ -1,6 +1,6 @@
 /* 360 Cases service worker: works offline (pages, scripts and photos cached), plus push notifications.
    Data comes live from the server; when offline the page uses the copy saved on the device. */
-const V = 'v20';
+const V = 'v21';
 const SHELL = 'sct360-shell-' + V, PAGES = 'sct360-pages-' + V, IMG = 'sct360-img-' + V, CDN = 'sct360-cdn-' + V;
 const SHELL_FILES = ['/logo.png', '/shim.js', '/plus.js', '/plus.css', '/visitcal.js', '/idle.js', '/zoom.js', '/spin.js', '/install.js', '/ptr.js', '/update.js', '/webauthn.js', '/app.css', '/icon-192.png', '/icon-512.png', '/favicon.png', '/manifest.webmanifest'];
 const PAGE_PATHS = ['/', '/products', '/download', '/login'];
@@ -32,7 +32,7 @@ self.addEventListener('fetch', e => {
 });
 self.addEventListener('push', e => {
   let d = {}; try { d = e.data ? e.data.json() : {}; } catch (x) { d = { title: '360 Medical', body: e.data ? e.data.text() : '' }; }
-  e.waitUntil(self.registration.showNotification(d.title || '360 Medical', { body: d.body || '', icon: '/icon-192.png', badge: '/favicon.png', data: { url: d.url || '/' }, tag: 'sct360-digest' }));
+  e.waitUntil(self.registration.showNotification(d.title || '360 Medical', { body: d.body || '', icon: '/icon-192.png', badge: '/favicon.png', data: { url: d.url || '/' }, tag: d.tag || ('sct360-' + Date.now()) }));
 });
 self.addEventListener('notificationclick', e => {
   e.notification.close();

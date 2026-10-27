@@ -6,7 +6,7 @@
   'use strict';
   var T = window.SCT; if (!T) return;
   var S = T.S, $ = T.$, el = T.el, money = T.money, dayName = T.dayName;
-  var TODAY = T.TODAY, CUR = T.CUR;
+  var TODAY = T.TODAY;
   var X = { visits: [], prefs: [], creds: [], pricebook: { rows: [] }, settings: {}, closed: { months: {} }, db: null, built: {} };
   var DONE = ['Completed', 'PO received', 'Invoiced', 'Paid'];
   var STAMP = { 'Completed': 'completed_date', 'PO received': 'po_date', 'Invoiced': 'invoiced_date', 'Paid': 'paid_date' };
@@ -24,7 +24,6 @@
   var viewRep = function () { return T.currentViewRep(); };
   var inView = function (r) { var v = viewRep(); return !v || r.rep === v; };
   var curCase = function () { return S.cases.find(function (c) { return c.id === S.editId; }); };
-  var newId = function () { return S.db.collection('cases').doc().id; };
   var api = function (url, body, method) {
     return fetch(url, { method: method || (body ? 'POST' : 'GET'), credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined })
       .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw j; return j; }); });
@@ -423,7 +422,7 @@
       var list = el('div'); list.id = 'x-up-list'; sec.appendChild(list);
       var cal = el('div', 'x-cal'); cal.id = 'x-cal'; cal.hidden = true; sec.appendChild(cal);
     }
-    var list = $('#x-up-list'); list.replaceChildren();
+    list = $('#x-up-list'); list.replaceChildren();
     var end = addDays(TODAY, 13), items = [];
     S.cases.filter(function (c) { return inView(c) && c.date >= TODAY && c.date <= end && c.status !== 'Cancelled'; }).forEach(function (c) { items.push({ date: c.date, time: c.time || '', kind: 'case', c: c }); });
     X.visits.filter(inView).filter(function (v) { return v.status === 'planned' && v.date >= TODAY && v.date <= end; }).forEach(function (v) { items.push({ date: v.date, time: v.time || '', kind: 'visit', v: v }); });
@@ -533,7 +532,7 @@
   function resolveTarget(val, ctx) {
     if (!val) return null;
     if (val.indexOf('dir:') !== 0) return S.targets.find(function (x) { return x.id === val; }) || null;
-    var d = (S.dirSurgeons || []).find(function (x) { return 'dir:' + x.id === val; }), rep = pickRep(ctx || T.ctx || {});
+    var d = (S.dirSurgeons || []).find(function (x) { return 'dir:' + x.id === val; }), rep = pickRep(ctx || X.ctx || {});
     if (!d || !rep) return null;
     var ex = S.targets.find(function (t) { return t.rep === rep && dirKey(t.surgeon) === dirKey(d.name); }); if (ex) return ex;
     var id = S.db.collection('targets').doc().id, body = { rep: rep, surgeon: d.name, facility: d.facility || '', step: 0, step_changed_at: TODAY, updated_at: new Date().toISOString() };
@@ -840,7 +839,7 @@
     T.render();
   }
   function visitActions(v, st, close) {
-    var acts = [], mine = !T.isLead() || v.rep === S.myRep;
+    var acts = [];
     if (!T.isLead() && v.status === 'planned' && !(v.check && (v.check.ok === true || v.check.missed))) {
       var w = window.VisitCal.windowOf(v, X.settings);
       if (Date.now() >= w.open && Date.now() <= w.close) acts.push({ label: '📍 Check in now', cls: 'primary', fn: function () { checkIn(v, close); } });
@@ -966,7 +965,7 @@
     addMic($('#note-text'));
   }
   /* ---------- geofence: only around the facility, only during the visit window, only while the app is open ---------- */
-  var GF = { watch: null, busy: false, lastTry: 0, outside: [], key: '' };
+  var GF = { watch: null, busy: false, lastTry: 0, outside: [] };
   function facOf(name) { var n = String(name || '').trim().toLowerCase(); if (!n) return null; return (S.dirFacilities || []).find(function (f) { return String(f.name || '').trim().toLowerCase() === n || (f.aliases || []).some(function (a) { return String(a).trim().toLowerCase() === n; }); }) || null; }
   function meters(a, b, c, d) { var R = 6371000, r = function (x) { return x * Math.PI / 180; }, dl = r(c - a), dg = r(d - b); var h = Math.pow(Math.sin(dl / 2), 2) + Math.cos(r(a)) * Math.cos(r(c)) * Math.pow(Math.sin(dg / 2), 2); return Math.round(2 * R * Math.asin(Math.sqrt(h))); }
   function geoJobs() {
@@ -1032,10 +1031,8 @@
   }
   function geoTick() {
     var jobs = geoJobs(); geoBanner(jobs);
-    var key = jobs.map(function (j) { return j.kind + j.v.id; }).join(',');
-    if (!jobs.length || !navigator.geolocation) { if (GF.watch != null) { navigator.geolocation.clearWatch(GF.watch); GF.watch = null; } GF.key = ''; return; }
+    if (!jobs.length || !navigator.geolocation) { if (GF.watch != null) { navigator.geolocation.clearWatch(GF.watch); GF.watch = null; } return; }
     if (GF.watch == null) GF.watch = navigator.geolocation.watchPosition(geoOnPos, function () {}, { enableHighAccuracy: true, maximumAge: 15000, timeout: 30000 });
-    GF.key = key;
   }
   document.addEventListener('visibilitychange', function () { if (document.hidden && GF.watch != null) { navigator.geolocation.clearWatch(GF.watch); GF.watch = null; } else if (!document.hidden) geoTick(); });
   setInterval(function () { if (S.db) geoTick(); }, 60e3);

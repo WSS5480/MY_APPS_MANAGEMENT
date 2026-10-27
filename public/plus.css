@@ -33,7 +33,6 @@
 .x-cal code{word-break:break-all;font-size:.75rem}
 .x-split{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr));gap:16px}
 .x-sub{font-size:.8125rem;font-weight:600;margin:12px 0 2px}
-.x-hidden-print{}
 /* scanner */
 .x-modal{position:fixed;inset:0;z-index:60;background:rgba(3,18,31,.82);display:flex;align-items:center;justify-content:center;padding:16px}
 .x-modal[hidden]{display:none}
