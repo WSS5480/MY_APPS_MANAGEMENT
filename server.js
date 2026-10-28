@@ -192,7 +192,10 @@ function session(req) {
     else if (Date.now() - t > IDLE_MS) return null;
   }
   if (s.role === 'owner' && s.mgr) { const m = mgrs()[s.mgr]; return m && m.active !== false && m.v === s.v ? s : null; }
-  if (s.role === 'owner' && s.hub) return s; // signed in through the store (one login); the cookie carries the expiry
+  if (s.role === 'owner' && s.hub) { // signed in through the store (one login): still listed there as an active admin/manager?
+    if (hubPeople.at && s.hubId && !hubPeople.list.some(u => u.id === s.hubId && u.active !== false && u.role !== 'rep')) return null;
+    return s;
+  }
   if (s.role === 'owner') return s.v === adminV() && !pinOff() ? s : null;
   const p = pins().reps[s.rep];
   if (!p || p.active === false) return null;
@@ -217,7 +220,7 @@ const uidOf = s => s.role === 'owner' ? (s.mgr ? 'mgr-' + s.mgr : 'owner') : 're
 const mgrs = () => (docs.get('_auth/managers') || {}).m || {};
 async function saveMgrs(m) { await put('_auth/managers', { m }); }
 const pinOff = () => !!(docs.get('_auth/admin') || {}).pin_disabled;
-const isSuper = s => s && s.role === 'owner' && (!s.mgr || !!(mgrs()[s.mgr] || {}).can_manage);
+const isSuper = s => s && s.role === 'owner' && !s.hubStaff && (!s.mgr || !!(mgrs()[s.mgr] || {}).can_manage); // store managers are managers here too, not super-admins
 const whoName = s => s.role === 'owner' ? (s.mgr ? ((mgrs()[s.mgr] || {}).name || 'Manager') : (s.hubName || 'COO')) : s.rep;
 
 /* login throttle */
@@ -320,10 +323,10 @@ function hubVerify(token) {
   if (sig.length !== m[2].length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(m[2]))) return null;
   try { const o = JSON.parse(Buffer.from(m[1], 'base64url').toString()); return o.exp && o.exp > Date.now() ? o : null; } catch (e) { return null; }
 }
-const hubAuth = (req, res, next) => { const t = /^Hub (.+)$/.exec(req.headers.authorization || ''); if (!HUB_SECRET || !t || !hubVerify(t[1])) return res.status(401).json({ error: 'Hub signature missing or wrong' }); next(); };
+const hubAuth = (req, res, next) => { const t = /^Hub (.+)$/.exec(req.headers.authorization || ''); if (!HUB_SECRET || !t || !(hubVerify(t[1]) || {}).svc) return res.status(401).json({ error: 'Hub signature missing or wrong' }); next(); };
 async function hubCall(pathname, opts = {}) {
   if (!hubLinked()) throw new Error('not linked');
-  const r = await fetch(HUB_URL + pathname, Object.assign({ headers: Object.assign({ Authorization: 'Hub ' + hubSign({ exp: Date.now() + 120000 }), 'Content-Type': 'application/json' }, opts.headers || {}), signal: AbortSignal.timeout(10000) }, opts));
+  const r = await fetch(HUB_URL + pathname, Object.assign({ headers: Object.assign({ Authorization: 'Hub ' + hubSign({ svc: true, exp: Date.now() + 120000 }), 'Content-Type': 'application/json' }, opts.headers || {}), signal: AbortSignal.timeout(10000) }, opts));
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || ('hub answered ' + r.status));
   return j;
@@ -334,18 +337,32 @@ async function syncPeople(force) {
   if (!hubLinked()) return hubPeople.list;
   if (!force && Date.now() - hubPeople.at < 60000) return hubPeople.list;
   let people;
-  try { people = (await hubCall('/api/hub/people')).people || []; } catch (e) { console.error('Hub people sync: ' + e.message); return hubPeople.list; }
+  try { people = (await hubCall('/api/hub/people')).people || []; } catch (e) { console.error('Hub people sync: ' + e.message); hubPeople.at = Date.now() - 30000; return hubPeople.list; } // retry in 30 s, don't hang every login meanwhile
   hubPeople = { at: Date.now(), list: people };
   const p = pins(), rows = quotaRows().slice(); let pinsChanged = false, rowsChanged = false;
   for (const u of people.filter(x => x.role === 'rep')) {
     const name = String(u.name || '').trim(); if (!name) continue;
-    const cur = p.reps[name];
-    if (!cur) { p.reps[name] = { pin: '', v: 1, active: u.active !== false, hub: u.id, email: u.email }; pinsChanged = true; }
-    else if (cur.hub !== u.id || cur.active !== (u.active !== false) || cur.email !== u.email) { Object.assign(cur, { hub: u.id, active: u.active !== false, email: u.email }); pinsChanged = true; }
-    if (!rows.some(r => r.rep === name && r.role !== 'Team')) { rows.push({ rep: name, role: 'Sales Rep', territory: name, metric: 'Revenue', quota: null, counts: 'All', product_filter: '', carry: false, draw: null, comm_rate: null, comm_floor: 0, pay_type: '', pay_amount: null, hub: u.id }); rowsChanged = true; }
+    const lower = name.toLowerCase();
+    let key = Object.keys(p.reps).find(k => p.reps[k].hub === u.id) || Object.keys(p.reps).find(k => k.trim().toLowerCase() === lower);
+    if (key && key !== name) { // renamed in the store (or different capitalisation): follow it everywhere
+      p.reps[name] = p.reps[key]; delete p.reps[key]; pinsChanged = true;
+      rows.forEach(r => { if (r.rep === key) r.rep = name; }); rowsChanged = true;
+      for (const [k, d] of [...docs]) if (/^(cases|visits|targets|coonotes)\//.test(k) && d && d.rep === key) { docs.set(k, Object.assign({}, d, { rep: name })); persist(k); }
+      key = name;
+    }
+    const cur = p.reps[name], storeActive = u.active !== false;
+    if (!cur) { p.reps[name] = { pin: '', v: 1, active: storeActive, hubActive: storeActive, hub: u.id, email: u.email }; pinsChanged = true; }
+    else {
+      const changes = {};
+      if (cur.hub !== u.id) changes.hub = u.id;
+      if (cur.email !== u.email) changes.email = u.email;
+      if (cur.hubActive !== storeActive) { changes.hubActive = storeActive; changes.active = storeActive; } // only a store-side change flips access
+      if (Object.keys(changes).length) { Object.assign(cur, changes); pinsChanged = true; }
+    }
+    if (!rows.some(r => r.rep === name && r.role !== 'Team')) { rows.push({ rep: name, role: 'Sales Rep', territory: name, metric: 'Revenue', quota: null, counts: 'All', product_filter: '', carry: false, draw: null, comm_rate: null, comm_floor: 0, pay_kind: '', pay_amount: null, hub: u.id }); rowsChanged = true; }
   }
   // a rep whose Case tracker box was unticked in the store is switched off here (their records stay)
-  for (const [name, rec] of Object.entries(p.reps)) if (rec.hub && rec.active !== false && !people.some(u => u.role === 'rep' && u.id === rec.hub && u.active !== false)) { rec.active = false; pinsChanged = true; }
+  for (const [name, rec] of Object.entries(p.reps)) if (rec.hub && rec.hubActive !== false && !people.some(u => u.role === 'rep' && u.id === rec.hub && u.active !== false)) { rec.active = false; rec.hubActive = false; pinsChanged = true; }
   if (pinsChanged) await put('_auth/pins', p);
   if (rowsChanged) await put('config/quotas', Object.assign({}, docs.get('config/quotas') || {}, { rows }));
   return people;
@@ -354,11 +371,12 @@ const hubPerson = (name) => hubPeople.list.find(u => u.role === 'rep' && String(
 // single sign-on landing: the store hands a signed 2-minute token with who this is
 app.get(['/sso', '/admin/sso'], async (req, res) => { // /admin/sso keeps the installed Admin app inside its scope
   const t = hubVerify(req.query.t);
-  const next = /^\/[A-Za-z0-9/_#?=&%.-]*$/.test(String(req.query.next || '')) ? String(req.query.next) : '/';
+  const next = /^\/(?![\/\\])[A-Za-z0-9/_#?=&%.-]*$/.test(String(req.query.next || '')) ? String(req.query.next) : '/';
   if (!t || !t.sso) return res.redirect('/login?next=' + encodeURIComponent(next) + '&err=sso');
   await syncPeople(true).catch(() => {});
   const dev = /iPhone|iPad|Android|Mobile/i.test(req.headers['user-agent'] || '') ? 'phone' : 'computer';
-  if (t.role === 'owner' || t.role === 'staff') { setSession(res, { role: 'owner', hub: t.email, hubName: t.name, v: adminV() }, dev); return res.redirect(next); } // '/' = the tracker (COO view), '/admin' = Admin
+  if (!t.apps || !t.apps.tracker) return res.redirect('/login?err=noaccess');
+  if (t.role === 'owner' || t.role === 'staff') { setSession(res, { role: 'owner', hub: t.email, hubId: t.id, hubName: t.name, hubStaff: t.role === 'staff', v: adminV() }, dev); return res.redirect(next); } // '/' = the tracker (COO view), '/admin' = Admin
   const name = String(t.name || '').trim();
   if (!t.apps || !t.apps.tracker || !pins().reps[name]) return res.redirect('/login?err=noaccess');
   setSession(res, { role: 'rep', rep: name, hub: t.email, v: pins().reps[name].v }, dev);
@@ -397,7 +415,7 @@ app.post('/api/hub/mail-test', hubAuth, async (req, res) => {
 });
 // email previews for the hub's Setup page: the link carries a short signed token instead of a tracker session
 app.get('/hub/mail-preview', (req, res) => {
-  const t = hubVerify(req.query.t); if (!t) return res.status(401).type('text').send('This preview link has expired. Open it again from the Setup page.');
+  const t = hubVerify(req.query.t); if (!t || !t.preview) return res.status(401).type('text').send('This preview link has expired. Open it again from the Setup page.');
   const kind = req.query.kind === 'surgeon' ? 'surgeon' : 'facility';
   const sample = kind === 'facility' ? { name: 'Valley Baptist Medical Center', address: '2101 Pease St, Harlingen, TX 78550', map_label: '2101 Pease St, Harlingen, TX 78550', lat: 26.1836, lng: -97.7118, created_at: new Date().toISOString() }
     : { name: 'Dr. Maria Salinas', specialty: 'Orthopedic surgery', facility: 'Valley Baptist Medical Center', created_at: new Date().toISOString() };
@@ -406,7 +424,7 @@ app.get('/hub/mail-preview', (req, res) => {
 // the other direction: someone signed in here goes to the store's admin pages (Team logins, Setup, Apps, My account) with this login
 // the switch, kept inside this app's own address: a full-window frame of the store admin / rep app (signed in through the frame)
 app.get(['/store', '/admin/store'], (req, res) => {
-  const next = /^\/[A-Za-z0-9/_#?=&%.-]*$/.test(String(req.query.next || '')) ? String(req.query.next) : '/admin';
+  const next = /^\/(?![\/\\])[A-Za-z0-9/_#?=&%.-]*$/.test(String(req.query.next || '')) ? String(req.query.next) : '/admin';
   if (!hubLinked()) return res.redirect('/');
   const s = session(req); if (!s) return res.redirect('/login?next=' + encodeURIComponent(req.originalUrl));
   let email = s.hub || '';
@@ -421,7 +439,7 @@ app.get(['/store', '/admin/store'], (req, res) => {
 <body><iframe src="${esc(src)}" title="Peptide store" allow="camera"></iframe></body></html>`);
 });
 app.get(['/go/store', '/admin/go/store'], (req, res) => {
-  const next = /^\/[A-Za-z0-9/_#?=&%.-]*$/.test(String(req.query.next || '')) ? String(req.query.next) : '/admin';
+  const next = /^\/(?![\/\\])[A-Za-z0-9/_#?=&%.-]*$/.test(String(req.query.next || '')) ? String(req.query.next) : '/admin';
   if (!hubLinked()) return res.redirect(HUB_URL ? HUB_URL + next : '/');
   const s = session(req); if (!s) return res.redirect('/login?next=' + encodeURIComponent('/go/store?next=' + next));
   let email = s.hub || '';
@@ -1190,7 +1208,7 @@ app.get('/approve', (req, res) => {
 });
 app.get('/api/admin/mail', needApi('owner'), async (req, res) => { await refreshHubMail(); const c = mailCfg(); res.json({ viaHub: !!c.viaHub, hub: hubLinked() ? HUB_URL : '', on: c.on !== false, to: c.to || process.env.COO_EMAIL || '', tenant: c.tenant || process.env.GRAPH_TENANT || '', client: c.client || process.env.GRAPH_CLIENT || '', secretSet: !!(c.secret || process.env.GRAPH_SECRET), mailbox: c.mailbox || '', from: c.from || process.env.MAIL_FROM || '', info: mail.info(c) }); });
 app.post('/api/admin/mail', needApi('owner'), async (req, res) => {
-  const b = req.body || {}, prev = mailCfg();
+  const b = req.body || {}, prev = docs.get('config/mail') || {}; // the local doc only: the store's secret must not be copied in
   const str = (v, n) => String(v || '').trim().slice(0, n);
   const to = str(b.to, 160); if (to && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return res.status(400).json({ error: "The COO email address doesn't look right." });
   const doc = { on: b.on !== false, to, tenant: str(b.tenant, 120), client: str(b.client, 120), mailbox: str(b.mailbox, 160), from: str(b.from, 200), secret: str(b.secret, 300) || prev.secret || '', updated_at: new Date().toISOString() };
