@@ -8,11 +8,15 @@
     if (top.parentElement !== card || top !== card.firstElementChild) return null; // heading must sit at the top of the card
     return { h: h, top: top };
   }
+  // a panel that appears because you clicked something on the page (Edit order, Add customer, a PIN…) opens; page panels start collapsed
+  var lastAction = 0;
+  document.addEventListener('click', function (e) { lastAction = e.target.closest('aside, header.head, nav, [data-nav], [data-invtab], .seg, .rnav, .jump, .navtoggle, .fold-h') ? 0 : Date.now(); }, true);
   function apply(card) {
     var f = headOf(card); if (!f || card.hasAttribute('data-nofold')) { card.removeAttribute('data-fold'); return; }
     card.setAttribute('data-fold', '1'); f.top.classList.add('fold-head'); f.h.classList.add('fold-h');
+    if (card.dataset.foldInit) return; card.dataset.foldInit = '1';
     var saved = null; try { saved = localStorage.getItem(key(card, f.h)); } catch (e) {}
-    var folded = saved === null ? true : saved === '1'; // collapsed until you open it
+    var folded = saved === null ? !(Date.now() - lastAction < 2500) : saved === '1';
     card.classList.toggle('folded', folded);
     f.h.setAttribute('aria-expanded', folded ? 'false' : 'true');
   }
