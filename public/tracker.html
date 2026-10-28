@@ -143,7 +143,7 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .jump a[hidden]{display:none}
 section[id^="sec-"]{scroll-margin-top:62px}
 </style>
-<link rel="stylesheet" href="/theme-360.css?v=15"><script src="/collapse.js?v=3" defer></script>
+<link rel="stylesheet" href="/theme-360.css?v=16"><script src="/collapse.js?v=3" defer></script>
 </head><body class="side-layout">
 <div class="wrap" id="root">
   <header class="head" style="position:relative">
@@ -331,7 +331,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="/d3.min.js"></script>
 <script src="/shim.js"></script>
 <script src="/idle.js"></script>
 <script src="/install.js"></script>
@@ -1125,7 +1125,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
       document.getElementById('wb-name').textContent = me.name; document.getElementById('wb-ic').textContent = String(me.name).trim().charAt(0).toUpperCase();
       document.getElementById('wb-role').textContent = me.role === 'rep' ? 'Sales rep' : me.manager ? 'Manager' : 'Admin';
       var wb = document.getElementById('who-badge'); wb.title = 'Signed in as ' + me.name; wb.hidden = false; wb.parentNode.classList.add('has-who');
-      var va = document.getElementById('views-admin'); if (va && me.role !== 'owner') va.remove();
+      var va = document.getElementById('views-admin'); if (va && me.role !== 'owner') { va.removeAttribute('href'); va.classList.add('off'); va.title = 'Admins only'; }
       if (me.hub) { var sw = document.getElementById('appswitch'); var framed = false; try { framed = window.top !== window; } catch (e) { framed = true; } var hostable = !/iPhone|iPad|iPod/.test(navigator.userAgent) && /Chrome|Edg|Firefox/.test(navigator.userAgent); var toStore = function (next) { return framed ? me.hub + next : (hostable ? '/store?next=' : '/go/store?next=') + encodeURIComponent(next); }; var vs = document.getElementById('v-store'), vr = document.getElementById('v-rep'); vs.href = toStore('/'); vr.href = toStore('/rep'); vs.hidden = vr.hidden = false; if (framed) { vs.target = vr.target = '_top'; }
       var sws = document.getElementById('sw-store'); sws.href = toStore(me.role === 'owner' ? '/admin' : '/rep'); if (framed) sws.target = '_top'; sw.hidden = false;
         document.querySelectorAll('.both-apps').forEach(function (el) { el.hidden = false; if (el.dataset.go) { var to = el.dataset.go; if (me.role === 'owner') to = to.replace('/rep#account', '/admin#account'); if (framed) { el.href = me.hub + to; el.target = '_top'; } else { el.href = '#hub-' + el.dataset.hub; el.dataset.src = '/go/store?next=' + encodeURIComponent(to.replace('#', '?embed=1#')); } } });

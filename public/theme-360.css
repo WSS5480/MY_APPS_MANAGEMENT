@@ -221,3 +221,4 @@ body.side-layout .head .both-apps.on { background: rgba(255,255,255,.12); color:
 body.embed .head, body.embed #hubpane, body.embed .jump, body.embed .mtop { display: none !important; }
 body.embed .wrap { padding: 1rem !important; max-width: none; }
 .appswitch.views a, .appswitch.views span { font-size: .66rem; padding: 0 .1rem; }
+.appswitch a.off { opacity: .4; cursor: default; }
