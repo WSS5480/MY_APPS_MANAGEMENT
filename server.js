@@ -354,7 +354,7 @@ const hubPerson = (name) => hubPeople.list.find(u => u.role === 'rep' && String(
 // single sign-on landing: the store hands a signed 2-minute token with who this is
 app.get(['/sso', '/admin/sso'], async (req, res) => { // /admin/sso keeps the installed Admin app inside its scope
   const t = hubVerify(req.query.t);
-  const next = /^\/[A-Za-z0-9/_#-]*$/.test(String(req.query.next || '')) ? String(req.query.next) : '/';
+  const next = /^\/[A-Za-z0-9/_#?=&%.-]*$/.test(String(req.query.next || '')) ? String(req.query.next) : '/';
   if (!t || !t.sso) return res.redirect('/login?next=' + encodeURIComponent(next) + '&err=sso');
   await syncPeople(true).catch(() => {});
   const dev = /iPhone|iPad|Android|Mobile/i.test(req.headers['user-agent'] || '') ? 'phone' : 'computer';
