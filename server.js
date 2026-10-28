@@ -13,6 +13,8 @@ const SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('he
 const ENV_ADMIN_PIN = String(process.env.ADMIN_PIN || '360360');
 const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, 'data.json');
 const PROD = process.env.NODE_ENV === 'production' || !!process.env.RENDER;
+// linked to the store: the session cookie must travel inside the store's window (a different site), so SameSite=None; Secure
+const COOKIE_ATTRS = () => (process.env.HUB_URL && process.env.HUB_SECRET) ? 'SameSite=None; Secure' : `SameSite=Lax${PROD ? '; Secure' : ''}`;
 
 /* ---------------- storage: everything lives in memory, written through to Postgres or a file ---------------- */
 const docs = new Map();          // path -> data
@@ -209,7 +211,7 @@ function setSession(res, obj, dev) {
   for (const [id, t] of lastActive) if (Date.now() - t > 2 * 864e5) lastActive.delete(id);
   for (const [ip, t] of tries) if (Date.now() - t.at > 60 * 60e3) tries.delete(ip);
   lastActive.set(sid, Date.now());
-  res.setHeader('Set-Cookie', `sct_session=${encodeURIComponent(sign(Object.assign({}, obj, { sid, dev, exp: Date.now() + days * 864e5 })))}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${days * 86400}${PROD ? '; Secure' : ''}`);
+  res.setHeader('Set-Cookie', `sct_session=${encodeURIComponent(sign(Object.assign({}, obj, { sid, dev, exp: Date.now() + days * 864e5 })))}; Path=/; HttpOnly; ${COOKIE_ATTRS()}; Max-Age=${days * 86400}`);
 }
 const uidOf = s => s.role === 'owner' ? (s.mgr ? 'mgr-' + s.mgr : 'owner') : 'rep-' + slug(s.rep);
 const mgrs = () => (docs.get('_auth/managers') || {}).m || {};
@@ -252,7 +254,7 @@ function clean(d) {
 const app = express();
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '5mb' }));
-app.use((req, res, next) => { res.setHeader('X-Frame-Options', 'SAMEORIGIN'); res.setHeader('Referrer-Policy', 'same-origin'); res.setHeader('X-Robots-Tag', 'noindex'); next(); });
+app.use((req, res, next) => { const hub = String(process.env.HUB_URL || '').replace(/\/$/, ''); if (hub && process.env.HUB_SECRET) res.setHeader('Content-Security-Policy', `frame-ancestors 'self' ${hub}`); else res.setHeader('X-Frame-Options', 'SAMEORIGIN'); res.setHeader('Referrer-Policy', 'same-origin'); res.setHeader('X-Robots-Tag', 'noindex'); next(); });
 
 const pub = path.join(__dirname, 'public');
 const page = f => (req, res) => res.sendFile(path.join(pub, f));
@@ -402,6 +404,22 @@ app.get('/hub/mail-preview', (req, res) => {
   res.type('html').send(approvalEmail({ kind, doc: sample, id: 'preview', by: 'Brandon', base: baseUrl(req) }).html);
 });
 // the other direction: someone signed in here goes to the store's admin pages (Team logins, Setup, Apps, My account) with this login
+// the switch, kept inside this app's own address: a full-window frame of the store admin / rep app (signed in through the frame)
+app.get(['/store', '/admin/store'], (req, res) => {
+  const next = /^\/[A-Za-z0-9/_#?=&%.-]*$/.test(String(req.query.next || '')) ? String(req.query.next) : '/admin';
+  if (!hubLinked()) return res.redirect('/');
+  const s = session(req); if (!s) return res.redirect('/login?next=' + encodeURIComponent(req.originalUrl));
+  let email = s.hub || '';
+  if (!email && s.role === 'owner' && s.mgr) email = (mgrs()[s.mgr] || {}).email || '';
+  if (!email && s.role === 'rep') email = ((pins().reps[s.rep] || {}).email) || (repAcct(s.rep) || {}).email || '';
+  const token = hubSign({ sso: true, email, name: whoName(s), role: s.role === 'owner' ? 'owner' : 'rep', exp: Date.now() + 120000 });
+  const src = HUB_URL + (next.startsWith('/rep') ? '/rep/sso' : next.startsWith('/admin') ? '/admin/sso' : '/sso') + '?t=' + encodeURIComponent(token) + '&next=' + encodeURIComponent(next) + '&framed=1';
+  const esc = v => String(v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  res.type('html').send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>360 Peptides</title>
+<link rel="manifest" href="${req.path.startsWith('/admin') ? '/admin.webmanifest' : '/manifest.webmanifest'}"><meta name="theme-color" content="#0f1b33">
+<style>html,body{margin:0;height:100%;background:#0f1b33}iframe{position:fixed;inset:0;width:100%;height:100%;border:0}</style></head>
+<body><iframe src="${esc(src)}" title="Peptide store" allow="clipboard-write; camera"></iframe></body></html>`);
+});
 app.get(['/go/store', '/admin/go/store'], (req, res) => {
   const next = /^\/[A-Za-z0-9/_#?=&%.-]*$/.test(String(req.query.next || '')) ? String(req.query.next) : '/admin';
   if (!hubLinked()) return res.redirect(HUB_URL ? HUB_URL + next : '/');
@@ -438,7 +456,7 @@ app.post('/api/login', async (req, res) => {
   t.n++;
   res.status(401).json({ error: 'Wrong PIN.' });
 });
-app.post('/api/logout', (req, res) => { res.setHeader('Set-Cookie', `sct_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${PROD ? '; Secure' : ''}`); res.json({ ok: true }); });
+app.post('/api/logout', (req, res) => { res.setHeader('Set-Cookie', `sct_session=; Path=/; HttpOnly; ${COOKIE_ATTRS()}; Max-Age=0`); res.json({ ok: true }); });
 
 const needApi = role => (req, res, next) => {
   const s = session(req); if (!s) return res.status(401).json({ error: 'Sign in again.' });

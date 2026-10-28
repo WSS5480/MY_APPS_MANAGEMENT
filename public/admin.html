@@ -63,7 +63,7 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
 header.head.has-who{padding-top:58px}
 @media (max-width:700px){.who-badge{top:12px;right:12px;max-width:calc(100% - 24px)}}
 </style>
-<link rel="stylesheet" href="/theme-360.css?v=11"><script src="/collapse.js?v=2" defer></script>
+<link rel="stylesheet" href="/theme-360.css?v=12"><script src="/collapse.js?v=2" defer></script>
 </head><body class="side-layout">
 <div class="wrap">
   <header class="head" style="position:relative">
@@ -1059,8 +1059,8 @@ fetch('/api/me', { credentials: 'same-origin' }).then(function (r) { return r.ok
   document.getElementById('wb-ic').textContent = String(me.name).trim().charAt(0).toUpperCase();
   document.getElementById('wb-role').textContent = me.manager ? (me.super ? 'Admin · full access' : 'Manager') : 'Admin';
   var b = document.getElementById('who-badge'); b.title = 'Signed in as ' + me.name; b.hidden = false; b.parentNode.classList.add('has-who');
-  if (me.hub) { var sw = document.getElementById('appswitch'); document.getElementById('sw-store').href = me.hub + '/admin'; sw.hidden = false;
-    document.querySelectorAll('.both-apps').forEach(function (el) { el.hidden = false; if (el.dataset.go) el.href = '/admin/go/store?next=' + encodeURIComponent(el.dataset.go); }); }
+  if (me.hub) { var sw = document.getElementById('appswitch'); var framed = false; try { framed = window.top !== window; } catch (e) { framed = true; } var hostable = !/iPhone|iPad|iPod/.test(navigator.userAgent) && /Chrome|Edg|Firefox/.test(navigator.userAgent); var toStore = function (next) { return framed ? me.hub + next : (hostable ? '/admin/store?next=' : '/admin/go/store?next=') + encodeURIComponent(next); }; var sws = document.getElementById('sw-store'); sws.href = toStore('/admin'); if (framed) sws.target = '_top'; sw.hidden = false;
+    document.querySelectorAll('.both-apps').forEach(function (el) { el.hidden = false; if (el.dataset.go) { el.href = toStore(el.dataset.go); if (framed) el.target = '_top'; } }); }
 }).catch(function () {});
 </script>
 <script>window.SCT_APP = { name: '360 Admin', icon: '/icon-admin-192.png', key: 'sct_admin_installed', skip: 'sct_admin_install_later', blurb: 'Opens in its own window with the Admin icon and stays signed in on this device.' };</script>
