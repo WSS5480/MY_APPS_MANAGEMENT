@@ -939,7 +939,12 @@ function chiEpoch(date, time) {
   const g = k => Number(parts.find(x => x.type === k).value);
   return guess - (Date.UTC(g('year'), g('month') - 1, g('day'), g('hour'), g('minute')) - guess);
 }
-function geoSet() { const st = docs.get('config/settings') || {}; return { early: Number(st.checkin_early_min) || 30, late: Number(st.checkin_late_min) || 30, radius: Number(st.geo_radius_m) || 400 }; }
+function geoSet() {
+  const st = docs.get('config/settings') || {};
+  // geofence switches (Admin → Visit geofencing); everything defaults to on
+  return { early: Number(st.checkin_early_min) || 30, late: Number(st.checkin_late_min) || 30, radius: Number(st.geo_radius_m) || 400,
+    on: st.geo_on !== false, remind: st.geo_remind !== false, alertMissed: st.geo_alert_missed !== false, alertLeft: st.geo_alert_left !== false, leaveGraceMin: Number(st.geo_leave_grace_min) || 0, leaveFactor: Number(st.geo_leave_factor) || 1.5, maxAccM: Number(st.geo_max_acc_m) || 1500 };
+}
 function visitWindow(v) {
   const g = geoSet(), start = chiEpoch(v.date, v.time || '08:00'), end = start + (Number(v.duration) || 60) * 60e3;
   return { start, end, open: start - g.early * 60e3, close: end + g.late * 60e3 };
@@ -960,15 +965,16 @@ function sweepVisits() {
   for (const [k, v] of [...docs]) {
     if (!k.startsWith('visits/') || !v || v.status !== 'planned' || v.check || !v.date || !v.time) continue;
     const w = visitWindow(v);
+    const g = geoSet(); if (!g.on) continue;
     if (!v.reminded && Date.now() >= w.open && Date.now() <= w.close) {
       docs.set(k, Object.assign({}, v, { reminded: new Date().toISOString() })); persist(k);
-      notifyRep(v.rep, 'Check-in open · ' + (v.surgeon || 'visit'), (v.facility ? v.facility + ': ' : '') + 'open the app when you arrive and it checks you in. Window closes ' + fmtClock(w.close) + '.').catch(() => {});
+      if (g.remind) notifyRep(v.rep, 'Check-in open · ' + (v.surgeon || 'visit'), (v.facility ? v.facility + ': ' : '') + 'open the app when you arrive and it checks you in. Window closes ' + fmtClock(w.close) + '.').catch(() => {});
       continue;
     }
     if (Date.now() > w.close) {
       const check = { at: new Date().toISOString(), ok: false, missed: true, reason: 'Missed: no check-in between ' + fmtClock(w.open) + ' and ' + fmtClock(w.close) };
       docs.set(k, Object.assign({}, v, { check })); persist(k);
-      notifyOwner('Visit not verified · ' + v.rep, v.rep + ' did not check in for ' + v.surgeon + (v.facility ? ' at ' + v.facility : '') + ' (' + v.date + ' ' + v.time + ').').catch(() => {});
+      if (g.alertMissed) notifyOwner('Visit not verified · ' + v.rep, v.rep + ' did not check in for ' + v.surgeon + (v.facility ? ' at ' + v.facility : '') + ' (' + v.date + ' ' + v.time + ').').catch(() => {});
     }
   }
 }
@@ -992,10 +998,11 @@ app.post('/api/checkin', needApi(), async (req, res) => {
   else {
     dist = metersBetween(lat, lng, fac.lat, fac.lng);
     const radius = Number(fac.radius_m) || g.radius, slack = Math.min(acc, 150);
-    const near = acc <= 1500 && dist - slack <= radius;
-    ok = near && inWindow;
+    const near = acc <= g.maxAccM && dist - slack <= radius;
+    ok = !g.on ? inWindow : near && inWindow;
     reason = !inWindow ? (now < w.open ? 'Too early: check-in opens at ' + fmtClock(w.open) + '.' : 'Too late: check-in closed at ' + fmtClock(w.close) + '.')
-      : acc > 1500 ? 'Location too imprecise (±' + Math.round(acc) + ' m). Turn on precise location and try again.'
+      : !g.on ? 'Checked in (location check is turned off).'
+      : acc > g.maxAccM ? 'Location too imprecise (±' + Math.round(acc) + ' m). Turn on precise location and try again.'
       : !near ? 'Not at ' + fac.name + ': ' + (dist >= 1000 ? (dist / 1609.34).toFixed(1) + ' mi' : dist + ' m') + ' away.' : 'At ' + fac.name + ' (' + dist + ' m from the address) during the visit window.';
   }
   if (!inWindow && now < w.open) return res.status(400).json({ error: reason });
@@ -1017,13 +1024,14 @@ app.post('/api/visit-left', needApi(), async (req, res) => {
   if (!isFinite(lat) || !isFinite(lng)) return res.status(400).json({ error: 'No location received.' });
   const fac = facilityFor(v.facility), w = visitWindow(v), now = Date.now();
   if (!fac || fac.lat == null) return res.status(400).json({ error: 'No facility location.' });
-  if (now >= w.end) return res.json({ ok: true, check: v.check, after_end: true });
-  const radius = Number(fac.radius_m) || geoSet().radius, dist = metersBetween(lat, lng, fac.lat, fac.lng);
-  if (acc > 1500 || dist - Math.min(acc, 150) <= radius * 1.5) return res.json({ ok: true, check: v.check, still_here: true });
+  const g = geoSet(); if (!g.on) return res.json({ ok: true, check: v.check, still_here: true });
+  if (now >= w.end - g.leaveGraceMin * 60e3) return res.json({ ok: true, check: v.check, after_end: true });
+  const radius = Number(fac.radius_m) || g.radius, dist = metersBetween(lat, lng, fac.lat, fac.lng);
+  if (acc > g.maxAccM || dist - Math.min(acc, 150) <= radius * g.leaveFactor) return res.json({ ok: true, check: v.check, still_here: true });
   const mins = Math.round((w.end - now) / 60e3);
   const check = Object.assign({}, v.check, { left_at: new Date(now).toISOString(), left_dist_m: dist, left_early_min: mins, reason: v.check.reason + ' · Left at ' + fmtClock(now) + ', ' + mins + ' min before the visit ended.' });
   await put(k, Object.assign({}, v, { check }));
-  notifyOwner('Left visit early · ' + v.rep, v.rep + ' left ' + (fac.name || v.facility) + ' at ' + fmtClock(now) + ', ' + mins + ' min before the ' + (v.surgeon || '') + ' visit ended.').catch(() => {});
+  if (g.alertLeft) notifyOwner('Left visit early · ' + v.rep, v.rep + ' left ' + (fac.name || v.facility) + ' at ' + fmtClock(now) + ', ' + mins + ' min before the ' + (v.surgeon || '') + ' visit ended.').catch(() => {});
   res.json({ ok: true, check });
 });
 app.post('/api/cron/sweep', (req, res) => {

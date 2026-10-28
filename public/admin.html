@@ -71,7 +71,7 @@ header.head.has-who{padding-top:58px}
     <div class="brand"><small class="appname">Case tracker admin</small><div class="ver" id="ver"></div><div class="appswitch" id="appswitch" hidden><a class="on">Case tracker</a><a id="sw-store" href="#">Peptide store ↗</a></div></div>
     <div class="who-badge" id="who-badge" hidden title=""><span class="wb-ic" id="wb-ic" aria-hidden="true"></span><span><b id="wb-name"></b><small id="wb-role"></small></span></div>
     <div class="headtxt"><h1>Admin</h1><span class="conf">360 MEDICAL - SURGICAL CASE TRACKER</span><p class="sub">Reps, PINs, quotas and commission plans. Changes here show in the tracker within seconds.</p></div>
-    <div class="tools"><button class="btn" id="btn-refresh" type="button" onclick="this.disabled=true;this.textContent='⟳ Refreshing…';location.reload()">⟳ Refresh</button><a class="btn" href="/">Open tracker</a><a class="btn" href="#managers">Managers</a><a class="btn" href="#visits">Visits</a><a class="btn" href="#surgeons">Surgeons</a><a class="btn" href="#facilities">Facilities</a><a class="btn" href="/products">Products</a><a class="btn" href="#mail-card">Approval emails</a><a class="btn" href="/admin/download">Admin app</a><hr class="navline both-apps" hidden><a class="btn both-apps" hidden data-go="/admin#staff">Team logins</a><a class="btn both-apps" hidden data-go="/admin#setup">Email &amp; approvals</a><a class="btn both-apps" hidden data-go="/admin#apps">Apps &amp; downloads</a><a class="btn both-apps" hidden data-go="/admin#account">My account</a><button class="btn" id="logout" type="button">Log out</button></div>
+    <div class="tools"><button class="btn" id="btn-refresh" type="button" onclick="this.disabled=true;this.textContent='⟳ Refreshing…';location.reload()">⟳ Refresh</button><a class="btn" href="/">Open tracker</a><a class="btn" href="#managers">Managers</a><a class="btn" href="#visits">Visits</a><a class="btn" href="#surgeons">Surgeons</a><a class="btn" href="#facilities">Facilities</a><a class="btn" href="#geo-card">Geofencing</a><a class="btn" href="/products">Products</a><a class="btn" href="#mail-card">Approval emails</a><a class="btn" href="/admin/download">Admin app</a><hr class="navline both-apps" hidden><a class="btn both-apps" hidden data-go="/admin#staff">Team logins</a><a class="btn both-apps" hidden data-go="/admin#setup">Email &amp; approvals</a><a class="btn both-apps" hidden data-go="/admin#apps">Apps &amp; downloads</a><a class="btn both-apps" hidden data-go="/admin#account">My account</a><button class="btn" id="logout" type="button">Log out</button></div>
   </header>
 
   <div class="msg warn" id="dbwarn" hidden></div>
@@ -247,12 +247,27 @@ header.head.has-who{padding-top:58px}
         <label class="f">Invoice late after PO (days)<input class="field" id="st-inv" type="number" min="1" max="90"></label>
         <label class="f">Target stuck on a step (days)<input class="field" id="st-stuck" type="number" min="7" max="180"></label>
         <label class="f">Credential warning (days before)<input class="field" id="st-cred" type="number" min="7" max="120"></label>
-        <label class="f">Visit radius (meters)<input class="field" id="st-radius" type="number" min="50" max="3000"></label>
-        <label class="f">Check-in opens (min before)<input class="field" id="st-early" type="number" min="0" max="180"></label>
-        <label class="f">Check-in closes (min after)<input class="field" id="st-late" type="number" min="0" max="240"></label>
         <button class="btn primary" type="submit">Save settings</button>
       </form>
       <div class="msg" id="st-msg" hidden style="margin-top:10px"></div>
+    </section>
+    <section class="card" id="geo-card">
+      <h2>Visit geofencing</h2>
+      <p class="note">How target visits are verified. When a rep opens the app inside the check-in window, their phone's location is compared with the facility's map point: inside the radius = <b>verified</b>. While the visit runs, the app also notices if they leave early. Each facility can have its own radius under <b>Facilities &amp; addresses</b>; the default below applies otherwise.</p>
+      <form class="form" id="geo-form" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(13rem,1fr));gap:10px">
+        <label class="f">Location check<select class="field" id="geo-on"><option value="1">On — must be at the facility</option><option value="0">Off — check-in counts anywhere</option></select></label>
+        <label class="f">Default radius (meters)<input class="field" id="st-radius" type="number" min="50" max="3000"></label>
+        <label class="f">Check-in opens (min before)<input class="field" id="st-early" type="number" min="0" max="180"></label>
+        <label class="f">Check-in closes (min after)<input class="field" id="st-late" type="number" min="0" max="240"></label>
+        <label class="f">Reminder to the rep when check-in opens<select class="field" id="geo-remind"><option value="1">On</option><option value="0">Off</option></select></label>
+        <label class="f">Alert the COO when a visit isn't verified<select class="field" id="geo-missed"><option value="1">On</option><option value="0">Off</option></select></label>
+        <label class="f">Alert the COO when a rep leaves early<select class="field" id="geo-left"><option value="1">On</option><option value="0">Off</option></select></label>
+        <label class="f">"Left early" grace before the end (min)<input class="field" id="geo-grace" type="number" min="0" max="120" placeholder="0"></label>
+        <label class="f">Leave distance (× radius)<input class="field" id="geo-factor" type="number" min="1" max="5" step="0.1" placeholder="1.5"></label>
+        <label class="f">Ignore locations less precise than (m)<input class="field" id="geo-acc" type="number" min="100" max="5000" placeholder="1500"></label>
+        <button class="btn primary" type="submit">Save geofencing</button>
+      </form>
+      <div class="msg" id="geo-msg" hidden style="margin-top:10px"></div>
     </section>
 
     <section class="card">
@@ -731,6 +746,7 @@ header.head.has-who{padding-top:58px}
       drawPB(); setPB(false);
       var st = DOCS['config/settings'] || {};
       $('#st-po').value = st.po_alert_days || 3; $('#st-inv').value = st.invoice_alert_days || 7; $('#st-stuck').value = st.stuck_step_days || 30; $('#st-cred').value = st.cred_warn_days || 30; $('#st-radius').value = st.geo_radius_m || 400; $('#st-early').value = st.checkin_early_min || 30; $('#st-late').value = st.checkin_late_min || 30;
+      $('#geo-on').value = st.geo_on === false ? '0' : '1'; $('#geo-remind').value = st.geo_remind === false ? '0' : '1'; $('#geo-missed').value = st.geo_alert_missed === false ? '0' : '1'; $('#geo-left').value = st.geo_alert_left === false ? '0' : '1'; $('#geo-grace').value = st.geo_leave_grace_min || ''; $('#geo-factor').value = st.geo_leave_factor || ''; $('#geo-acc').value = st.geo_max_acc_m || '';
       drawMonths();
       var names = {}; Object.keys(DOCS).forEach(function (k) { if (k.indexOf('products/') === 0) (DOCS[k].case_names || [DOCS[k].name]).forEach(function (n) { names[n] = 1; }); if (k.indexOf('cases/') === 0 && DOCS[k].product) names[DOCS[k].product] = 1; });
       var dl = $('#pb-names'); dl.replaceChildren(); Object.keys(names).sort().forEach(function (n) { var o = el('option'); o.value = n; dl.appendChild(o); });
@@ -770,8 +786,17 @@ header.head.has-who{padding-top:58px}
   $('#st-form').addEventListener('submit', function (e) {
     e.preventDefault();
     var n = function (id, lo, hi, d) { var v = Math.round(Number($(id).value)); return isNaN(v) ? d : Math.min(hi, Math.max(lo, v)); };
-    setDoc('config/settings', { po_alert_days: n('#st-po', 1, 60, 3), invoice_alert_days: n('#st-inv', 1, 90, 7), stuck_step_days: n('#st-stuck', 7, 180, 30), cred_warn_days: n('#st-cred', 7, 120, 30), geo_radius_m: n('#st-radius', 50, 3000, 400), checkin_early_min: n('#st-early', 0, 180, 30), checkin_late_min: n('#st-late', 0, 240, 30) })
-      .then(function () { say('#st-msg', 'ok', 'Settings saved.'); }, function () { say('#st-msg', 'err', 'Could not save.'); });
+    var stDoc = Object.assign({}, DOCS['config/settings'] || {}, { po_alert_days: n('#st-po', 1, 60, 3), invoice_alert_days: n('#st-inv', 1, 90, 7), stuck_step_days: n('#st-stuck', 7, 180, 30), cred_warn_days: n('#st-cred', 7, 120, 30) });
+    setDoc('config/settings', stDoc)
+      .then(function () { DOCS['config/settings'] = stDoc; say('#st-msg', 'ok', 'Settings saved.'); }, function () { say('#st-msg', 'err', 'Could not save.'); });
+  });
+  $('#geo-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var n = function (id, lo, hi, d) { var v = Number($(id).value); return isNaN(v) || $(id).value === '' ? d : Math.min(hi, Math.max(lo, v)); };
+    var geoDoc = Object.assign({}, DOCS['config/settings'] || {}, { geo_on: $('#geo-on').value === '1', geo_radius_m: Math.round(n('#st-radius', 50, 3000, 400)), checkin_early_min: Math.round(n('#st-early', 0, 180, 30)), checkin_late_min: Math.round(n('#st-late', 0, 240, 30)),
+      geo_remind: $('#geo-remind').value === '1', geo_alert_missed: $('#geo-missed').value === '1', geo_alert_left: $('#geo-left').value === '1', geo_leave_grace_min: Math.round(n('#geo-grace', 0, 120, 0)), geo_leave_factor: n('#geo-factor', 1, 5, 1.5), geo_max_acc_m: Math.round(n('#geo-acc', 100, 5000, 1500)) });
+    setDoc('config/settings', geoDoc)
+      .then(function () { DOCS['config/settings'] = geoDoc; say('#geo-msg', 'ok', 'Geofencing saved. Applies to the next check-in.'); }, function () { say('#geo-msg', 'err', 'Could not save.'); });
   });
   function drawMonths() {
     var box = $('#mc-list'); box.replaceChildren();
