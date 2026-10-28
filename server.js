@@ -350,7 +350,7 @@ async function syncPeople(force) {
 }
 const hubPerson = (name) => hubPeople.list.find(u => u.role === 'rep' && String(u.name).trim().toLowerCase() === String(name).trim().toLowerCase());
 // single sign-on landing: the store hands a signed 2-minute token with who this is
-app.get('/sso', async (req, res) => {
+app.get(['/sso', '/admin/sso'], async (req, res) => { // /admin/sso keeps the installed Admin app inside its scope
   const t = hubVerify(req.query.t);
   const next = /^\/[A-Za-z0-9/_#-]*$/.test(String(req.query.next || '')) ? String(req.query.next) : '/';
   if (!t || !t.sso) return res.redirect('/login?next=' + encodeURIComponent(next) + '&err=sso');
@@ -402,7 +402,7 @@ app.get('/hub/mail-preview', (req, res) => {
   res.type('html').send(approvalEmail({ kind, doc: sample, id: 'preview', by: 'Brandon', base: baseUrl(req) }).html);
 });
 // the other direction: someone signed in here goes to the store's admin pages (Team logins, Setup, Apps, My account) with this login
-app.get('/go/store', (req, res) => {
+app.get(['/go/store', '/admin/go/store'], (req, res) => {
   const next = /^\/[A-Za-z0-9/_#?=&%.-]*$/.test(String(req.query.next || '')) ? String(req.query.next) : '/admin';
   if (!hubLinked()) return res.redirect(HUB_URL ? HUB_URL + next : '/');
   const s = session(req); if (!s) return res.redirect('/login?next=' + encodeURIComponent('/go/store?next=' + next));
@@ -410,7 +410,7 @@ app.get('/go/store', (req, res) => {
   if (!email && s.role === 'owner' && s.mgr) email = (mgrs()[s.mgr] || {}).email || '';
   if (!email && s.role === 'rep') email = ((pins().reps[s.rep] || {}).email) || (repAcct(s.rep) || {}).email || '';
   const token = hubSign({ sso: true, email, name: whoName(s), role: s.role === 'owner' ? 'owner' : 'rep', exp: Date.now() + 120000 });
-  res.redirect(HUB_URL + '/sso?t=' + encodeURIComponent(token) + '&next=' + encodeURIComponent(next));
+  res.redirect(HUB_URL + (next.startsWith('/rep') ? '/rep/sso' : next.startsWith('/admin') ? '/admin/sso' : '/sso') + '?t=' + encodeURIComponent(token) + '&next=' + encodeURIComponent(next));
 });
 app.get('/api/hub/ping', hubAuth, (req, res) => res.json({ ok: true, app: 'case-tracker' }));
 app.get('/api/login-options', async (req, res) => {

@@ -1124,8 +1124,8 @@ section[id^="sec-"]{scroll-margin-top:62px}
       document.getElementById('wb-name').textContent = me.name; document.getElementById('wb-ic').textContent = String(me.name).trim().charAt(0).toUpperCase();
       document.getElementById('wb-role').textContent = me.role === 'rep' ? 'Sales rep' : me.manager ? 'Manager' : 'Admin';
       var wb = document.getElementById('who-badge'); wb.title = 'Signed in as ' + me.name; wb.hidden = false; wb.parentNode.classList.add('has-who');
-      if (me.hub) { var sw = document.getElementById('appswitch'); document.getElementById('sw-store').href = me.hub + (me.role === 'owner' ? '/admin' : '/rep'); sw.hidden = false;
-        document.querySelectorAll('.both-apps').forEach(function (el) { el.hidden = false; if (el.dataset.go) { var to = el.dataset.go; if (me.role === 'owner') to = to.replace('/rep#account', '/admin#account'); el.href = '/go/store?next=' + encodeURIComponent(to); } }); }
+      if (me.hub) { var sw = document.getElementById('appswitch'); var standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true; if (standalone) { document.getElementById('sw-store').target = '_blank'; document.getElementById('sw-store').rel = 'noopener'; } document.getElementById('sw-store').href = me.hub + (me.role === 'owner' ? '/admin' : '/rep'); sw.hidden = false;
+        document.querySelectorAll('.both-apps').forEach(function (el) { el.hidden = false; if (standalone && el.dataset.go) { el.target = '_blank'; el.rel = 'noopener'; } if (el.dataset.go) { var to = el.dataset.go; if (me.role === 'owner') to = to.replace('/rep#account', '/admin#account'); el.href = '/go/store?next=' + encodeURIComponent(to); } }); }
       var menu = document.getElementById('who-menu'), isAdmin = me.role === 'owner';
       document.getElementById('wm-admin').hidden = !isAdmin; document.getElementById('btn-admin').hidden = !isAdmin; document.getElementById('wm-adminlogin').hidden = isAdmin;
       var setOpen = function (o) { menu.hidden = !o; wb.setAttribute('aria-expanded', String(o)); };
