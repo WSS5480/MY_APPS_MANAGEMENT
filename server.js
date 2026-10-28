@@ -190,9 +190,11 @@ function session(req) {
     else if (Date.now() - t > IDLE_MS) return null;
   }
   if (s.role === 'owner' && s.mgr) { const m = mgrs()[s.mgr]; return m && m.active !== false && m.v === s.v ? s : null; }
+  if (s.role === 'owner' && s.hub) return s; // signed in through the store (one login); the cookie carries the expiry
   if (s.role === 'owner') return s.v === adminV() && !pinOff() ? s : null;
   const p = pins().reps[s.rep];
   if (!p || p.active === false) return null;
+  if (s.hub) return quotaRows().some(r => r.rep === s.rep && r.role !== 'Team') ? s : null;
   if (s.acct) { const a = mgrs()[s.acct]; if (!a || a.active === false || a.v !== s.v || a.kind !== 'rep' || a.rep !== s.rep) return null; }
   else if (p.v !== s.v || repAcct(s.rep)) return null;
   if (!quotaRows().some(r => r.rep === s.rep && r.role !== 'Team')) return null;
@@ -214,7 +216,7 @@ const mgrs = () => (docs.get('_auth/managers') || {}).m || {};
 async function saveMgrs(m) { await put('_auth/managers', { m }); }
 const pinOff = () => !!(docs.get('_auth/admin') || {}).pin_disabled;
 const isSuper = s => s && s.role === 'owner' && (!s.mgr || !!(mgrs()[s.mgr] || {}).can_manage);
-const whoName = s => s.role === 'owner' ? (s.mgr ? ((mgrs()[s.mgr] || {}).name || 'Manager') : 'COO') : s.rep;
+const whoName = s => s.role === 'owner' ? (s.mgr ? ((mgrs()[s.mgr] || {}).name || 'Manager') : (s.hubName || 'COO')) : s.rep;
 
 /* login throttle */
 const tries = new Map();
@@ -300,11 +302,92 @@ app.get(['/logo.png', '/shim.js', '/plus.js', '/plus.css', '/visitcal.js', '/idl
 app.get('/manifest.webmanifest', (req, res) => { res.type('application/manifest+json'); res.sendFile(path.join(pub, 'manifest.webmanifest')); });
 app.get('/admin.webmanifest', (req, res) => { res.type('application/manifest+json'); res.sendFile(path.join(pub, 'admin.webmanifest')); });
 
-app.get('/api/login-options', (req, res) => {
-  const p = pins().reps;
-  res.json({ reps: quotaRows().filter(r => r.role !== 'Team' && p[r.rep] && p[r.rep].active !== false && !repAcct(r.rep)).map(r => r.rep), pin_login: !pinOff(), managers: Object.values(mgrs()).some(m => m.active !== false && m.totp_on) });
+
+/* ---------------- the hub: the peptide store admin is the one login for both apps ----------------
+   HUB_URL = the store's address, HUB_SECRET = the same shared secret set on the store. People ticked "Case tracker" in the
+   store's Team logins show up here as reps/managers; sign-in from the store lands here through /sso; the store's email
+   setup (Microsoft 365 app + COO address) is used for approval emails. Everything still works without the link. */
+const HUB_URL = String(process.env.HUB_URL || '').replace(/\/$/, '');
+const HUB_SECRET = String(process.env.HUB_SECRET || '').trim();
+const hubLinked = () => !!(HUB_URL && HUB_SECRET);
+const hubSign = obj => { const body = Buffer.from(JSON.stringify(obj)).toString('base64url'); return body + '.' + crypto.createHmac('sha256', HUB_SECRET).update(body).digest('base64url'); };
+function hubVerify(token) {
+  if (!HUB_SECRET) return null;
+  const m = /^([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)$/.exec(String(token || '')); if (!m) return null;
+  const sig = crypto.createHmac('sha256', HUB_SECRET).update(m[1]).digest('base64url');
+  if (sig.length !== m[2].length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(m[2]))) return null;
+  try { const o = JSON.parse(Buffer.from(m[1], 'base64url').toString()); return o.exp && o.exp > Date.now() ? o : null; } catch (e) { return null; }
+}
+const hubAuth = (req, res, next) => { const t = /^Hub (.+)$/.exec(req.headers.authorization || ''); if (!HUB_SECRET || !t || !hubVerify(t[1])) return res.status(401).json({ error: 'Hub signature missing or wrong' }); next(); };
+async function hubCall(pathname, opts = {}) {
+  if (!hubLinked()) throw new Error('not linked');
+  const r = await fetch(HUB_URL + pathname, Object.assign({ headers: Object.assign({ Authorization: 'Hub ' + hubSign({ exp: Date.now() + 120000 }), 'Content-Type': 'application/json' }, opts.headers || {}), signal: AbortSignal.timeout(10000) }, opts));
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || ('hub answered ' + r.status));
+  return j;
+}
+// people from the store: cached a minute; reps get a plan row + a PIN record here so the rest of the app treats them as its own
+let hubPeople = { at: 0, list: [] };
+async function syncPeople(force) {
+  if (!hubLinked()) return hubPeople.list;
+  if (!force && Date.now() - hubPeople.at < 60000) return hubPeople.list;
+  let people;
+  try { people = (await hubCall('/api/hub/people')).people || []; } catch (e) { console.error('Hub people sync: ' + e.message); return hubPeople.list; }
+  hubPeople = { at: Date.now(), list: people };
+  const p = pins(), rows = quotaRows().slice(); let pinsChanged = false, rowsChanged = false;
+  for (const u of people.filter(x => x.role === 'rep')) {
+    const name = String(u.name || '').trim(); if (!name) continue;
+    const cur = p.reps[name];
+    if (!cur) { p.reps[name] = { pin: '', v: 1, active: u.active !== false, hub: u.id, email: u.email }; pinsChanged = true; }
+    else if (cur.hub !== u.id || cur.active !== (u.active !== false) || cur.email !== u.email) { Object.assign(cur, { hub: u.id, active: u.active !== false, email: u.email }); pinsChanged = true; }
+    if (!rows.some(r => r.rep === name && r.role !== 'Team')) { rows.push({ rep: name, role: 'Sales Rep', territory: name, metric: 'Revenue', quota: null, counts: 'All', product_filter: '', carry: false, draw: null, comm_rate: null, comm_floor: 0, pay_type: '', pay_amount: null, hub: u.id }); rowsChanged = true; }
+  }
+  // a rep whose Case tracker box was unticked in the store is switched off here (their records stay)
+  for (const [name, rec] of Object.entries(p.reps)) if (rec.hub && rec.active !== false && !people.some(u => u.role === 'rep' && u.id === rec.hub && u.active !== false)) { rec.active = false; pinsChanged = true; }
+  if (pinsChanged) await put('_auth/pins', p);
+  if (rowsChanged) await put('config/quotas', Object.assign({}, docs.get('config/quotas') || {}, { rows }));
+  return people;
+}
+const hubPerson = (name) => hubPeople.list.find(u => u.role === 'rep' && String(u.name).trim().toLowerCase() === String(name).trim().toLowerCase());
+// single sign-on landing: the store hands a signed 2-minute token with who this is
+app.get('/sso', async (req, res) => {
+  const t = hubVerify(req.query.t);
+  const next = /^\/[A-Za-z0-9/_#-]*$/.test(String(req.query.next || '')) ? String(req.query.next) : '/';
+  if (!t || !t.sso) return res.redirect('/login?next=' + encodeURIComponent(next) + '&err=sso');
+  await syncPeople(true).catch(() => {});
+  const dev = /iPhone|iPad|Android|Mobile/i.test(req.headers['user-agent'] || '') ? 'phone' : 'computer';
+  if (t.role === 'owner' || t.role === 'staff') { setSession(res, { role: 'owner', hub: t.email, hubName: t.name, v: adminV() }, dev); return res.redirect(next === '/' ? '/admin' : next); }
+  const name = String(t.name || '').trim();
+  if (!t.apps || !t.apps.tracker || !pins().reps[name]) return res.redirect('/login?err=noaccess');
+  setSession(res, { role: 'rep', rep: name, hub: t.email, v: pins().reps[name].v }, dev);
+  res.redirect(next.startsWith('/admin') ? '/' : next);
 });
-app.post('/api/login', (req, res) => {
+// what the store asks this app for
+app.get('/api/hub/reps', hubAuth, (req, res) => {
+  const p = pins().reps;
+  res.json({ reps: quotaRows().filter(r => r.role !== 'Team').map(r => ({ rep: r.rep, role: r.role, pin: p[r.rep] ? String(p[r.rep].pin || '') : '', active: !(p[r.rep] && p[r.rep].active === false), hub: p[r.rep] ? p[r.rep].hub || null : null })) });
+});
+app.get('/api/hub/commissions', hubAuth, (req, res) => {
+  const ym = /^\d{4}-\d{2}$/.test(String(req.query.month || '')) ? String(req.query.month) : chiDate().slice(0, 7);
+  const cases = allCases();
+  const reps = quotaRows().filter(r => r.role !== 'Team').map(r => {
+    const actual = rowActual(r, ym, cases), target = rowTarget(r, ym, cases), carried = r.carry && target && r.quota ? target - r.quota : 0;
+    const rate = Number(r.comm_rate) || 0, floor = (Number(r.comm_floor) || 0) + (rate ? carried : 0); // rate is stored as a fraction (0.15 = 15%)
+    const commission = rate ? Math.round(Math.max(0, actual - floor) * rate) : 0;
+    const n = cases.filter(c => c.rep === r.rep && c.date.slice(0, 7) === ym && isDone(c.status)).length;
+    return { rep: r.rep, role: r.role, metric: r.metric, actual: Math.round(actual), quota: r.quota, target, cases: n, comm_rate: Math.round(rate * 10000) / 100, comm_floor: floor, commission, pay_type: r.pay_kind === 'draw' ? 'Draw' : r.pay_kind === 'salary' ? 'Base salary' : r.draw && !r.pay_kind ? 'Draw' : '', pay_amount: Number(r.pay_amount) || Number(r.draw) || null, hub: (pins().reps[r.rep] || {}).hub || null };
+  });
+  res.json({ month: ym, reps, total: reps.reduce((t, r) => t + r.commission, 0), sales: reps.reduce((t, r) => t + (r.metric === 'Cases' ? 0 : r.actual), 0) });
+});
+app.post('/api/hub/sync', hubAuth, async (req, res) => { await syncPeople(true).catch(() => {}); res.json({ ok: true, people: hubPeople.list.length }); });
+app.get('/api/hub/ping', hubAuth, (req, res) => res.json({ ok: true, app: 'case-tracker' }));
+app.get('/api/login-options', async (req, res) => {
+  await syncPeople().catch(() => {});
+  const p = pins().reps;
+  res.json({ reps: quotaRows().filter(r => r.role !== 'Team' && p[r.rep] && p[r.rep].active !== false && !repAcct(r.rep)).map(r => r.rep), pin_login: !pinOff(), managers: Object.values(mgrs()).some(m => m.active !== false && m.totp_on), hub: hubLinked() ? HUB_URL : '' });
+});
+app.post('/api/login', async (req, res) => {
+  await syncPeople().catch(() => {});
   const t = throttled(req.ip);
   if (t.n >= 10) return res.status(429).json({ error: 'Too many tries. Wait 15 minutes and try again.' });
   const who = String(req.body.who || ''), pin = String(req.body.pin || '').trim();
@@ -314,7 +397,11 @@ app.post('/api/login', (req, res) => {
   } else {
     const p = pins().reps[who];
     if (repAcct(who)) return res.status(403).json({ error: who + ' signs in with email now. Use the Email sign-in tab.' });
-    if (p && p.active !== false && pin && pin === String(p.pin) && quotaRows().some(r => r.rep === who)) { tries.delete(req.ip); setSession(res, { role: 'rep', rep: who, v: p.v }, req.body.dev); return res.json({ ok: true, role: 'rep' }); }
+    if (p && p.active !== false && pin && p.pin && pin === String(p.pin) && quotaRows().some(r => r.rep === who)) { tries.delete(req.ip); setSession(res, { role: 'rep', rep: who, v: p.v }, req.body.dev); return res.json({ ok: true, role: 'rep' }); }
+    // the one PIN from the store: checked there
+    if (p && p.active !== false && p.hub && pin && hubLinked()) {
+      try { const r = await hubCall('/api/hub/check-pin', { method: 'POST', body: JSON.stringify({ id: p.hub, pin }) }); if (r.ok) { tries.delete(req.ip); setSession(res, { role: 'rep', rep: who, hub: r.user && r.user.email, v: p.v }, req.body.dev); return res.json({ ok: true, role: 'rep' }); } } catch (e) {}
+    }
   }
   t.n++;
   res.status(401).json({ error: 'Wrong PIN.' });
@@ -329,7 +416,7 @@ const needApi = role => (req, res, next) => {
   req.s = s; next();
 };
 
-app.get('/api/me', needApi(), (req, res) => res.json({ role: req.s.role, rep: req.s.rep || null, uid: uidOf(req.s), db: dbMode, name: whoName(req.s), manager: !!req.s.mgr, account: !!(req.s.mgr || req.s.acct), super: isSuper(req.s), dev: req.s.dev || 'computer', idle_min: req.s.dev === 'computer' ? IDLE_MS / 60e3 : null }));
+app.get('/api/me', needApi(), (req, res) => res.json({ hub: hubLinked() ? HUB_URL : '', viaHub: !!req.s.hub, role: req.s.role, rep: req.s.rep || null, uid: uidOf(req.s), db: dbMode, name: whoName(req.s), manager: !!req.s.mgr, account: !!(req.s.mgr || req.s.acct), super: isSuper(req.s), dev: req.s.dev || 'computer', idle_min: req.s.dev === 'computer' ? IDLE_MS / 60e3 : null }));
 app.post('/api/activity', needApi(), (req, res) => res.json({ ok: true }));
 app.get('/api/sync', needApi(), (req, res) => {
   sweepVisits();
@@ -389,7 +476,8 @@ app.post('/api/doc', needApi(), async (req, res) => {
 });
 
 /* ---------------- admin ---------------- */
-app.get('/api/admin/state', needApi('owner'), (req, res) => {
+app.get('/api/admin/state', needApi('owner'), async (req, res) => {
+  await syncPeople().catch(() => {});
   const p = pins().reps, counts = {};
   for (const [k, d] of docs) { const c = k.split('/')[0]; if (COLS.includes(c)) { const r = d.rep || '(none)'; counts[r] = counts[r] || { cases: 0, targets: 0, simlab: 0, visits: 0, prefcards: 0, credentials: 0, last: '' }; counts[r][c]++; if (c === 'cases' && (d.date || '') > counts[r].last) counts[r].last = d.date || ''; } }
   res.json({ rows: quotaRows().map(r => { const ac = Object.values(mgrs()).find(a => a.kind === 'rep' && a.rep === r.rep); return Object.assign({}, r, { pin: p[r.rep] ? p[r.rep].pin : null, active: p[r.rep] ? p[r.rep].active !== false : r.role === 'Team' ? null : false, account: ac ? (ac.totp_on ? 'active' : 'pending') : null }); }), counts, db: dbMode, adminPinIsDefault: !docs.has('_auth/admin') && !process.env.ADMIN_PIN, url: (process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`) });
@@ -956,7 +1044,9 @@ async function ensureSurgeon(name, facility, specialty, s) {
 }
 /* ---------------- approval emails: a rep adds a facility or surgeon → the COO gets an email with a one-click Approve link ---------------- */
 const mail = require('./server/mail');
-const mailCfg = () => docs.get('config/mail') || {};
+let hubMail = { at: 0, cfg: null };
+const mailCfg = () => Object.assign({}, docs.get('config/mail') || {}, hubMail.cfg && hubMail.cfg.tenant && hubMail.cfg.client && hubMail.cfg.secret ? { tenant: hubMail.cfg.tenant, client: hubMail.cfg.client, secret: hubMail.cfg.secret, mailbox: hubMail.cfg.mailbox || (docs.get('config/mail') || {}).mailbox, from: hubMail.cfg.from || (docs.get('config/mail') || {}).from, to: hubMail.cfg.to || (docs.get('config/mail') || {}).to, viaHub: true } : {});
+async function refreshHubMail() { if (!hubLinked() || Date.now() - hubMail.at < 300000) return; try { hubMail = { at: Date.now(), cfg: await hubCall('/api/hub/mail') }; } catch (e) { hubMail.at = Date.now() - 240000; } }
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const APPROVE_DAYS = 14;
 function approveToken(kind, id) {
@@ -1013,6 +1103,7 @@ function approvalEmail({ kind, doc, id, by, base }) {
   return { subject: `Approve ${isFac ? 'facility' : 'surgeon'}: ${doc.name} (added by ${by})`, html, text };
 }
 async function emailApproval(kind, id, doc, by, base) {
+  await refreshHubMail();
   const cfg = mailCfg();
   if (cfg.on === false) return { ok: false, error: 'off' };
   const to = cfg.to || process.env.COO_EMAIL || '';
@@ -1039,7 +1130,7 @@ app.get('/approve', (req, res) => {
     res.send(pageHtml(`${esc(d.name)} approved`, t.kind === 'facility' ? 'The address is confirmed, so check-ins at this facility can verify from now on.' : 'The surgeon is confirmed in the shared directory.', true));
   }).catch(() => res.status(500).send(pageHtml('Could not save', 'Try again in a moment, or approve it in Admin.', false)));
 });
-app.get('/api/admin/mail', needApi('owner'), (req, res) => { const c = mailCfg(); res.json({ on: c.on !== false, to: c.to || process.env.COO_EMAIL || '', tenant: c.tenant || process.env.GRAPH_TENANT || '', client: c.client || process.env.GRAPH_CLIENT || '', secretSet: !!(c.secret || process.env.GRAPH_SECRET), mailbox: c.mailbox || '', from: c.from || process.env.MAIL_FROM || '', info: mail.info(c) }); });
+app.get('/api/admin/mail', needApi('owner'), async (req, res) => { await refreshHubMail(); const c = mailCfg(); res.json({ viaHub: !!c.viaHub, hub: hubLinked() ? HUB_URL : '', on: c.on !== false, to: c.to || process.env.COO_EMAIL || '', tenant: c.tenant || process.env.GRAPH_TENANT || '', client: c.client || process.env.GRAPH_CLIENT || '', secretSet: !!(c.secret || process.env.GRAPH_SECRET), mailbox: c.mailbox || '', from: c.from || process.env.MAIL_FROM || '', info: mail.info(c) }); });
 app.post('/api/admin/mail', needApi('owner'), async (req, res) => {
   const b = req.body || {}, prev = mailCfg();
   const str = (v, n) => String(v || '').trim().slice(0, n);

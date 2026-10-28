@@ -18,7 +18,7 @@ form{display:flex;flex-direction:column;gap:14px}
 .or{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:.75rem;margin:14px 0}
 .or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
 </style>
-<link rel="stylesheet" href="/theme-360.css?v=5">
+<link rel="stylesheet" href="/theme-360.css?v=7">
 </head><body>
 <div class="wrap">
   <header class="head">
@@ -84,7 +84,9 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').cat
   }
   $('#tab-rep').addEventListener('click', function () { tab('rep'); }); $('#tab-mgr').addEventListener('click', function () { tab('mgr'); });
   var who = $('#who');
+  (function(){ var e = new URLSearchParams(location.search).get('err'); if (e === 'sso') show('#err-rep', 'That sign-in link from the store has expired — go back to the store and tap Case tracker again.'); if (e === 'noaccess') show('#err-rep', "Your login doesn't have the Case tracker box ticked in the store's Team logins yet. Ask an admin."); })();
   fetch('/api/login-options').then(function (r) { return r.json(); }).then(function (j) {
+    if (j.hub) { var n = document.createElement('p'); n.className = 'note'; n.style.textAlign = 'center'; n.innerHTML = 'One login for both apps: your name + the PIN set in the peptide store works here, or <a href="' + j.hub + '/admin">sign in at the peptide store</a> and switch over.'; var f = document.querySelector('form'); if (f) f.parentNode.insertBefore(n, f); }
     who.appendChild(new Option('Choose your name', ''));
     (j.reps || []).forEach(function (r) { who.appendChild(new Option(r, r)); });
     if (j.pin_login) who.appendChild(new Option('Admin (COO PIN)', '__owner__'));

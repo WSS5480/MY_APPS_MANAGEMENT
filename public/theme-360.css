@@ -139,6 +139,8 @@ textarea.field { height: auto; padding: .6rem .8rem; }
   body.side-layout .head h1 { font-size: 1rem; }
   body.side-layout .head .sub, body.side-layout .head .take { font-size: .8rem; line-height: 1.45; }
   body.side-layout .who-badge { position: static; max-width: none; width: 100%; order: -1; }
+  body.side-layout .appswitch { position: static; display: flex; width: 100%; order: -2; margin: 0 0 .5rem; }
+  body.side-layout .appswitch a { flex: 1; text-align: center; }
   body.side-layout .who-menu { top: 4.2rem; left: 1rem; right: 1rem; }
   body.side-layout .head .ctl, body.side-layout .head .tools { flex-direction: column; align-items: stretch; gap: .35rem; }
   body.side-layout .head .ctl label { gap: .3rem; margin-bottom: .3rem; }
@@ -153,3 +155,11 @@ textarea.field { height: auto; padding: .6rem .8rem; }
   body.side-layout .who { flex-direction: column; }
   body.side-layout .jump { top: 0; }
 }
+
+/* app switch (one login for the peptide store + case tracker): sits top-left of the header */
+.appswitch{position:absolute;left:14px;top:12px;display:inline-flex;border:1px solid rgba(255,255,255,.35);border-radius:999px;overflow:hidden;font:600 .72rem/1 Poppins,sans-serif;z-index:3}
+.appswitch a{padding:7px 12px;color:#fff;text-decoration:none;opacity:.85}
+.appswitch a.on{background:#fff;color:#0b2a4a;opacity:1}
+.appswitch a:hover{opacity:1}
+.appswitch[hidden]{display:none}
+@media (max-width:640px){.appswitch{position:static;margin:0 0 8px}}
