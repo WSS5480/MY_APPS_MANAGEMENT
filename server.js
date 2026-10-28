@@ -258,7 +258,9 @@ const needPage = role => (req, res, next) => { const s = session(req); if (!s) r
 
 app.get('/healthz', (req, res) => res.json({ ok: true }));
 const BUILD = process.env.RENDER_GIT_COMMIT || String(Date.now());
-app.get('/api/version', (req, res) => { res.setHeader('Cache-Control', 'no-store'); res.json({ build: BUILD }); });
+const PKG_VERSION = require('./package.json').version;
+const UPDATED_AT = (() => { try { return fs.statSync(path.join(__dirname, 'server.js')).mtime.toISOString(); } catch (e) { return new Date().toISOString(); } })();
+app.get('/api/version', (req, res) => { res.setHeader('Cache-Control', 'no-store'); res.json({ build: BUILD, version: PKG_VERSION, updated: UPDATED_AT }); });
 app.get('/login', page('login.html'));
 app.get('/', needPage(), page('tracker.html'));
 app.get('/admin', needPage('owner'), page('admin.html'));

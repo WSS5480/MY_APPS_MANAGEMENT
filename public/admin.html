@@ -69,7 +69,7 @@ header.head.has-who{padding-top:58px}
   <header class="head" style="position:relative">
     <div class="who-badge" id="who-badge" hidden title=""><span class="wb-ic" id="wb-ic" aria-hidden="true"></span><span><b id="wb-name"></b><small id="wb-role"></small></span></div>
     <img class="logo" src="/logo.png" alt="360 Medical">
-    <div class="headtxt"><h1>Admin</h1><span class="conf">360 MEDICAL - SURGICAL CASE TRACKER</span><p class="sub">Reps, PINs, quotas and commission plans. Changes here show in the tracker within seconds.</p></div>
+    <div class="ver" id="ver" style="font:600 .66rem/1.3 Poppins,sans-serif;letter-spacing:.08em;text-transform:uppercase;color:#c7d2e3"></div><div class="headtxt"><h1>Admin</h1><span class="conf">360 MEDICAL - SURGICAL CASE TRACKER</span><p class="sub">Reps, PINs, quotas and commission plans. Changes here show in the tracker within seconds.</p></div>
     <div class="tools"><button class="btn" id="btn-refresh" type="button" onclick="this.disabled=true;this.textContent='⟳ Refreshing…';location.reload()">⟳ Refresh</button><a class="btn" href="/">Open tracker</a><a class="btn" href="#managers">Managers</a><a class="btn" href="#visits">Visits</a><a class="btn" href="#surgeons">Surgeons</a><a class="btn" href="#facilities">Facilities</a><a class="btn" href="/products">Products</a><a class="btn" href="#mail-card">Approval emails</a><a class="btn" href="/admin/download">Download admin app</a><button class="btn" id="logout" type="button">Log out</button></div>
   </header>
 
@@ -1061,4 +1061,5 @@ fetch('/api/me', { credentials: 'same-origin' }).then(function (r) { return r.ok
 <script>window.SCT_APP = { name: '360 Admin', icon: '/icon-admin-192.png', key: 'sct_admin_installed', skip: 'sct_admin_install_later', blurb: 'Opens in its own window with the Admin icon and stays signed in on this device.' };</script>
 <script src="/install.js"></script>
 <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function () {});</script>
+<script>fetch('/api/version',{cache:'no-store'}).then(function(r){return r.json();}).then(function(j){var d=new Date(j.updated);document.getElementById('ver').textContent='v'+j.version+' · updated '+d.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})+' '+d.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'});}).catch(function(){});</script>
 </body></html>
