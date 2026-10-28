@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Admin app · Download · 360 MEDICAL - SURGICAL CASE TRACKER</title>
+<link rel="manifest" href="/admin.webmanifest"><link rel="icon" href="/favicon.png"><link rel="apple-touch-icon" href="/apple-touch-icon-admin.png">
+<meta name="theme-color" content="#0f1b33"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="360 Admin">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="/app.css">
+<style>
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr));gap:16px}
+.card.os{display:flex;flex-direction:column;gap:10px;border-top:3px solid var(--accent)}
+.card.os.me{outline:2px solid var(--accent)}
+ol{margin:0;padding-left:1.2rem;font-size:.875rem;display:flex;flex-direction:column;gap:6px}
+.ic{width:72px;height:72px;border-radius:16px}
+.hero{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.lab{font-size:.75rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.qr{width:150px;height:150px;background:#fff;border-radius:8px;padding:6px}
+</style>
+<link rel="stylesheet" href="/theme-360.css?v=5">
+</head><body>
+<div class="wrap">
+  <header class="head">
+    <img class="logo" src="/logo.png" alt="360 Medical">
+    <div class="headtxt"><h1>Download the Admin app</h1><p class="sub">Install the Admin page as its own app on Windows, iPhone or Android. It opens in its own window with the Admin icon and stays signed in. The rep tracker is a separate app.</p></div>
+    <a class="btn" href="/admin">Open admin</a><a class="btn" href="/download">Tracker app</a>
+  </header>
+
+  <section class="card hero">
+    <img class="ic" src="/icon-admin-192.png" alt="">
+    <div style="flex:1 1 14rem">
+      <h2>360 Admin</h2>
+      <p class="note" style="margin-bottom:0" id="state">One tap install where your browser supports it.</p>
+    </div>
+    <button class="btn primary" id="install" type="button" hidden>Install now</button>
+  </section>
+
+  <div class="grid">
+    <section class="card os" id="os-win">
+      <span class="lab">Windows PC</span>
+      <h2>Microsoft Edge or Chrome</h2>
+      <ol>
+        <li>Open this page in Edge or Chrome.</li>
+        <li>Click <b>Install now</b> above, or the install icon at the right end of the address bar.</li>
+        <li>Click <b>Install</b>. The app goes on your Start menu and desktop; right-click it to pin to the taskbar.</li>
+      </ol>
+    </section>
+    <section class="card os" id="os-ios">
+      <span class="lab">iPhone / iPad</span>
+      <h2>Safari</h2>
+      <ol>
+        <li>Open this page in <b>Safari</b>.</li>
+        <li>Tap the <b>Share</b> button (square with an arrow).</li>
+        <li>Tap <b>Add to Home Screen</b>, then <b>Add</b>.</li>
+      </ol>
+    </section>
+    <section class="card os" id="os-and">
+      <span class="lab">Android</span>
+      <h2>Chrome</h2>
+      <ol>
+        <li>Open this page in Chrome.</li>
+        <li>Tap <b>Install now</b> above, or the <b>⋮</b> menu → <b>Install app</b>.</li>
+        <li>Tap <b>Install</b>. The icon lands on your home screen.</li>
+      </ol>
+    </section>
+    <section class="card os">
+      <span class="lab">Send to a phone</span>
+      <h2>Scan to open</h2>
+      <img class="qr" id="qr" alt="QR code for this page">
+      <p class="note" style="margin:0" id="link"></p>
+    </section>
+  </div>
+  <footer class="foot">Sign in with the COO PIN or your manager account after installing. Managers are added under Admin → Sign-in accounts.</footer>
+</div>
+<script src="/qrious.min.js"></script>
+<script>
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function () {});
+var url = location.origin + '/download-admin';
+document.getElementById('link').textContent = url;
+try { new QRious({ element: document.getElementById('qr'), value: url, size: 300, foreground: '#081F33' }); } catch (e) { document.getElementById('qr').hidden = true; }
+var ua = navigator.userAgent, ios = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1), android = /Android/.test(ua);
+document.getElementById(ios ? 'os-ios' : android ? 'os-and' : 'os-win').classList.add('me');
+var standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+var st = document.getElementById('state'), btn = document.getElementById('install'), prompt = null;
+if (standalone) st.textContent = 'The app is installed and running.';
+else if (ios) st.textContent = 'On iPhone, use Share → Add to Home Screen (steps below).';
+window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); prompt = e; btn.hidden = false; });
+btn.addEventListener('click', function () { if (!prompt) return; prompt.prompt(); prompt.userChoice.then(function (c) { if (c.outcome === 'accepted') { btn.hidden = true; st.textContent = 'Installed. Look for 360 Admin on your home screen or Start menu.'; } prompt = null; }); });
+window.addEventListener('appinstalled', function () { btn.hidden = true; st.textContent = 'Installed. Look for 360 Admin on your home screen or Start menu.'; });
+</script>
+<script src="/ptr.js"></script>
+</body></html>

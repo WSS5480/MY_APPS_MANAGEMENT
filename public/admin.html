@@ -2,7 +2,7 @@
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Admin · 360 MEDICAL - SURGICAL CASE TRACKER</title>
-<link rel="manifest" href="/manifest.webmanifest"><link rel="icon" href="/favicon.png"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/admin.webmanifest"><link rel="icon" href="/favicon.png"><link rel="apple-touch-icon" href="/apple-touch-icon-admin.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="360 Admin">
 <meta name="theme-color" content="#0f1b33">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="/app.css">
@@ -70,7 +70,7 @@ header.head.has-who{padding-top:58px}
     <div class="who-badge" id="who-badge" hidden title=""><span class="wb-ic" id="wb-ic" aria-hidden="true"></span><span><b id="wb-name"></b><small id="wb-role"></small></span></div>
     <img class="logo" src="/logo.png" alt="360 Medical">
     <div class="headtxt"><h1>Admin</h1><span class="conf">360 MEDICAL - SURGICAL CASE TRACKER</span><p class="sub">Reps, PINs, quotas and commission plans. Changes here show in the tracker within seconds.</p></div>
-    <div class="tools"><button class="btn" id="btn-refresh" type="button" onclick="this.disabled=true;this.textContent='⟳ Refreshing…';location.reload()">⟳ Refresh</button><a class="btn" href="/">Open tracker</a><a class="btn" href="#managers">Managers</a><a class="btn" href="#visits">Visits</a><a class="btn" href="#surgeons">Surgeons</a><a class="btn" href="#facilities">Facilities</a><a class="btn" href="/products">Products</a><a class="btn" href="/download">Download app</a><button class="btn" id="logout" type="button">Log out</button></div>
+    <div class="tools"><button class="btn" id="btn-refresh" type="button" onclick="this.disabled=true;this.textContent='⟳ Refreshing…';location.reload()">⟳ Refresh</button><a class="btn" href="/">Open tracker</a><a class="btn" href="#managers">Managers</a><a class="btn" href="#visits">Visits</a><a class="btn" href="#surgeons">Surgeons</a><a class="btn" href="#facilities">Facilities</a><a class="btn" href="/products">Products</a><a class="btn" href="/download-admin">Download admin app</a><button class="btn" id="logout" type="button">Log out</button></div>
   </header>
 
   <div class="msg warn" id="dbwarn" hidden></div>
@@ -1020,4 +1020,7 @@ fetch('/api/me', { credentials: 'same-origin' }).then(function (r) { return r.ok
   var b = document.getElementById('who-badge'); b.title = 'Signed in as ' + me.name; b.hidden = false; b.parentNode.classList.add('has-who');
 }).catch(function () {});
 </script>
+<script>window.SCT_APP = { name: '360 Admin', icon: '/icon-admin-192.png', key: 'sct_admin_installed', skip: 'sct_admin_install_later', blurb: 'Opens in its own window with the Admin icon and stays signed in on this device.' };</script>
+<script src="/install.js"></script>
+<script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function () {});</script>
 </body></html>

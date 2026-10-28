@@ -263,6 +263,7 @@ app.get('/login', page('login.html'));
 app.get('/', needPage(), page('tracker.html'));
 app.get('/admin', needPage('owner'), page('admin.html'));
 app.get('/download', page('download.html'));
+app.get('/download-admin', page('download-admin.html'));
 app.get('/setup', page('setup.html'));
 app.get('/products', needPage(), page('products.html'));
 app.get('/img/:id', (req, res) => {
@@ -292,8 +293,9 @@ app.get('/media/:id', async (req, res) => {
     res.setHeader('Content-Length', buf.length); res.end(buf);
   } catch (e) { res.status(500).end(); }
 });
-app.get(['/logo.png', '/shim.js', '/plus.js', '/plus.css', '/visitcal.js', '/idle.js', '/zoom.js', '/spin.js', '/install.js', '/ptr.js', '/update.js', '/webauthn.js', '/qrious.min.js', '/app.css', '/theme-360.css', '/sw.js', '/favicon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'], (req, res) => { if (req.path === '/sw.js') res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, req.path)); });
+app.get(['/logo.png', '/shim.js', '/plus.js', '/plus.css', '/visitcal.js', '/idle.js', '/zoom.js', '/spin.js', '/install.js', '/ptr.js', '/update.js', '/webauthn.js', '/qrious.min.js', '/app.css', '/theme-360.css', '/icon-admin-192.png', '/icon-admin-512.png', '/icon-admin-maskable-512.png', '/apple-touch-icon-admin.png', '/sw.js', '/favicon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'], (req, res) => { if (req.path === '/sw.js') res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, req.path)); });
 app.get('/manifest.webmanifest', (req, res) => { res.type('application/manifest+json'); res.sendFile(path.join(pub, 'manifest.webmanifest')); });
+app.get('/admin.webmanifest', (req, res) => { res.type('application/manifest+json'); res.sendFile(path.join(pub, 'admin.webmanifest')); });
 
 app.get('/api/login-options', (req, res) => {
   const p = pins().reps;
