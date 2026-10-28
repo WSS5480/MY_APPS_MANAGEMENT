@@ -126,3 +126,30 @@ textarea.field { height: auto; padding: .6rem .8rem; }
 .head .btn, .head a.btn, .head .btn.small, .head .ctl select, .save { height: 2.3rem; font-size: .84rem; align-self: flex-end; }
 .head .btn.small { padding: 0 .9rem; }
 .ctl { align-items: flex-end; gap: .5rem; }
+
+/* ---- desktop layout like the Peptides admin: the navy header becomes a fixed left sidebar, the pages flow beside it ---- */
+@media (min-width: 1000px) {
+  body.side-layout .wrap { max-width: none; padding: 1.25rem 2rem 3rem calc(15.5rem + 2rem); gap: 1rem; }
+  body.side-layout .head {
+    position: fixed !important; left: 0; top: 0; bottom: 0; width: 15.5rem; margin: 0; padding: 1.2rem 1rem; overflow-y: auto; z-index: 40;
+    display: flex; flex-direction: column; align-items: stretch; gap: .9rem; border-radius: 0;
+  }
+  body.side-layout .head .logo { width: 100%; max-width: 12rem; margin: 0 auto .2rem; }
+  body.side-layout .headtxt { flex: none; }
+  body.side-layout .head h1 { font-size: 1rem; }
+  body.side-layout .head .sub, body.side-layout .head .take { font-size: .8rem; line-height: 1.45; }
+  body.side-layout .who-badge { position: static; max-width: none; width: 100%; order: -1; }
+  body.side-layout .who-menu { top: 4.2rem; left: 1rem; right: 1rem; }
+  body.side-layout .head .ctl, body.side-layout .head .tools { flex-direction: column; align-items: stretch; gap: .35rem; }
+  body.side-layout .head .ctl label { gap: .3rem; margin-bottom: .3rem; }
+  body.side-layout .head .ctl select { width: 100%; border-radius: 8px; }
+  body.side-layout .head .btn, body.side-layout .head a.btn, body.side-layout .head .btn.small, body.side-layout .save {
+    height: auto; min-height: 2.5rem; width: 100%; justify-content: flex-start; padding: .5rem .85rem; border-radius: 8px; border: 0;
+    background: transparent; color: #fff; font-size: .92rem; font-weight: 500; align-self: stretch;
+  }
+  body.side-layout .head .btn:hover, body.side-layout .head a.btn:hover { background: rgba(255, 255, 255, .1); border: 0; }
+  body.side-layout .head .btn.primary { background: #fff; color: var(--navy); }
+  body.side-layout .save { color: var(--on-navy-muted); font-size: .8rem; margin-top: auto; justify-content: center; border: 1px solid rgba(255, 255, 255, .14); min-height: 2.2rem; }
+  body.side-layout .who { flex-direction: column; }
+  body.side-layout .jump { top: 0; }
+}
