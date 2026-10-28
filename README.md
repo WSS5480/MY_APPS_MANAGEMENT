@@ -32,6 +32,7 @@ Lives on branch `surgical-case-tracker` of MY_APPS_MANAGEMENT; Render service `3
 - Sales reps: PIN, or (once invited) email + password + authenticator app code; Face ID / passkey on their phone.
 - Managers: invited from Admin → Sign-in accounts (setup link, password, authenticator app), Face ID on phone. "Can manage managers" = can add/remove accounts and change the COO PIN. The COO PIN sign-in can be turned off once a manager account exists.
 - Computers sign out after 10 minutes without activity (IDLE_MIN env to change); phones stay signed in 30 days.
+- **One login with the peptide store** (when `HUB_URL` + `HUB_SECRET` are set): the store admin's Team logins is the one list of people. Tick "Case tracker" on a login and they appear here (reps get a plan row; untick to switch them off). Their store PIN works on this login page, and the app switch at the top of the store admin / rep app signs them straight in here (`/sso`). Approval emails then use the store's Microsoft 365 app and COO address. Everything here still works on its own if the link is down.
 
 ## Render env
 - `DATABASE_URL` Postgres connection string (table `sct360_docs`). Without it data is kept in a local file and resets when the service restarts.
@@ -40,6 +41,7 @@ Lives on branch `surgical-case-tracker` of MY_APPS_MANAGEMENT; Render service `3
 - `CRON_SECRET` shared with the cron job that triggers the Monday digest.
 - `PUBLIC_URL` the public https address (used for calendar links).
 - `IDLE_MIN` computer idle sign-out, minutes (default 10).
+- `HUB_URL` the peptide store's address and `HUB_SECRET` the same secret set on the store — turns on the one-login link.
 - `DIAG_GREP` optional, comma-separated words: prints matching visit/target/surgeon/facility records to the log once at startup (read-only support aid). Leave empty normally.
 
 ## Cron jobs (Render)
