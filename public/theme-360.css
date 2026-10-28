@@ -1,0 +1,128 @@
+/* The 360 Peptides look, applied to every page of the Surgical Case Tracker.
+   Loaded last on each page, so it overrides the page's own styles: same fonts, colors, navy top bar,
+   white cards on a pale ground, navy buttons, uppercase section titles and table headers as the peptide store. */
+:root, :root[data-theme="dark"] {
+  --bg: #f3f5f8; --panel: #ffffff; --fg: #121c2f; --muted: #5d6879; --line: #e2e7ee; --line-strong: #c9d1dc; --field: #ffffff; --hl: #e9f1fb;
+  --accent: #0b4d96; --accent-2: #8fc6ff; --navy: #0f1b33; --midnight: #0f1b33; --on-navy: #ffffff; --on-navy-muted: #c7d2e3;
+  --ok: #15734a; --ok-bg: #e3f4eb; --ok-fill: #15734a; --warn: #8a5a00; --warn-bg: #faefd6; --bad: #9b1c1c; --bad-bg: #fdecec; --mute-bg: #e9edf3; --track: #e2e7ee;
+  --font: "Poppins", "Avenir Next", "Segoe UI", system-ui, sans-serif; --r: 14px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #f3f5f8; --panel: #ffffff; --fg: #121c2f; --muted: #5d6879; --line: #e2e7ee; --field: #ffffff; --hl: #e9f1fb;
+  --ok: #15734a; --warn: #8a5a00; --bad: #9b1c1c; --ok-bg: #e3f4eb; --warn-bg: #faefd6; --bad-bg: #fdecec; --mute-bg: #e9edf3; --track: #e2e7ee; color-scheme: light; } }
+html { background: var(--bg); }
+body { background: var(--bg); color: var(--fg); font-family: var(--font); font-size: .95rem; line-height: 1.55; -webkit-text-size-adjust: 100%; }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---- navy top bar, edge to edge like the store ---- */
+.wrap { padding-top: 0; gap: 1rem; }
+.head {
+  margin-inline: calc(50% - 50vw); border-radius: 0; border-bottom: 0;
+  background: var(--navy); padding: .9rem max(16px, calc(50vw - 604px)) .95rem;
+  gap: .75rem 1.5rem; align-items: center;
+}
+.head .logo { width: 150px; }
+.head h1 { font: 800 1.15rem/1.2 var(--font); letter-spacing: .04em; text-transform: uppercase; }
+.head .conf, .head .plan { color: var(--accent-2); font-size: .66rem; letter-spacing: .1em; }
+.head .sub, .head .take { color: var(--on-navy-muted); font-size: .86rem; margin-top: .2rem; }
+.head .btn, .head a.btn { height: 2.4rem; padding: 0 1rem; border-radius: 999px; background: transparent; border: 1px solid rgba(255, 255, 255, .35); color: #fff; font-weight: 600; font-size: .86rem; }
+.head .btn:hover, .head a.btn:hover { background: rgba(255, 255, 255, .08); border-color: #fff; color: #fff; }
+.head .btn.primary { background: #fff; border-color: #fff; color: var(--navy); }
+.head .btn.primary:hover { background: var(--hl); border-color: var(--hl); color: var(--navy); }
+.ctl label { color: var(--on-navy-muted); font-size: .64rem; letter-spacing: .09em; }
+.ctl select { height: 2.4rem; padding: 0 2rem 0 .9rem; border-radius: 999px; background: rgba(255, 255, 255, .1); border-color: rgba(255, 255, 255, .3); color: #fff; font-weight: 600; font-size: .86rem; }
+.save { height: 2rem; display: inline-flex; align-items: center; padding: 0 .8rem; background: rgba(255, 255, 255, .08); border: 1px solid rgba(255, 255, 255, .18); color: var(--on-navy-muted); }
+.who-badge { background: #fff; border-color: #fff; color: var(--navy); }
+.who-badge:hover { background: var(--hl); }
+.who-badge .wb-ic { background: var(--navy); color: #fff; }
+.who-badge small { color: var(--muted); }
+.who-badge .wb-caret { color: var(--muted); }
+.who-menu { border-radius: 12px; box-shadow: 0 14px 34px -14px rgba(15, 27, 51, .45); }
+.who-menu a, .who-menu button { color: var(--fg); font-weight: 500; }
+.who-menu a:hover, .who-menu button:hover { background: var(--hl); }
+
+/* ---- jump chips, section chips ---- */
+.jump { background: var(--bg); padding-block: .6rem; }
+.jump a, .chip { height: 2.2rem; display: inline-flex; align-items: center; padding: 0 1rem; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--panel); color: var(--fg); font-size: .84rem; font-weight: 500; }
+.jump a:hover, .chip:hover { border-color: var(--accent); color: var(--accent); }
+.jump a[href="#sec-vcal"], .chip[aria-pressed="true"] { background: var(--navy); border-color: var(--navy); color: #fff; }
+.jump a.jr { padding: 0 .9rem; }
+
+/* ---- cards, tiles, titles ---- */
+.card, .tile { border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); }
+.card { padding: 1.15rem 1.25rem 1.25rem; }
+.card h2, .info h2 { font: 700 .95rem/1.3 var(--font); letter-spacing: .05em; text-transform: uppercase; }
+.card h3, .editor h3 { font: 600 .9rem/1.3 var(--font); }
+.note, .hint, .sub, .empty { color: var(--muted); }
+.note { font-size: .82rem; }
+.tile { border-top: 1px solid var(--line); border-radius: 12px; padding: 1rem 1.1rem; gap: .25rem; }
+.lab, .x-lab, .sec-title, label.f, .form label, .ctl label, .info h4 { font: 600 .68rem/1.3 var(--font); letter-spacing: .09em; text-transform: uppercase; }
+.lab, .x-lab, label.f, .form label, .info h4 { color: var(--muted); }
+.sec-title { color: var(--accent); }
+.num { font-size: 1.6rem; font-weight: 700; letter-spacing: 0; }
+.cstat .num { font-size: 1.35rem; }
+.cstat { background: var(--bg); border-radius: 10px; }
+.banner { border-radius: 12px; }
+.private { color: var(--accent); }
+
+/* ---- tables ---- */
+table { font-size: .88rem; }
+th { background: var(--bg); color: var(--muted); font: 600 .68rem/1.3 var(--font); letter-spacing: .08em; text-transform: uppercase; padding: .6rem .8rem; border-bottom: 1px solid var(--line); }
+td { padding: .6rem .8rem; border-bottom: 1px solid var(--line); }
+tr.click:hover td, tr.on td { background: var(--hl); }
+tr.team td { border-top: 2px solid var(--line-strong); }
+.scroll { border: 1px solid var(--line); border-radius: 12px; }
+.scroll table { border-collapse: separate; border-spacing: 0; }
+.scroll th:first-child { border-top-left-radius: 12px; } .scroll th:last-child { border-top-right-radius: 12px; }
+.scroll tr:last-child td { border-bottom: 0; }
+
+/* ---- buttons, fields, pills ---- */
+.btn { height: 2.3rem; padding: 0 .9rem; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--panel); color: var(--fg); font-size: .88rem; font-weight: 500; }
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn.primary { background: var(--navy); border-color: var(--navy); color: #fff; }
+.btn.primary:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.danger { border-color: #e7b4b4; color: #9b1c1c; } .btn.danger:hover { background: #fdecec; border-color: #9b1c1c; color: #9b1c1c; }
+.btn.small { height: 1.9rem; padding: 0 .7rem; font-size: .78rem; }
+.btn:disabled { opacity: .5; }
+.field, textarea.field, .cell { border: 1px solid var(--line-strong); border-radius: 8px; background: var(--field); color: var(--fg); font-family: var(--font); }
+.field { height: 2.4rem; padding: 0 .8rem; font-size: .9rem; }
+textarea.field { height: auto; padding: .6rem .8rem; }
+.field:focus-visible, .btn:focus-visible, .ctl select:focus-visible, .cell:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.pill { font-size: .74rem; font-weight: 600; padding: .15rem .55rem; }
+.pill.ok { color: var(--ok); background: var(--ok-bg); } .pill.bad { color: var(--bad); background: var(--bad-bg); } .pill.mute { color: var(--muted); background: var(--mute-bg); }
+.editor { border: 1px solid var(--accent); background: var(--hl); border-radius: 12px; }
+.tabs { background: var(--bg); border-radius: 999px; padding: 4px; }
+.tabs button { border-radius: 999px; font-weight: 600; }
+.tabs button[aria-selected="true"] { background: var(--navy); color: #fff; box-shadow: none; }
+.msg { border-radius: 10px; }
+.foot { border-top: 1px solid var(--line); color: var(--muted); font-size: .78rem; }
+.x-offline { background: var(--navy); border-color: rgba(255, 255, 255, .35); }
+.tip { border-radius: 10px; box-shadow: 0 10px 28px -16px rgba(15, 27, 51, .45); }
+.bar { background: var(--track); } .bar i.brand { background: var(--accent); }
+.legend i { border-top-color: var(--accent); }
+.dots i.done { background: var(--accent); border-color: var(--accent); }
+
+/* ---- product demo ---- */
+.pc { border-top: 1px solid var(--line); border-radius: var(--r); }
+.pc:hover { border-color: var(--line-strong); box-shadow: 0 10px 28px -18px rgba(15, 27, 51, .45); }
+.pc .ph { background: radial-gradient(70% 70% at 50% 40%, #ffffff 0, var(--hl) 100%); border-bottom: 1px solid var(--line); }
+.pc h3 { font: 700 1rem/1.2 var(--font); letter-spacing: .02em; text-transform: uppercase; }
+.pc .body { padding: .9rem 1rem 1rem; }
+.tag { background: var(--navy); font-size: .64rem; letter-spacing: .07em; }
+.tag.code { background: var(--hl); color: var(--fg); } .tag.vid { background: var(--accent); }
+.search { height: 2.4rem; border-radius: 999px; padding: 0 1rem; }
+
+/* ---- sign-in, download ---- */
+.hero { border-radius: var(--r); }
+.qr { border-radius: 12px; }
+@media (max-width: 700px) {
+  .head { padding-inline: 16px; }
+  .head .logo { width: 128px; }
+  .head h1 { font-size: 1rem; }
+}
+/* every control in the top bar sits on one line at one height */
+.head .btn, .head a.btn, .head .btn.small, .head .ctl select, .save { height: 2.3rem; font-size: .84rem; align-self: flex-end; }
+.head .btn.small { padding: 0 .9rem; }
+.ctl { align-items: flex-end; gap: .5rem; }

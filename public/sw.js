@@ -1,14 +1,14 @@
 /* 360 Cases service worker: works offline (pages, scripts and photos cached), plus push notifications.
    Data comes live from the server; when offline the page uses the copy saved on the device. */
-const V = 'v21';
+const V = 'v22';
 const SHELL = 'sct360-shell-' + V, PAGES = 'sct360-pages-' + V, IMG = 'sct360-img-' + V, CDN = 'sct360-cdn-' + V;
-const SHELL_FILES = ['/logo.png', '/shim.js', '/plus.js', '/plus.css', '/visitcal.js', '/idle.js', '/zoom.js', '/spin.js', '/install.js', '/ptr.js', '/update.js', '/webauthn.js', '/app.css', '/icon-192.png', '/icon-512.png', '/favicon.png', '/manifest.webmanifest'];
+const SHELL_FILES = ['/logo.png', '/shim.js', '/plus.js', '/plus.css', '/visitcal.js', '/idle.js', '/zoom.js', '/spin.js', '/install.js', '/ptr.js', '/update.js', '/webauthn.js', '/app.css', '/theme-360.css', '/icon-192.png', '/icon-512.png', '/favicon.png', '/manifest.webmanifest'];
 const PAGE_PATHS = ['/', '/products', '/download', '/login'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(SHELL).then(c => c.addAll(SHELL_FILES)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => /^sct360-/.test(k) && !k.endsWith(V)).map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
-const offlinePage = () => new Response('<!doctype html><meta name=viewport content="width=device-width"><body style="font-family:sans-serif;background:#03121F;color:#EAF3F9;padding:24px"><h2>You are offline</h2><p>Open the tracker once while online on this device, and it will work offline after that.</p>', { headers: { 'Content-Type': 'text/html' } });
+const offlinePage = () => new Response('<!doctype html><meta name=viewport content="width=device-width"><body style="font-family:sans-serif;background:#f3f5f8;color:#121c2f;padding:24px"><h2>You are offline</h2><p>Open the tracker once while online on this device, and it will work offline after that.</p>', { headers: { 'Content-Type': 'text/html' } });
 self.addEventListener('fetch', e => {
   const req = e.request, u = new URL(req.url);
   if (req.method !== 'GET') return;
