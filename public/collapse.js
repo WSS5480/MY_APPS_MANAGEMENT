@@ -8,19 +8,20 @@
     if (top.parentElement !== card || top !== card.firstElementChild) return null; // heading must sit at the top of the card
     return { h: h, top: top };
   }
-  // a panel that appears because you clicked something on the page (Edit order, Add customer, a PIN…) opens; page panels start collapsed
-  var lastAction = 0;
-  document.addEventListener('click', function (e) { lastAction = e.target.closest('aside, header.head, nav, [data-nav], [data-invtab], .seg, .rnav, .jump, .navtoggle, .fold-h') ? 0 : Date.now(); }, true);
-  function apply(card) {
+  // a panel that appears on its own among cards already on the page (Edit order, Add customer, a PIN…) opens;
+  // when a whole page renders (every card is new) its panels start collapsed
+  function apply(card, pageRender) {
     var f = headOf(card); if (!f || card.hasAttribute('data-nofold')) { card.removeAttribute('data-fold'); return; }
     card.setAttribute('data-fold', '1'); f.top.classList.add('fold-head'); f.h.classList.add('fold-h');
     if (card.dataset.foldInit) return; card.dataset.foldInit = '1';
     var saved = null; try { saved = localStorage.getItem(key(card, f.h)); } catch (e) {}
-    var folded = saved === null ? !(Date.now() - lastAction < 2500) : saved === '1';
+    var openDefault = false; try { openDefault = localStorage.getItem('foldDefault') === 'open'; } catch (e) {}
+    var folded = saved === null ? (pageRender && !openDefault) : saved === '1';
     card.classList.toggle('folded', folded);
     f.h.setAttribute('aria-expanded', folded ? 'false' : 'true');
   }
-  function scan() { document.querySelectorAll(SEL).forEach(apply); }
+  function scan() { var all = [].slice.call(document.querySelectorAll(SEL)); var seen = all.some(function (c) { return c.dataset.foldInit; }); all.forEach(function (c) { apply(c, !seen || !clicked); }); } // cards that appear before you've clicked anything are page cards
+  var clicked = false; document.addEventListener('click', function () { clicked = true; }, true);
   document.addEventListener('click', function (e) {
     var h = e.target.closest('.fold-h'); if (!h) return;
     if (e.target.closest('button, a, input, select, label')) return;

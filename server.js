@@ -418,7 +418,7 @@ app.get(['/store', '/admin/store'], (req, res) => {
   res.type('html').send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>360 Peptides</title>
 <link rel="manifest" href="${req.path.startsWith('/admin') ? '/admin.webmanifest' : '/manifest.webmanifest'}"><meta name="theme-color" content="#0f1b33">
 <style>html,body{margin:0;height:100%;background:#0f1b33}iframe{position:fixed;inset:0;width:100%;height:100%;border:0}</style></head>
-<body><iframe src="${esc(src)}" title="Peptide store" allow="clipboard-write; camera"></iframe></body></html>`);
+<body><iframe src="${esc(src)}" title="Peptide store" allow="camera"></iframe></body></html>`);
 });
 app.get(['/go/store', '/admin/go/store'], (req, res) => {
   const next = /^\/[A-Za-z0-9/_#?=&%.-]*$/.test(String(req.query.next || '')) ? String(req.query.next) : '/admin';

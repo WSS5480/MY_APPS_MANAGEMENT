@@ -1,6 +1,6 @@
 /* 360 Cases service worker: works offline (pages, scripts and photos cached), plus push notifications.
    Data comes live from the server; when offline the page uses the copy saved on the device. */
-const V = 'v35';
+const V = 'v36';
 const SHELL = 'sct360-shell-' + V, PAGES = 'sct360-pages-' + V, IMG = 'sct360-img-' + V, CDN = 'sct360-cdn-' + V;
 const SHELL_FILES = ['/logo.png', '/logo-dark.png', '/collapse.js', '/d3.min.js', '/shim.js', '/plus.js', '/plus.css', '/visitcal.js', '/idle.js', '/zoom.js', '/spin.js', '/install.js', '/ptr.js', '/update.js', '/webauthn.js', '/app.css', '/theme-360.css', '/icon-192.png', '/icon-512.png', '/favicon.png', '/manifest.webmanifest'];
 const PAGE_PATHS = ['/', '/products', '/download', '/login'];

@@ -63,7 +63,7 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
 header.head.has-who{padding-top:58px}
 @media (max-width:700px){.who-badge{top:12px;right:12px;max-width:calc(100% - 24px)}}
 </style>
-<link rel="stylesheet" href="/theme-360.css?v=16"><script src="/collapse.js?v=3" defer></script>
+<link rel="stylesheet" href="/theme-360.css?v=16"><script src="/collapse.js?v=4" defer></script>
 </head><body class="side-layout">
 <div class="wrap">
   <header class="head" style="position:relative">
@@ -73,7 +73,7 @@ header.head.has-who{padding-top:58px}
     <div class="headtxt"><h1>Admin</h1><span class="conf">360 MEDICAL - SURGICAL CASE TRACKER</span><p class="sub">Reps, PINs, quotas and commission plans. Changes here show in the tracker within seconds.</p></div>
     <div class="tools"><button class="btn" id="btn-refresh" type="button" onclick="this.disabled=true;this.textContent='⟳ Refreshing…';location.reload()">⟳ Refresh</button><a class="btn" href="/">Open tracker</a><a class="btn" href="#managers">Managers</a><a class="btn" href="#visits">Visits</a><a class="btn" href="#surgeons">Surgeons</a><a class="btn" href="#facilities">Facilities</a><a class="btn" href="/products">Products</a><a class="btn" href="#mail-card">Approval emails</a><a class="btn" href="/admin/download">Admin app</a><hr class="navline both-apps" hidden><a class="btn both-apps" hidden data-go="/admin#staff" data-hub="staff">Team logins</a><a class="btn both-apps" hidden data-go="/admin#setup" data-hub="setup">Email &amp; approvals</a><a class="btn both-apps" hidden data-local="geo-card" href="#hub-geo">Geofencing</a><a class="btn both-apps" hidden data-go="/admin#apps" data-hub="apps">Apps &amp; downloads</a><a class="btn both-apps" hidden data-go="/admin#account" data-hub="account">My account</a><button class="btn" id="logout" type="button">Log out</button></div>
   </header>
-  <div id="hubpane" hidden><iframe id="hubframe" title="Shared admin page" allow="clipboard-write"></iframe></div>
+  <div id="hubpane" hidden><iframe id="hubframe" title="Shared admin page"></iframe></div>
 
   <div class="msg warn" id="dbwarn" hidden></div>
   <div class="msg warn" id="pinwarn" hidden>You are still on the starting admin PIN. Set your own below.</div>
