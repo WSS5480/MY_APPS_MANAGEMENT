@@ -63,7 +63,7 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
 header.head.has-who{padding-top:58px}
 @media (max-width:700px){.who-badge{top:12px;right:12px;max-width:calc(100% - 24px)}}
 </style>
-<link rel="stylesheet" href="/theme-360.css?v=9"><script src="/collapse.js?v=1" defer></script>
+<link rel="stylesheet" href="/theme-360.css?v=10"><script src="/collapse.js?v=1" defer></script>
 </head><body class="side-layout">
 <div class="wrap">
   <header class="head" style="position:relative">
@@ -71,7 +71,7 @@ header.head.has-who{padding-top:58px}
     <div class="brand"><small class="appname">Case tracker admin</small><div class="ver" id="ver"></div><div class="appswitch" id="appswitch" hidden><a class="on">Case tracker</a><a id="sw-store" href="#">Peptide store ↗</a></div></div>
     <div class="who-badge" id="who-badge" hidden title=""><span class="wb-ic" id="wb-ic" aria-hidden="true"></span><span><b id="wb-name"></b><small id="wb-role"></small></span></div>
     <div class="headtxt"><h1>Admin</h1><span class="conf">360 MEDICAL - SURGICAL CASE TRACKER</span><p class="sub">Reps, PINs, quotas and commission plans. Changes here show in the tracker within seconds.</p></div>
-    <div class="tools"><button class="btn" id="btn-refresh" type="button" onclick="this.disabled=true;this.textContent='⟳ Refreshing…';location.reload()">⟳ Refresh</button><a class="btn" href="/">Open tracker</a><a class="btn" href="#managers">Managers</a><a class="btn" href="#visits">Visits</a><a class="btn" href="#surgeons">Surgeons</a><a class="btn" href="#facilities">Facilities</a><a class="btn" href="/products">Products</a><a class="btn" href="#mail-card">Approval emails</a><a class="btn" href="/admin/download">Admin app</a><button class="btn" id="logout" type="button">Log out</button></div>
+    <div class="tools"><button class="btn" id="btn-refresh" type="button" onclick="this.disabled=true;this.textContent='⟳ Refreshing…';location.reload()">⟳ Refresh</button><a class="btn" href="/">Open tracker</a><a class="btn" href="#managers">Managers</a><a class="btn" href="#visits">Visits</a><a class="btn" href="#surgeons">Surgeons</a><a class="btn" href="#facilities">Facilities</a><a class="btn" href="/products">Products</a><a class="btn" href="#mail-card">Approval emails</a><a class="btn" href="/admin/download">Admin app</a><hr class="navline both-apps" hidden><a class="btn both-apps" hidden data-go="/admin#staff">Team logins</a><a class="btn both-apps" hidden data-go="/admin#setup">Email &amp; approvals</a><a class="btn both-apps" hidden data-go="/admin#apps">Apps &amp; downloads</a><a class="btn both-apps" hidden data-go="/admin#account">My account</a><button class="btn" id="logout" type="button">Log out</button></div>
   </header>
 
   <div class="msg warn" id="dbwarn" hidden></div>
@@ -1059,7 +1059,8 @@ fetch('/api/me', { credentials: 'same-origin' }).then(function (r) { return r.ok
   document.getElementById('wb-ic').textContent = String(me.name).trim().charAt(0).toUpperCase();
   document.getElementById('wb-role').textContent = me.manager ? (me.super ? 'Admin · full access' : 'Manager') : 'Admin';
   var b = document.getElementById('who-badge'); b.title = 'Signed in as ' + me.name; b.hidden = false; b.parentNode.classList.add('has-who');
-  if (me.hub) { var sw = document.getElementById('appswitch'); document.getElementById('sw-store').href = me.hub + '/admin'; sw.hidden = false; }
+  if (me.hub) { var sw = document.getElementById('appswitch'); document.getElementById('sw-store').href = me.hub + '/admin'; sw.hidden = false;
+    document.querySelectorAll('.both-apps').forEach(function (el) { el.hidden = false; if (el.dataset.go) el.href = '/go/store?next=' + encodeURIComponent(el.dataset.go); }); }
 }).catch(function () {});
 </script>
 <script>window.SCT_APP = { name: '360 Admin', icon: '/icon-admin-192.png', key: 'sct_admin_installed', skip: 'sct_admin_install_later', blurb: 'Opens in its own window with the Admin icon and stays signed in on this device.' };</script>

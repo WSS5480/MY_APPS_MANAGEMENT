@@ -143,7 +143,7 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .jump a[hidden]{display:none}
 section[id^="sec-"]{scroll-margin-top:62px}
 </style>
-<link rel="stylesheet" href="/theme-360.css?v=9"><script src="/collapse.js?v=1" defer></script>
+<link rel="stylesheet" href="/theme-360.css?v=10"><script src="/collapse.js?v=1" defer></script>
 </head><body class="side-layout">
 <div class="wrap" id="root">
   <header class="head" style="position:relative">
@@ -163,6 +163,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
       <button class="btn small" id="btn-refresh" type="button" title="Load the latest data">⟳ Refresh</button>
       <a class="btn small" id="btn-admin" href="/admin" hidden>⚙️ Admin</a>
       <a class="btn small" href="/products">Products</a>
+      <hr class="navline both-apps" hidden><a class="btn small both-apps" hidden id="bo-account" data-go="/rep#account">My account</a><a class="btn small both-apps" hidden data-go="/admin#apps">Apps &amp; downloads</a>
       <button class="btn small" id="btn-notme" type="button">Log out</button>
       <span class="save" id="save" role="status">Autosave on</span>
     </div>
@@ -1123,7 +1124,8 @@ section[id^="sec-"]{scroll-margin-top:62px}
       document.getElementById('wb-name').textContent = me.name; document.getElementById('wb-ic').textContent = String(me.name).trim().charAt(0).toUpperCase();
       document.getElementById('wb-role').textContent = me.role === 'rep' ? 'Sales rep' : me.manager ? 'Manager' : 'Admin';
       var wb = document.getElementById('who-badge'); wb.title = 'Signed in as ' + me.name; wb.hidden = false; wb.parentNode.classList.add('has-who');
-      if (me.hub) { var sw = document.getElementById('appswitch'); document.getElementById('sw-store').href = me.hub + (me.role === 'owner' ? '/admin' : '/rep'); sw.hidden = false; }
+      if (me.hub) { var sw = document.getElementById('appswitch'); document.getElementById('sw-store').href = me.hub + (me.role === 'owner' ? '/admin' : '/rep'); sw.hidden = false;
+        document.querySelectorAll('.both-apps').forEach(function (el) { el.hidden = false; if (el.dataset.go) { var to = el.dataset.go; if (me.role === 'owner') to = to.replace('/rep#account', '/admin#account'); el.href = '/go/store?next=' + encodeURIComponent(to); } }); }
       var menu = document.getElementById('who-menu'), isAdmin = me.role === 'owner';
       document.getElementById('wm-admin').hidden = !isAdmin; document.getElementById('btn-admin').hidden = !isAdmin; document.getElementById('wm-adminlogin').hidden = isAdmin;
       var setOpen = function (o) { menu.hidden = !o; wb.setAttribute('aria-expanded', String(o)); };

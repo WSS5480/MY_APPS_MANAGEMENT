@@ -380,6 +380,38 @@ app.get('/api/hub/commissions', hubAuth, (req, res) => {
   res.json({ month: ym, reps, total: reps.reduce((t, r) => t + r.commission, 0), sales: reps.reduce((t, r) => t + (r.metric === 'Cases' ? 0 : r.actual), 0) });
 });
 app.post('/api/hub/sync', hubAuth, async (req, res) => { await syncPeople(true).catch(() => {}); res.json({ ok: true, people: hubPeople.list.length }); });
+// the hub's Setup page: approval emails on/off for this app, a test send, and previews
+app.get('/api/hub/settings', hubAuth, async (req, res) => { await refreshHubMail(); const c = mailCfg(); res.json({ mailOn: c.on !== false, info: mail.info(c), to: c.to || '', viaHub: !!c.viaHub, publicUrl: process.env.PUBLIC_URL || '' }); });
+app.put('/api/hub/settings', hubAuth, async (req, res) => {
+  const b = req.body || {}, prev = docs.get('config/mail') || {};
+  if (b.mailOn !== undefined) await put('config/mail', Object.assign({}, prev, { on: !!b.mailOn, updated_at: new Date().toISOString() }));
+  res.json({ ok: true, mailOn: (docs.get('config/mail') || {}).on !== false });
+});
+app.post('/api/hub/mail-test', hubAuth, async (req, res) => {
+  const sample = { name: 'Valley Baptist Medical Center', address: '2101 Pease St, Harlingen, TX 78550', map_label: '2101 Pease St, Harlingen, TX 78550', lat: 26.1836, lng: -97.7118, created_at: new Date().toISOString() };
+  const r = await emailApproval('facility', 'test', sample, String((req.body || {}).by || 'Admin') + ' (test)', process.env.PUBLIC_URL || HUB_URL);
+  if (!r.ok) return res.status(400).json({ error: r.error === 'off' ? 'Approval emails are turned off.' : r.error });
+  res.json({ ok: true, to: mailCfg().to || '' });
+});
+// email previews for the hub's Setup page: the link carries a short signed token instead of a tracker session
+app.get('/hub/mail-preview', (req, res) => {
+  const t = hubVerify(req.query.t); if (!t) return res.status(401).type('text').send('This preview link has expired. Open it again from the Setup page.');
+  const kind = req.query.kind === 'surgeon' ? 'surgeon' : 'facility';
+  const sample = kind === 'facility' ? { name: 'Valley Baptist Medical Center', address: '2101 Pease St, Harlingen, TX 78550', map_label: '2101 Pease St, Harlingen, TX 78550', lat: 26.1836, lng: -97.7118, created_at: new Date().toISOString() }
+    : { name: 'Dr. Maria Salinas', specialty: 'Orthopedic surgery', facility: 'Valley Baptist Medical Center', created_at: new Date().toISOString() };
+  res.type('html').send(approvalEmail({ kind, doc: sample, id: 'preview', by: 'Brandon', base: baseUrl(req) }).html);
+});
+// the other direction: someone signed in here goes to the store's admin pages (Team logins, Setup, Apps, My account) with this login
+app.get('/go/store', (req, res) => {
+  const next = /^\/[A-Za-z0-9/_#?=&%.-]*$/.test(String(req.query.next || '')) ? String(req.query.next) : '/admin';
+  if (!hubLinked()) return res.redirect(HUB_URL ? HUB_URL + next : '/');
+  const s = session(req); if (!s) return res.redirect('/login?next=' + encodeURIComponent('/go/store?next=' + next));
+  let email = s.hub || '';
+  if (!email && s.role === 'owner' && s.mgr) email = (mgrs()[s.mgr] || {}).email || '';
+  if (!email && s.role === 'rep') email = ((pins().reps[s.rep] || {}).email) || (repAcct(s.rep) || {}).email || '';
+  const token = hubSign({ sso: true, email, name: whoName(s), role: s.role === 'owner' ? 'owner' : 'rep', exp: Date.now() + 120000 });
+  res.redirect(HUB_URL + '/sso?t=' + encodeURIComponent(token) + '&next=' + encodeURIComponent(next));
+});
 app.get('/api/hub/ping', hubAuth, (req, res) => res.json({ ok: true, app: 'case-tracker' }));
 app.get('/api/login-options', async (req, res) => {
   await syncPeople().catch(() => {});
