@@ -143,12 +143,12 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .jump a[hidden]{display:none}
 section[id^="sec-"]{scroll-margin-top:62px}
 </style>
-<link rel="stylesheet" href="/theme-360.css?v=14"><script src="/collapse.js?v=3" defer></script>
+<link rel="stylesheet" href="/theme-360.css?v=15"><script src="/collapse.js?v=3" defer></script>
 </head><body class="side-layout">
 <div class="wrap" id="root">
   <header class="head" style="position:relative">
     <div class="logobox"><img class="logo" src="/logo-dark.png?v=1" alt="360 Medical"></div>
-    <div class="brand"><small class="appname">Case tracker</small><div class="ver" id="ver"></div><div class="appswitch" id="appswitch" hidden><a class="on">Case tracker</a><a id="sw-store" href="#">Peptide store ↗</a></div></div>
+    <div class="brand"><small class="appname">Case tracker</small><div class="ver" id="ver"></div><div class="appswitch" id="appswitch" hidden><a class="on">Case tracker</a><a id="sw-store" href="#">Peptide store ↗</a></div><div class="appswitch views" id="views" style="margin-top:.35rem"><a href="/admin" id="views-admin">Admin</a><a id="v-store" href="#" hidden>Store</a><a id="v-rep" href="#" hidden>Rep</a><a class="on">Tracker</a></div></div>
     <button type="button" class="who-badge" id="who-badge" hidden aria-haspopup="menu" aria-expanded="false"><span class="wb-ic" id="wb-ic" aria-hidden="true"></span><span><b id="wb-name"></b><small id="wb-role"></small></span><span class="wb-caret" aria-hidden="true">▾</span></button>
     <div class="who-menu" id="who-menu" role="menu" hidden><a role="menuitem" id="wm-admin" href="/admin">⚙️ Open Admin</a><button role="menuitem" type="button" id="wm-adminlogin">🔐 Admin sign-in</button><button role="menuitem" type="button" id="wm-logout">↩ Log out</button></div>
     <div class="headtxt">
@@ -1125,7 +1125,9 @@ section[id^="sec-"]{scroll-margin-top:62px}
       document.getElementById('wb-name').textContent = me.name; document.getElementById('wb-ic').textContent = String(me.name).trim().charAt(0).toUpperCase();
       document.getElementById('wb-role').textContent = me.role === 'rep' ? 'Sales rep' : me.manager ? 'Manager' : 'Admin';
       var wb = document.getElementById('who-badge'); wb.title = 'Signed in as ' + me.name; wb.hidden = false; wb.parentNode.classList.add('has-who');
-      if (me.hub) { var sw = document.getElementById('appswitch'); var framed = false; try { framed = window.top !== window; } catch (e) { framed = true; } var hostable = !/iPhone|iPad|iPod/.test(navigator.userAgent) && /Chrome|Edg|Firefox/.test(navigator.userAgent); var toStore = function (next) { return framed ? me.hub + next : (hostable ? '/store?next=' : '/go/store?next=') + encodeURIComponent(next); }; var sws = document.getElementById('sw-store'); sws.href = toStore(me.role === 'owner' ? '/admin' : '/rep'); if (framed) sws.target = '_top'; sw.hidden = false;
+      var va = document.getElementById('views-admin'); if (va && me.role !== 'owner') va.remove();
+      if (me.hub) { var sw = document.getElementById('appswitch'); var framed = false; try { framed = window.top !== window; } catch (e) { framed = true; } var hostable = !/iPhone|iPad|iPod/.test(navigator.userAgent) && /Chrome|Edg|Firefox/.test(navigator.userAgent); var toStore = function (next) { return framed ? me.hub + next : (hostable ? '/store?next=' : '/go/store?next=') + encodeURIComponent(next); }; var vs = document.getElementById('v-store'), vr = document.getElementById('v-rep'); vs.href = toStore('/'); vr.href = toStore('/rep'); vs.hidden = vr.hidden = false; if (framed) { vs.target = vr.target = '_top'; }
+      var sws = document.getElementById('sw-store'); sws.href = toStore(me.role === 'owner' ? '/admin' : '/rep'); if (framed) sws.target = '_top'; sw.hidden = false;
         document.querySelectorAll('.both-apps').forEach(function (el) { el.hidden = false; if (el.dataset.go) { var to = el.dataset.go; if (me.role === 'owner') to = to.replace('/rep#account', '/admin#account'); if (framed) { el.href = me.hub + to; el.target = '_top'; } else { el.href = '#hub-' + el.dataset.hub; el.dataset.src = '/go/store?next=' + encodeURIComponent(to.replace('#', '?embed=1#')); } } });
         window.__hubReady = true; if (window.hubRoute) hubRoute(); }
       var menu = document.getElementById('who-menu'), isAdmin = me.role === 'owner';
