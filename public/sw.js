@@ -1,9 +1,9 @@
 /* 360 Cases service worker: works offline (pages, scripts and photos cached), plus push notifications.
    Data comes live from the server; when offline the page uses the copy saved on the device. */
-const V = 'v24';
+const V = 'v25';
 const SHELL = 'sct360-shell-' + V, PAGES = 'sct360-pages-' + V, IMG = 'sct360-img-' + V, CDN = 'sct360-cdn-' + V;
 const SHELL_FILES = ['/logo.png', '/shim.js', '/plus.js', '/plus.css', '/visitcal.js', '/idle.js', '/zoom.js', '/spin.js', '/install.js', '/ptr.js', '/update.js', '/webauthn.js', '/app.css', '/theme-360.css', '/icon-192.png', '/icon-512.png', '/favicon.png', '/manifest.webmanifest'];
-const PAGE_PATHS = ['/', '/products', '/download', '/download-admin', '/login'];
+const PAGE_PATHS = ['/', '/products', '/download', '/login'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(SHELL).then(c => c.addAll(SHELL_FILES)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => /^sct360-/.test(k) && !k.endsWith(V)).map(k => caches.delete(k)))).then(() => self.clients.claim()));

@@ -74,7 +74,7 @@ ol{margin:0;padding-left:1.2rem;font-size:.875rem;display:flex;flex-direction:co
 <script src="/qrious.min.js"></script>
 <script>
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(function () {});
-var url = location.origin + '/download-admin';
+var url = location.origin + '/admin/download';
 document.getElementById('link').textContent = url;
 try { new QRious({ element: document.getElementById('qr'), value: url, size: 300, foreground: '#081F33' }); } catch (e) { document.getElementById('qr').hidden = true; }
 var ua = navigator.userAgent, ios = /iPhone|iPad|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1), android = /Android/.test(ua);

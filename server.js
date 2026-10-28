@@ -263,7 +263,8 @@ app.get('/login', page('login.html'));
 app.get('/', needPage(), page('tracker.html'));
 app.get('/admin', needPage('owner'), page('admin.html'));
 app.get('/download', page('download.html'));
-app.get('/download-admin', page('download-admin.html'));
+app.get('/admin/download', page('download-admin.html'));
+app.get('/download-admin', (req, res) => res.redirect(301, '/admin/download'));
 app.get('/setup', page('setup.html'));
 app.get('/products', needPage(), page('products.html'));
 app.get('/img/:id', (req, res) => {

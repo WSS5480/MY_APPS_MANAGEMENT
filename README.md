@@ -8,7 +8,7 @@ Lives on branch `surgical-case-tracker` of MY_APPS_MANAGEMENT; Render service `3
 - `/` tracker. Admin (COO) sees the team view, scorecard, every rep and private COO notes. A rep sees only their own quota, cases, targets and SIM events (enforced on the server).
 - `/admin` reps and plans (quota, counts, product, carry, commission %, floor, draw/salary, SIM quota), PINs, access on/off, rename (moves their records), admin PIN, backup/restore.
 - `/products` product demo (catalog with photos, videos, 360° drag-to-rotate views, Present mode). Products are managed in Admin → Products; the Q4 2026 brochure is seeded and any brochure product that gets deleted can be restored from Admin.
-- `/download` install steps + QR code for the rep tracker app; `/download-admin` the same for the Admin app (the admin page installs as its own app, "360 Admin", with its own icon; manifest `/admin.webmanifest`). `/login` sign-in. `/setup` one-time account setup from an invite link.
+- `/download` install steps + QR code for the rep tracker app; `/admin/download` the same for the Admin app (the admin page installs as its own app, "360 Admin", with its own icon; manifest `/admin.webmanifest`). `/login` sign-in. `/setup` one-time account setup from an invite link.
 - The tracker asks to install the app when opened in a browser; the installed app refreshes on pull-down and loads new versions by itself (an "Update" bar appears if someone is mid-edit).
 
 ## Features
