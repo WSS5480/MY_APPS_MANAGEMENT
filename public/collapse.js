@@ -9,11 +9,12 @@
     return { h: h, top: top };
   }
   function apply(card) {
-    var f = headOf(card); if (!f) { card.removeAttribute('data-fold'); return; }
+    var f = headOf(card); if (!f || card.hasAttribute('data-nofold')) { card.removeAttribute('data-fold'); return; }
     card.setAttribute('data-fold', '1'); f.top.classList.add('fold-head'); f.h.classList.add('fold-h');
     var saved = null; try { saved = localStorage.getItem(key(card, f.h)); } catch (e) {}
-    card.classList.toggle('folded', saved === '1');
-    f.h.setAttribute('aria-expanded', saved === '1' ? 'false' : 'true');
+    var folded = saved === null ? true : saved === '1'; // collapsed until you open it
+    card.classList.toggle('folded', folded);
+    f.h.setAttribute('aria-expanded', folded ? 'false' : 'true');
   }
   function scan() { document.querySelectorAll(SEL).forEach(apply); }
   document.addEventListener('click', function (e) {
@@ -27,6 +28,19 @@
   var t = null;
   new MutationObserver(function () { clearTimeout(t); t = setTimeout(scan, 60); }).observe(document.documentElement, { childList: true, subtree: true });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', scan); else scan();
+  // the left menu folds too: a « / » button at its top; collapsed by default, remembered on this device
+  function sideEl() { return document.querySelector('aside.side') || (document.body.classList.contains('side-layout') ? document.querySelector('header.head') : null); }
+  function setNav(collapsed) { document.body.classList.toggle('nav-collapsed', collapsed); var b = document.querySelector('.navtoggle'); if (b) { b.textContent = collapsed ? '»' : '«'; b.title = collapsed ? 'Show the menu' : 'Hide the menu'; b.setAttribute('aria-expanded', collapsed ? 'false' : 'true'); } try { localStorage.setItem('navCollapsed', collapsed ? '1' : '0'); } catch (e) {} }
+  function navInit() {
+    var side = sideEl(); if (!side || side.querySelector('.navtoggle')) return;
+    var b = document.createElement('button'); b.type = 'button'; b.className = 'navtoggle'; b.setAttribute('aria-label', 'Menu');
+    b.addEventListener('click', function () { setNav(!document.body.classList.contains('nav-collapsed')); });
+    side.insertBefore(b, side.firstChild);
+    var saved = null; try { saved = localStorage.getItem('navCollapsed'); } catch (e) {}
+    setNav(saved === null ? true : saved === '1');
+  }
+  new MutationObserver(navInit).observe(document.documentElement, { childList: true, subtree: true });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', navInit); else navInit();
   // "fold all / open all" helper for the keyboard: Alt+Shift+C toggles every card on the page
   document.addEventListener('keydown', function (e) {
     if (!(e.altKey && e.shiftKey && (e.key === 'C' || e.key === 'c'))) return;

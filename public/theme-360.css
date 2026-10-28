@@ -196,3 +196,16 @@ textarea.field { height: auto; padding: .6rem .8rem; }
 .navline { border: 0; border-top: 1px solid rgba(255,255,255,.18); margin: .3rem 0; width: 100%; }
 .navline[hidden] { display: none; }
 @media (max-width: 999px) { .navline { display: none; } }
+
+/* collapsible left menu (collapse.js adds the « » button) */
+.navtoggle { display: none; position: absolute; top: .55rem; right: .55rem; width: 1.9rem; height: 1.9rem; place-items: center; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.3); border-radius: 6px; color: #fff; font-size: 1.1rem; line-height: 1; cursor: pointer; z-index: 2; }
+.navtoggle:hover { background: rgba(255,255,255,.2); }
+@media (min-width: 1000px) {
+  body.side-layout .navtoggle { display: grid; }
+  body.side-layout .head { padding-top: 2.9rem; }
+  body.side-layout .head > .navtoggle { width: 1.9rem; left: auto; }
+  body.side-layout.nav-collapsed .head { width: 3rem; padding: 3.2rem .4rem 1rem; overflow: hidden; }
+  body.side-layout.nav-collapsed .head > :not(.navtoggle) { display: none !important; }
+  body.side-layout.nav-collapsed .head > .navtoggle { right: .55rem; left: .55rem; width: auto; }
+  body.side-layout.nav-collapsed .wrap { padding-left: calc(3rem + clamp(1rem, 3vw, 2rem)); }
+}
