@@ -182,3 +182,10 @@ textarea.field { height: auto; padding: .6rem .8rem; }
   body.side-layout .jump { top: 0; }
 }
 
+
+/* collapsible cards (collapse.js): the heading is the handle */
+[data-fold] > .fold-head .fold-h, [data-fold] > .fold-h { cursor: pointer; user-select: none; }
+.fold-h::before { content: "▾"; display: inline-block; width: 1em; margin-right: .1em; font-size: .9em; opacity: .55; transition: transform .15s; }
+.folded .fold-h::before { transform: rotate(-90deg); }
+.folded > :not(.fold-head) { display: none !important; }
+.folded > .fold-head { margin-bottom: 0 !important; }

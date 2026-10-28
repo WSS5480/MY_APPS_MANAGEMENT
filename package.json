@@ -1,6 +1,6 @@
 {
   "name": "360-medical-surgical-case-tracker",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "private": true,
   "description": "360 MEDICAL - SURGICAL CASE TRACKER: case log, quota pace, commissions, admin page, installable app",
   "main": "server.js",
