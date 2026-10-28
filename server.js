@@ -358,7 +358,7 @@ app.get(['/sso', '/admin/sso'], async (req, res) => { // /admin/sso keeps the in
   if (!t || !t.sso) return res.redirect('/login?next=' + encodeURIComponent(next) + '&err=sso');
   await syncPeople(true).catch(() => {});
   const dev = /iPhone|iPad|Android|Mobile/i.test(req.headers['user-agent'] || '') ? 'phone' : 'computer';
-  if (t.role === 'owner' || t.role === 'staff') { setSession(res, { role: 'owner', hub: t.email, hubName: t.name, v: adminV() }, dev); return res.redirect(next === '/' ? '/admin' : next); }
+  if (t.role === 'owner' || t.role === 'staff') { setSession(res, { role: 'owner', hub: t.email, hubName: t.name, v: adminV() }, dev); return res.redirect(next); } // '/' = the tracker (COO view), '/admin' = Admin
   const name = String(t.name || '').trim();
   if (!t.apps || !t.apps.tracker || !pins().reps[name]) return res.redirect('/login?err=noaccess');
   setSession(res, { role: 'rep', rep: name, hub: t.email, v: pins().reps[name].v }, dev);
