@@ -933,17 +933,141 @@ async function ensureFacility(name, address, s) {
   address = String(address || '').trim().slice(0, 300);
   if (address) { const g = await geocode(address); if (g) { lat = g.lat; lng = g.lng; label = g.label; } }
   const doc = { name, address, lat, lng, map_label: label, radius_m: null, aliases: [], approved: s.role === 'owner', added_by: byName(s), created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
-  await put('facilities/' + id, doc); return Object.assign({ id }, doc);
+  await put('facilities/' + id, doc);
+  if (s.role !== 'owner') {
+    notifyOwner('Facility to approve', byName(s) + ' added ' + name + (address ? ' (' + address + ')' : '') + '. Approve it in Admin → Facilities.').catch(() => {});
+    emailApproval('facility', id, doc, byName(s), s.base || process.env.PUBLIC_URL || '').catch(() => {});
+  }
+  return Object.assign({ id }, doc);
 }
 async function ensureSurgeon(name, facility, specialty, s) {
   name = String(name || '').trim().slice(0, 120); if (!name || nameKey(name).length < 2) return null;
   const hit = findDir('surgeons', name); if (hit) return hit;
   const id = 's' + crypto.randomBytes(7).toString('hex');
-  const doc = { name, facility: String(facility || '').trim().slice(0, 120), specialty: String(specialty || '').trim().slice(0, 80), phone: '', notes: '', added_by: byName(s), created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
-  await put('surgeons/' + id, doc); return Object.assign({ id }, doc);
+  const doc = { name, facility: String(facility || '').trim().slice(0, 120), specialty: String(specialty || '').trim().slice(0, 80), phone: '', notes: '', approved: s.role === 'owner', added_by: byName(s), created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+  await put('surgeons/' + id, doc);
+  if (s.role !== 'owner') {
+    notifyOwner('Surgeon to approve', byName(s) + ' added ' + name + ' to the directory. Approve it in Admin → Surgeons.').catch(() => {});
+    emailApproval('surgeon', id, doc, byName(s), s.base || process.env.PUBLIC_URL || '').catch(() => {});
+  }
+  return Object.assign({ id }, doc);
 }
+/* ---------------- approval emails: a rep adds a facility or surgeon → the COO gets an email with a one-click Approve link ---------------- */
+const mail = require('./server/mail');
+const mailCfg = () => docs.get('config/mail') || {};
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const APPROVE_DAYS = 14;
+function approveToken(kind, id) {
+  const exp = Date.now() + APPROVE_DAYS * 864e5;
+  const body = `${kind}.${id}.${exp}`;
+  return body + '.' + crypto.createHmac('sha256', SECRET).update('approve:' + body).digest('hex').slice(0, 40);
+}
+function readApproveToken(t) {
+  const m = /^(facility|surgeon)\.([A-Za-z0-9_-]{1,40})\.(\d+)\.([0-9a-f]{40})$/.exec(String(t || ''));
+  if (!m) return null;
+  const body = `${m[1]}.${m[2]}.${m[3]}`;
+  const sig = crypto.createHmac('sha256', SECRET).update('approve:' + body).digest('hex').slice(0, 40);
+  if (sig.length !== m[4].length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(m[4]))) return null;
+  if (Number(m[3]) < Date.now()) return { expired: true, kind: m[1], id: m[2] };
+  return { kind: m[1], id: m[2] };
+}
+const NAVY = '#0f1b33', BLUE = '#0b4d96', TEAL = '#0097b2', INK = '#121c2f', INK2 = '#5d6879', LINE = '#e2e7ee', GROUND = '#f3f5f8', FONT = "'Poppins','Segoe UI',Arial,sans-serif";
+const when = (d) => new Date(d || Date.now()).toLocaleString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' CT';
+// The email itself: the same card style as the peptide store's emails (navy header with the logo, facts, two buttons).
+function approvalEmail({ kind, doc, id, by, base }) {
+  const isFac = kind === 'facility';
+  const title = isFac ? `New facility: ${doc.name}` : `New surgeon: ${doc.name}`;
+  const approveUrl = `${base}/approve?t=${encodeURIComponent(approveToken(kind, id))}`;
+  const adminUrl = `${base}/admin#${isFac ? 'facilities' : 'surgeons'}`;
+  const mapUrl = isFac && doc.lat != null ? `https://www.openstreetmap.org/?mlat=${doc.lat}&mlon=${doc.lng}#map=17/${doc.lat}/${doc.lng}` : '';
+  const facts = isFac
+    ? [['Facility', doc.name], ['Address', doc.address || '(no address given)'], ['On the map', doc.lat != null ? `${doc.map_label || doc.address}` : 'Not found on the map — check the address'], ['Added by', by], ['When', when(doc.updated_at || doc.created_at)]]
+    : [['Surgeon', doc.name], ['Specialty', doc.specialty || '—'], ['Facility', doc.facility || '—'], ['Added by', by], ['When', when(doc.created_at)]];
+  const row = (l, v) => `<tr><td style="padding:6px 16px 6px 0;font:600 12px/1.4 ${FONT};color:${INK2};text-transform:uppercase;letter-spacing:.08em;vertical-align:top;white-space:nowrap">${esc(l)}</td><td style="padding:6px 0;font:600 15px/1.45 ${FONT};color:${INK};vertical-align:top">${esc(v)}</td></tr>`;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta name="color-scheme" content="light"><title>${esc(title)}</title></head>
+<body style="margin:0;padding:0;background:${GROUND}">
+<span style="display:none!important;visibility:hidden;opacity:0;color:transparent;height:0;width:0;overflow:hidden">${esc(by)} added ${esc(doc.name)} — approve it with one tap.</span>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${GROUND};padding:24px 12px"><tr><td align="center">
+<table role="presentation" width="640" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%;background:#fff;border-radius:14px;overflow:hidden;border:1px solid ${LINE}">
+  <tr><td style="background:${NAVY};padding:20px 28px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+    <td align="left"><img src="${esc(base)}/logo.png" alt="360 Medical" height="36" style="display:block;height:36px;width:auto;border:0"></td>
+    <td align="right" style="font:700 11px/1.3 ${FONT};color:#8fc6ff;text-transform:uppercase;letter-spacing:.12em">Surgical Case Tracker</td></tr></table></td></tr>
+  <tr><td style="padding:28px 28px 6px">
+    <div style="font:700 12px/1.4 ${FONT};color:${BLUE};text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">Approval needed</div>
+    <h1 style="margin:0 0 10px;font:800 24px/1.2 ${FONT};color:${INK}">${esc(title)} &nbsp;<span style="display:inline-block;vertical-align:middle;padding:5px 12px;border-radius:999px;background:#fff1cc;color:#6b4b00;font:700 11px/1.3 ${FONT};text-transform:uppercase;letter-spacing:.06em">Pending</span></h1>
+    <p style="margin:0;font:15px/1.55 ${FONT};color:${INK}">${esc(by)} added ${isFac ? 'a facility' : 'a surgeon'} to the shared directory. ${isFac ? 'Until you approve the address, check-ins at this facility can\'t turn green.' : 'Approve to confirm it belongs in the directory every rep picks from.'}</p>
+  </td></tr>
+  <tr><td style="padding:12px 28px 4px"><table role="presentation" cellpadding="0" cellspacing="0">${facts.map(([l, v]) => row(l, v)).join('')}</table></td></tr>
+  <tr><td style="padding:22px 28px 8px"><table role="presentation" cellpadding="0" cellspacing="0"><tr>
+    <td style="background:${NAVY};border-radius:8px"><a href="${esc(approveUrl)}" style="display:inline-block;padding:13px 24px;font:700 15px/1 ${FONT};color:#ffffff;text-decoration:none">Approve ${isFac ? 'facility' : 'surgeon'}</a></td>
+    <td style="width:10px"></td>
+    <td style="border:1px solid #c9d1dc;border-radius:8px"><a href="${esc(adminUrl)}" style="display:inline-block;padding:12px 20px;font:600 15px/1 ${FONT};color:${NAVY};text-decoration:none">Open in Admin</a></td>
+    ${mapUrl ? `<td style="width:10px"></td><td style="border:1px solid #c9d1dc;border-radius:8px"><a href="${esc(mapUrl)}" style="display:inline-block;padding:12px 20px;font:600 15px/1 ${FONT};color:${NAVY};text-decoration:none">See map</a></td>` : ''}
+  </tr></table></td></tr>
+  <tr><td style="padding:14px 28px 26px;font:13px/1.55 ${FONT};color:${INK2}">The Approve link works once, for ${APPROVE_DAYS} days, without signing in. To change or remove the entry, use Admin → ${isFac ? 'Facilities' : 'Surgeons'}.</td></tr>
+  <tr><td style="padding:16px 28px;font:12px/1.5 ${FONT};color:${INK2};background:${GROUND};border-top:1px solid ${LINE}">Sent by the 360 Medical Surgical Case Tracker to the COO address under Admin → Approval emails. Confidential: internal sales data.</td></tr>
+</table></td></tr></table></body></html>`;
+  const text = [title, '', `${by} added ${isFac ? 'a facility' : 'a surgeon'} to the shared directory.`, '', ...facts.map(([l, v]) => `${l}: ${v}`), '', `Approve: ${approveUrl}`, `Open in Admin: ${adminUrl}`, mapUrl ? `Map: ${mapUrl}` : ''].filter((x) => x !== '').join('\n');
+  return { subject: `Approve ${isFac ? 'facility' : 'surgeon'}: ${doc.name} (added by ${by})`, html, text };
+}
+async function emailApproval(kind, id, doc, by, base) {
+  const cfg = mailCfg();
+  if (cfg.on === false) return { ok: false, error: 'off' };
+  const to = cfg.to || process.env.COO_EMAIL || '';
+  const m = approvalEmail({ kind, doc, id, by, base });
+  const r = await mail.send(cfg, { to, subject: m.subject, html: m.html, text: m.text });
+  console.log(`Approval email (${kind} ${doc.name}, by ${by}) → ${to || '(no address)'}: ${r.ok ? 'sent' : 'FAILED: ' + r.error}`);
+  return r;
+}
+// one-click approve from the email (signed link, no sign-in)
+app.get('/approve', (req, res) => {
+  const t = readApproveToken(req.query.t);
+  const base = baseUrl(req);
+  const pageHtml = (title, body, ok) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap"><link rel="stylesheet" href="/app.css"><link rel="stylesheet" href="/theme-360.css"></head>
+<body><div class="wrap"><header class="head"><img class="logo" src="/logo.png" alt="360 Medical"><div class="headtxt"><h1>Surgical Case Tracker</h1><span class="conf">Directory approval</span></div></header>
+<section class="card" style="max-width:34rem"><h2>${esc(title)}</h2><p class="note" style="margin:8px 0 14px">${body}</p><div class="tools"><a class="btn primary" href="${esc(base)}/admin">Open Admin</a>${ok ? '' : `<a class="btn" href="${esc(base)}/login">Sign in</a>`}</div></section></div></body></html>`;
+  res.set('Cache-Control', 'no-store');
+  if (!t) return res.status(400).send(pageHtml("That link isn't valid", 'It may have been copied incompletely. Open Admin and approve the entry there.', false));
+  if (t.expired) return res.status(410).send(pageHtml('That link has expired', `Approve links work for ${APPROVE_DAYS} days. Open Admin and approve the entry there.`, false));
+  const col = t.kind === 'facility' ? 'facilities' : 'surgeons', k = col + '/' + t.id, d = docs.get(k);
+  if (!d) return res.status(404).send(pageHtml('Already gone', `That ${t.kind} is no longer in the directory (someone may have removed it).`, true));
+  if (d.approved === true) return res.send(pageHtml(`${esc(d.name)} is already approved`, 'Nothing more to do.', true));
+  put(k, Object.assign({}, d, { approved: true, approved_at: new Date().toISOString(), approved_by: 'email link' })).then(() => {
+    res.send(pageHtml(`${esc(d.name)} approved`, t.kind === 'facility' ? 'The address is confirmed, so check-ins at this facility can verify from now on.' : 'The surgeon is confirmed in the shared directory.', true));
+  }).catch(() => res.status(500).send(pageHtml('Could not save', 'Try again in a moment, or approve it in Admin.', false)));
+});
+app.get('/api/admin/mail', needApi('owner'), (req, res) => { const c = mailCfg(); res.json({ on: c.on !== false, to: c.to || process.env.COO_EMAIL || '', tenant: c.tenant || process.env.GRAPH_TENANT || '', client: c.client || process.env.GRAPH_CLIENT || '', secretSet: !!(c.secret || process.env.GRAPH_SECRET), mailbox: c.mailbox || '', from: c.from || process.env.MAIL_FROM || '', info: mail.info(c) }); });
+app.post('/api/admin/mail', needApi('owner'), async (req, res) => {
+  const b = req.body || {}, prev = mailCfg();
+  const str = (v, n) => String(v || '').trim().slice(0, n);
+  const to = str(b.to, 160); if (to && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return res.status(400).json({ error: "The COO email address doesn't look right." });
+  const doc = { on: b.on !== false, to, tenant: str(b.tenant, 120), client: str(b.client, 120), mailbox: str(b.mailbox, 160), from: str(b.from, 200), secret: str(b.secret, 300) || prev.secret || '', updated_at: new Date().toISOString() };
+  if (doc.from && !/^[^<>@\s]+@[^<>@\s]+\.[^<>@\s]+$/.test(doc.from) && !/^[^<>]+<[^<>@\s]+@[^<>@\s]+\.[^<>@\s]+>$/.test(doc.from)) return res.status(400).json({ error: 'The From address should look like "360 Medical <no-reply@360medical.net>" or just the address.' });
+  await put('config/mail', doc);
+  res.json({ ok: true, info: mail.info(doc) });
+});
+app.post('/api/admin/mail/clear', needApi('owner'), async (req, res) => { await del('config/mail'); res.json({ ok: true }); });
+app.post('/api/admin/mail/test', needApi('owner'), async (req, res) => {
+  const sample = { name: 'Valley Baptist Medical Center', address: '2101 Pease St, Harlingen, TX 78550', map_label: '2101 Pease St, Harlingen, TX 78550', lat: 26.1836, lng: -97.7118, created_at: new Date().toISOString() };
+  const r = await emailApproval('facility', 'test', sample, whoName(req.s) + ' (test)', baseUrl(req));
+  if (!r.ok) return res.status(400).json({ error: r.error === 'off' ? 'Approval emails are turned off.' : r.error });
+  res.json({ ok: true, to: mailCfg().to || process.env.COO_EMAIL || '' });
+});
+app.get('/api/admin/mail/preview', needApi('owner'), (req, res) => {
+  const kind = req.query.kind === 'surgeon' ? 'surgeon' : 'facility';
+  const sample = kind === 'facility' ? { name: 'Valley Baptist Medical Center', address: '2101 Pease St, Harlingen, TX 78550', map_label: '2101 Pease St, Harlingen, TX 78550', lat: 26.1836, lng: -97.7118, created_at: new Date().toISOString() }
+    : { name: 'Dr. Maria Salinas', specialty: 'Orthopedic surgery', facility: 'Valley Baptist Medical Center', created_at: new Date().toISOString() };
+  res.type('html').send(approvalEmail({ kind, doc: sample, id: 'preview', by: 'Brandon', base: baseUrl(req) }).html);
+});
+app.post('/api/admin/surgeons/:id/approve', needApi('owner'), async (req, res) => {
+  const k = 'surgeons/' + req.params.id, d = docs.get(k); if (!d) return res.status(404).json({ error: 'No such surgeon' });
+  await put(k, Object.assign({}, d, { approved: true, approved_at: new Date().toISOString(), approved_by: whoName(req.s) })); res.json({ ok: true });
+});
+
 app.post('/api/directory/surgeon', needApi(), async (req, res) => {
   const b = req.body || {}; if (!String(b.name || '').trim()) return res.status(400).json({ error: 'Surgeon name is required.' });
+  req.s.base = baseUrl(req);
   const existed = findDir('surgeons', b.name);
   const d = existed || await ensureSurgeon(b.name, b.facility, b.specialty, req.s);
   if (b.facility) await ensureFacility(b.facility, '', req.s);
@@ -951,6 +1075,7 @@ app.post('/api/directory/surgeon', needApi(), async (req, res) => {
 });
 app.post('/api/directory/facility', needApi(), async (req, res) => {
   const b = req.body || {}; if (!String(b.name || '').trim()) return res.status(400).json({ error: 'Facility name is required.' });
+  req.s.base = baseUrl(req);
   const existed = findDir('facilities', b.name), address = String(b.address || '').trim().slice(0, 300);
   if (existed && address && existed.lat == null) {
     // fill in the missing address on a facility that's already in the list
@@ -958,7 +1083,10 @@ app.post('/api/directory/facility', needApi(), async (req, res) => {
     if (!g) return res.status(400).json({ error: 'Could not find that address on the map. Check the street, city and ZIP.' });
     const k = 'facilities/' + existed.id, doc = Object.assign({}, docs.get(k), { address, lat: g.lat, lng: g.lng, map_label: g.label, approved: req.s.role === 'owner', address_by: byName(req.s), updated_at: new Date().toISOString() });
     await put(k, doc);
-    if (req.s.role !== 'owner') notifyOwner('Facility address to approve', byName(req.s) + ' added the address for ' + doc.name + '. Approve it in Admin → Facilities.').catch(() => {});
+    if (req.s.role !== 'owner') {
+      notifyOwner('Facility address to approve', byName(req.s) + ' added the address for ' + doc.name + '. Approve it in Admin → Facilities.').catch(() => {});
+      emailApproval('facility', existed.id, doc, byName(req.s), baseUrl(req)).catch(() => {});
+    }
     return res.json({ ok: true, existed: true, updated: true, facility: Object.assign({ id: existed.id }, doc) });
   }
   const d = existed || await ensureFacility(b.name, address, req.s);
@@ -970,7 +1098,7 @@ app.post('/api/admin/surgeons', needApi('owner'), async (req, res) => {
   const name = String(b.name || '').trim().slice(0, 120); if (!name) return res.status(400).json({ error: 'Surgeon name is required.' });
   const dupe = findDir('surgeons', name); if (dupe && dupe.id !== id) return res.status(400).json({ error: name + ' is already in the directory.' });
   const prev = docs.get('surgeons/' + id) || {};
-  const doc = Object.assign({}, prev, { name, specialty: String(b.specialty || '').trim().slice(0, 80), facility: String(b.facility || '').trim().slice(0, 120), phone: String(b.phone || '').trim().slice(0, 40), notes: String(b.notes || '').slice(0, 1000), added_by: prev.added_by || 'COO', created_at: prev.created_at || new Date().toISOString(), updated_at: new Date().toISOString() });
+  const doc = Object.assign({}, prev, { name, specialty: String(b.specialty || '').trim().slice(0, 80), facility: String(b.facility || '').trim().slice(0, 120), phone: String(b.phone || '').trim().slice(0, 40), notes: String(b.notes || '').slice(0, 1000), approved: true, added_by: prev.added_by || 'COO', created_at: prev.created_at || new Date().toISOString(), updated_at: new Date().toISOString() });
   await put('surgeons/' + id, doc);
   if (doc.facility) await ensureFacility(doc.facility, '', req.s);
   res.json({ ok: true, id, surgeon: doc });

@@ -299,6 +299,22 @@ header.head.has-who{padding-top:58px}
       <div class="msg" id="apin-msg" hidden style="margin-top:10px"></div>
     </section>
 
+    <section class="card" id="mail-card">
+      <h2>Approval emails</h2>
+      <p class="note">When a rep adds a facility or a surgeon, the COO gets an email with a one-tap <b>Approve</b> button (plus the push notification). Sends through the same Microsoft 365 app the peptide store uses — paste the same Tenant ID, Client ID and secret here. <a href="/api/admin/mail/preview?kind=facility" target="_blank" rel="noopener">Preview the facility email</a> · <a href="/api/admin/mail/preview?kind=surgeon" target="_blank" rel="noopener">surgeon email</a></p>
+      <form class="form" id="mailf">
+        <label class="f">Send approval emails<select class="field" id="ml-on"><option value="1">On</option><option value="0">Off</option></select></label>
+        <label class="f">COO email (gets the approvals)<input class="field" id="ml-to" type="email" placeholder="coo@360medical.net"></label>
+        <label class="f">Sending mailbox<input class="field" id="ml-mailbox" placeholder="no-reply@360medical.net"></label>
+        <label class="f">From (how it shows)<input class="field" id="ml-from" placeholder="360 Medical &lt;no-reply@360medical.net&gt;"></label>
+        <label class="f">Tenant ID<input class="field" id="ml-tenant" autocomplete="off"></label>
+        <label class="f">Client (application) ID<input class="field" id="ml-client" autocomplete="off"></label>
+        <label class="f">Client secret<input class="field" id="ml-secret" type="password" autocomplete="new-password" placeholder="Leave blank to keep the saved one"></label>
+        <div class="full tools"><button class="btn primary" type="submit">Save</button><button class="btn" type="button" id="ml-test">Send a test to the COO</button><button class="btn danger" type="button" id="ml-clear">Forget these settings</button><span class="note" id="ml-info"></span></div>
+      </form>
+      <div class="msg" id="ml-msg" hidden style="margin-top:10px"></div>
+    </section>
+
     <section class="card">
       <h2>Backup and restore</h2>
       <p class="note">Download everything (cases, targets, SIM events, quotas, COO notes) as one file. Restoring adds or overwrites records from a backup; PINs are never in backups.</p>
@@ -450,6 +466,25 @@ header.head.has-who{padding-top:58px}
     if (a !== b) return say('#apin-msg', 'err', 'The two PINs do not match.');
     api('/api/admin/admin-pin', { pin: a }).then(function () { $('#apin1').value = $('#apin2').value = ''; $('#pinwarn').hidden = true; say('#apin-msg', 'ok', 'Admin PIN changed.'); }, function (e) { say('#apin-msg', 'err', (e && e.error) || 'Could not change it.'); });
   });
+
+  function loadMail() {
+    api('/api/admin/mail').then(function (m) {
+      $('#ml-on').value = m.on ? '1' : '0'; $('#ml-to').value = m.to || ''; $('#ml-mailbox').value = m.mailbox || ''; $('#ml-from').value = m.from || ''; $('#ml-tenant').value = m.tenant || ''; $('#ml-client').value = m.client || '';
+      $('#ml-secret').placeholder = m.secretSet ? 'Saved — leave blank to keep it' : 'Paste the client secret value';
+      $('#ml-info').textContent = m.info || '';
+    }).catch(function () {});
+  }
+  loadMail();
+  $('#mailf').addEventListener('submit', function (e) {
+    e.preventDefault();
+    api('/api/admin/mail', { on: $('#ml-on').value === '1', to: $('#ml-to').value, mailbox: $('#ml-mailbox').value, from: $('#ml-from').value, tenant: $('#ml-tenant').value, client: $('#ml-client').value, secret: $('#ml-secret').value })
+      .then(function (j) { $('#ml-secret').value = ''; say('#ml-msg', 'ok', 'Saved. ' + (j.info || '')); loadMail(); }, function (x) { say('#ml-msg', 'err', (x && x.error) || 'Could not save.'); });
+  });
+  $('#ml-test').addEventListener('click', function () {
+    say('#ml-msg', 'warn', 'Sending a test…');
+    api('/api/admin/mail/test', {}).then(function (j) { say('#ml-msg', 'ok', 'Test email sent to ' + j.to + '. Check the inbox (and junk folder).'); }, function (x) { say('#ml-msg', 'err', (x && x.error) || 'Could not send.'); });
+  });
+  $('#ml-clear').addEventListener('click', function () { if (!confirm('Forget the email settings?')) return; api('/api/admin/mail/clear', {}).then(function () { loadMail(); say('#ml-msg', 'ok', 'Email settings cleared.'); }); });
 
   $('#restore').addEventListener('change', function (e) {
     var f = e.target.files[0]; if (!f) return;
@@ -876,8 +911,11 @@ header.head.has-who{padding-top:58px}
     rows.forEach(function (d) {
       var tr = el('tr');
       tr.appendChild(el('td', 'strong', d.name)); tr.appendChild(el('td', '', d.specialty || '—')); tr.appendChild(el('td', '', d.facility || '—'));
-      var ab = el('td'); ab.appendChild(el('span', 'pill ' + (d.added_by && d.added_by !== 'COO' ? 'warn' : 'mute'), d.added_by || 'COO')); tr.appendChild(ab);
+      var ab = el('td'); ab.appendChild(el('span', 'pill ' + (d.added_by && d.added_by !== 'COO' ? 'warn' : 'mute'), d.added_by || 'COO'));
+      if (d.approved === false) { ab.appendChild(document.createTextNode(' ')); ab.appendChild(el('span', 'pill warn', 'Pending your approval')); }
+      tr.appendChild(ab);
       var x = el('td'), e = el('button', 'btn small', 'Edit'), del2 = el('button', 'btn small danger', 'Delete'); e.type = del2.type = 'button';
+      if (d.approved === false) { var apS = el('button', 'btn small primary', 'Approve'); apS.type = 'button'; apS.addEventListener('click', function () { api('/api/admin/surgeons/' + encodeURIComponent(d.id) + '/approve', {}).then(loadVisits); }); x.appendChild(apS); x.appendChild(document.createTextNode(' ')); }
       e.addEventListener('click', function () { openSurgeon(d); });
       del2.addEventListener('click', function () { if (!del2.dataset.armed) { del2.dataset.armed = '1'; del2.textContent = 'Confirm'; return; } fetch('/api/admin/surgeons/' + encodeURIComponent(d.id), { method: 'DELETE' }).then(loadVisits); });
       x.appendChild(e); x.appendChild(document.createTextNode(' ')); x.appendChild(del2); tr.appendChild(x); b.appendChild(tr);
