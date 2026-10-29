@@ -89,6 +89,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').cat
     if (j.hub) { var n = document.createElement('p'); n.className = 'note'; n.style.textAlign = 'center'; n.innerHTML = 'One login for both apps: your name + the PIN set in the peptide store works here, or <a href="' + j.hub + '/admin">sign in at the peptide store</a> and switch over.'; var f = document.querySelector('form'); if (f) f.parentNode.insertBefore(n, f); }
     who.appendChild(new Option('Choose your name', ''));
     (j.reps || []).forEach(function (r) { who.appendChild(new Option(r, r)); });
+    (j.admins || []).forEach(function (a) { who.appendChild(new Option(a.name + ' · ' + a.role, 'hub:' + a.id)); });
     if (j.pin_login) who.appendChild(new Option('Admin (COO PIN)', '__owner__'));
     try { var last = localStorage.getItem('sct_who'); if (last && Array.from(who.options).some(function (o) { return o.value === last; })) who.value = last; } catch (e) {}
     var t = null; try { t = localStorage.getItem('sct_tab'); } catch (e) {}
@@ -96,7 +97,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').cat
   });
   $('#f-rep').addEventListener('submit', function (e) {
     e.preventDefault(); show('#err-rep', ''); var b = $('#go'); b.disabled = true;
-    post('/api/login', { who: who.value, pin: $('#pin').value }).then(function () { try { localStorage.setItem('sct_who', who.value); } catch (x) {} location.href = who.value === '__owner__' && next() === '/' ? '/admin' : next(); })
+    post('/api/login', { who: who.value, pin: $('#pin').value }).then(function () { try { localStorage.setItem('sct_who', who.value); } catch (x) {} location.href = (who.value === '__owner__' || /^hub:/.test(who.value)) && next() === '/' ? '/admin' : next(); })
       .catch(function (j) { show('#err-rep', (j && j.error) || 'Could not sign in.'); b.disabled = false; $('#pin').select(); });
   });
   var ticket = null;

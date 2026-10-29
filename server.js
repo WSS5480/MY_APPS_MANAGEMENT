@@ -452,7 +452,9 @@ app.get('/api/hub/ping', hubAuth, (req, res) => res.json({ ok: true, app: 'case-
 app.get('/api/login-options', async (req, res) => {
   await syncPeople().catch(() => {});
   const p = pins().reps;
-  res.json({ reps: quotaRows().filter(r => r.role !== 'Team' && p[r.rep] && p[r.rep].active !== false && !repAcct(r.rep)).map(r => r.rep), pin_login: !pinOff(), managers: Object.values(mgrs()).some(m => m.active !== false && m.totp_on), hub: hubLinked() ? HUB_URL : '' });
+  // admins and managers from the store (Team logins) sign in here by name + their PIN too
+  const admins = hubLinked() ? hubPeople.list.filter(u => u.role !== 'rep' && u.active !== false && u.apps && u.apps.tracker).map(u => ({ id: u.id, name: u.name, role: u.role === 'owner' ? 'Admin' : 'Manager' })) : [];
+  res.json({ reps: quotaRows().filter(r => r.role !== 'Team' && p[r.rep] && p[r.rep].active !== false && !repAcct(r.rep)).map(r => r.rep), admins, pin_login: !pinOff(), managers: Object.values(mgrs()).some(m => m.active !== false && m.totp_on), hub: hubLinked() ? HUB_URL : '' });
 });
 app.post('/api/login', async (req, res) => {
   await syncPeople().catch(() => {});
@@ -462,6 +464,12 @@ app.post('/api/login', async (req, res) => {
   if (who === '__owner__') {
     if (pinOff()) return res.status(403).json({ error: 'The COO PIN sign-in is turned off. Sign in with your manager account.' });
     if (pin && pin === adminPin()) { tries.delete(req.ip); setSession(res, { role: 'owner', v: adminV() }, req.body.dev); return res.json({ ok: true, role: 'owner' }); }
+  } else if (/^hub:\d+$/.test(who)) {
+    // an admin / manager from the store, by their store PIN
+    const id = Number(who.slice(4)), u = hubPeople.list.find(x => x.id === id && x.role !== 'rep' && x.active !== false);
+    if (u && pin && hubLinked()) {
+      try { const r = await hubCall('/api/hub/check-pin', { method: 'POST', body: JSON.stringify({ id, pin }) }); if (r.ok) { tries.delete(req.ip); setSession(res, { role: 'owner', hub: u.email, hubId: u.id, hubName: u.name, hubStaff: u.role !== 'owner', v: adminV() }, req.body.dev); return res.json({ ok: true, role: 'owner' }); } } catch (e) {}
+    }
   } else {
     const p = pins().reps[who];
     if (repAcct(who)) return res.status(403).json({ error: who + ' signs in with email now. Use the Email sign-in tab.' });
