@@ -430,7 +430,7 @@ app.get(['/store', '/admin/store'], (req, res) => {
   let email = s.hub || '';
   if (!email && s.role === 'owner' && s.mgr) email = (mgrs()[s.mgr] || {}).email || '';
   if (!email && s.role === 'rep') email = ((pins().reps[s.rep] || {}).email) || (repAcct(s.rep) || {}).email || '';
-  const token = hubSign({ sso: true, email, name: whoName(s), role: s.role === 'owner' ? 'owner' : 'rep', exp: Date.now() + 120000 });
+  const token = hubSign({ sso: true, email, name: whoName(s), role: s.role === 'owner' ? (s.hubStaff || s.mgr ? 'staff' : 'owner') : 'rep', coo: s.role === 'owner' && !s.hub && !s.mgr && !s.hubStaff, exp: Date.now() + 120000 });
   const src = HUB_URL + (next.startsWith('/rep') ? '/rep/sso' : next.startsWith('/admin') ? '/admin/sso' : '/sso') + '?t=' + encodeURIComponent(token) + '&next=' + encodeURIComponent(next) + '&framed=1';
   const esc = v => String(v).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   res.type('html').send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>360 Peptides</title>
@@ -445,7 +445,7 @@ app.get(['/go/store', '/admin/go/store'], (req, res) => {
   let email = s.hub || '';
   if (!email && s.role === 'owner' && s.mgr) email = (mgrs()[s.mgr] || {}).email || '';
   if (!email && s.role === 'rep') email = ((pins().reps[s.rep] || {}).email) || (repAcct(s.rep) || {}).email || '';
-  const token = hubSign({ sso: true, email, name: whoName(s), role: s.role === 'owner' ? 'owner' : 'rep', exp: Date.now() + 120000 });
+  const token = hubSign({ sso: true, email, name: whoName(s), role: s.role === 'owner' ? (s.hubStaff || s.mgr ? 'staff' : 'owner') : 'rep', coo: s.role === 'owner' && !s.hub && !s.mgr && !s.hubStaff, exp: Date.now() + 120000 });
   res.redirect(HUB_URL + (next.startsWith('/rep') ? '/rep/sso' : next.startsWith('/admin') ? '/admin/sso' : '/sso') + '?t=' + encodeURIComponent(token) + '&next=' + encodeURIComponent(next));
 });
 app.get('/api/hub/ping', hubAuth, (req, res) => res.json({ ok: true, app: 'case-tracker' }));
