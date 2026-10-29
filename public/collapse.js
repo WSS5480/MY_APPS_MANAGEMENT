@@ -20,8 +20,15 @@
     card.classList.toggle('folded', folded);
     f.h.setAttribute('aria-expanded', folded ? 'false' : 'true');
   }
-  function scan() { var all = [].slice.call(document.querySelectorAll(SEL)); var seen = all.some(function (c) { return c.dataset.foldInit; }); all.forEach(function (c) { apply(c, !seen || !clicked); }); } // cards that appear before you've clicked anything are page cards
-  var clicked = false; document.addEventListener('click', function () { clicked = true; }, true);
+  // which cards are "page" cards (start collapsed) vs. a panel you asked for by clicking (opens):
+  // a single new card right after a click somewhere in the page content is an action panel; everything else is a page render
+  var lastAction = 0;
+  document.addEventListener('click', function (e) { lastAction = e.target.closest('aside, header.head, nav, [data-nav], [data-invtab], .seg, .rnav, .jump, .navtoggle, .fold-h, .login, .mtop') ? 0 : Date.now(); }, true);
+  function scan() {
+    var all = [].slice.call(document.querySelectorAll(SEL)), fresh = all.filter(function (c) { return !c.dataset.foldInit; });
+    var action = fresh.length === 1 && Date.now() - lastAction < 2500;
+    all.forEach(function (c) { apply(c, !action); });
+  }
   document.addEventListener('click', function (e) {
     var h = e.target.closest('.fold-h'); if (!h) return;
     if (e.target.closest('button, a, input, select, label')) return;
