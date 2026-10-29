@@ -193,7 +193,7 @@ function session(req) {
   }
   if (s.role === 'owner' && s.mgr) { const m = mgrs()[s.mgr]; return m && m.active !== false && m.v === s.v ? s : null; }
   if (s.role === 'owner' && s.hub) { // signed in through the store (one login): still listed there as an active admin/manager?
-    if (hubPeople.at && s.hubId && !hubPeople.list.some(u => u.id === s.hubId && u.active !== false && u.role !== 'rep')) return null;
+    if (hubPeople.ok && s.hubId && !hubPeople.list.some(u => u.id === s.hubId && u.active !== false && u.role !== 'rep')) return null; // only trust a list we actually fetched
     return s;
   }
   if (s.role === 'owner') return s.v === adminV() && !pinOff() ? s : null;
@@ -332,13 +332,13 @@ async function hubCall(pathname, opts = {}) {
   return j;
 }
 // people from the store: cached a minute; reps get a plan row + a PIN record here so the rest of the app treats them as its own
-let hubPeople = { at: 0, list: [] };
+let hubPeople = { at: 0, list: [], ok: false };
 async function syncPeople(force) {
   if (!hubLinked()) return hubPeople.list;
   if (!force && Date.now() - hubPeople.at < 60000) return hubPeople.list;
   let people;
-  try { people = (await hubCall('/api/hub/people')).people || []; } catch (e) { console.error('Hub people sync: ' + e.message); hubPeople.at = Date.now() - 30000; return hubPeople.list; } // retry in 30 s, don't hang every login meanwhile
-  hubPeople = { at: Date.now(), list: people };
+  try { people = (await hubCall('/api/hub/people')).people || []; } catch (e) { console.error('Hub people sync: ' + e.message); hubPeople.at = Date.now() - 30000; hubPeople.ok = false; return hubPeople.list; } // retry in 30 s, don't hang every login meanwhile
+  hubPeople = { at: Date.now(), list: people, ok: true };
   const p = pins(), rows = quotaRows().slice(); let pinsChanged = false, rowsChanged = false;
   for (const u of people.filter(x => x.role === 'rep')) {
     const name = String(u.name || '').trim(); if (!name) continue;
