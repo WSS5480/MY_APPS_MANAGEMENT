@@ -556,7 +556,7 @@ app.get('/api/admin/state', needApi('owner'), async (req, res) => {
   await syncPeople().catch(() => {});
   const p = pins().reps, counts = {};
   for (const [k, d] of docs) { const c = k.split('/')[0]; if (COLS.includes(c)) { const r = d.rep || '(none)'; counts[r] = counts[r] || { cases: 0, targets: 0, simlab: 0, visits: 0, prefcards: 0, credentials: 0, last: '' }; counts[r][c]++; if (c === 'cases' && (d.date || '') > counts[r].last) counts[r].last = d.date || ''; } }
-  res.json({ rows: quotaRows().map(r => { const ac = Object.values(mgrs()).find(a => a.kind === 'rep' && a.rep === r.rep); return Object.assign({}, r, { pin: p[r.rep] ? p[r.rep].pin : null, active: p[r.rep] ? p[r.rep].active !== false : r.role === 'Team' ? null : false, account: ac ? (ac.totp_on ? 'active' : 'pending') : null }); }), counts, db: dbMode, adminPinIsDefault: !docs.has('_auth/admin') && !process.env.ADMIN_PIN, url: (process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`) });
+  res.json({ linked: hubLinked(), rows: quotaRows().map(r => { const ac = Object.values(mgrs()).find(a => a.kind === 'rep' && a.rep === r.rep); return Object.assign({}, r, { hub: (p[r.rep] && p[r.rep].hub) || r.hub || null, pin: p[r.rep] ? p[r.rep].pin : null, active: p[r.rep] ? p[r.rep].active !== false : r.role === 'Team' ? null : false, account: ac ? (ac.totp_on ? 'active' : 'pending') : null }); }), counts, db: dbMode, adminPinIsDefault: !docs.has('_auth/admin') && !process.env.ADMIN_PIN, url: (process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`) });
 });
 const num = v => (v === '' || v == null || isNaN(Number(v))) ? null : Number(v);
 app.post('/api/admin/reps', needApi('owner'), async (req, res) => {

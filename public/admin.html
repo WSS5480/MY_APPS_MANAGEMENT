@@ -78,11 +78,13 @@ header.head.has-who{padding-top:58px}
   <div class="msg warn" id="dbwarn" hidden></div>
   <div class="msg warn" id="pinwarn" hidden>You are still on the starting admin PIN. Set your own below.</div>
 
-  <section class="card">
+  <section class="card" id="reps-pointer" hidden><div class="cardhead"><h2>Reps and plans</h2><a class="btn primary" href="#hub-staff">Open Team logins</a></div><p class="note">Reps, PINs, access and each rep's quota and commission plan are all under <a href="#hub-staff">Team logins</a> — one roster for the store and the tracker.</p></section>
+  <section class="card" id="reps-card">
     <div class="cardhead">
       <h2>Reps and plans</h2>
       <div class="tools"><button class="btn" id="add-rep" type="button">+ Add rep</button><button class="btn" id="add-team" type="button">+ Add team quota</button><button class="btn primary" id="save" type="button" disabled>Save changes</button></div>
     </div>
+    <p class="note" id="hub-reps-note" hidden>Reps are added, renamed, given PINs and switched on or off under <a href="#hub-staff">Team logins</a> (one roster for both apps). Set each rep's plan here.</p>
     <p class="note">Quota and commission rules drive the scorecard, pace alerts and commission estimates. <b>Counts</b> limits quota to new or legacy surgeons; <b>Product</b> limits it to one product line. <b>Carry</b> adds a month's shortfall to the next month's target within the quarter. A <b>Team</b> row sets a quota for a whole territory. Turning access off signs the rep out right away.</p>
     <div class="scroll"><table id="reps"><thead><tr>
       <th>Name</th><th>Role</th><th>Territory</th><th>Metric</th><th>Monthly quota</th><th>Counts</th><th>Product</th><th>Carry</th><th>Comm %</th><th>Comm floor $</th><th>Pay</th><th>Pay $ / mo</th><th>SIM / qtr</th><th>PIN</th><th>Access</th><th></th>
@@ -388,6 +390,9 @@ header.head.has-who{padding-top:58px}
       ST = j;
       rows = j.rows.map(function (r) { return Object.assign({}, r, { comm_rate: r.comm_rate != null ? Math.round(r.comm_rate * 10000) / 100 : null, _orig: r.rep }); });
       draw(); setDirty(false); fillRepSel();
+      var emb = document.body.classList.contains('embed');
+      $('#add-rep').hidden = !!j.linked; $('#hub-reps-note').hidden = !j.linked || !emb;
+      $('#reps-pointer').hidden = !j.linked || emb; $('#reps-card').hidden = !!j.linked && !emb; // linked: the plans table lives inside Team logins
       $('#dbwarn').hidden = j.db === 'postgres';
       $('#dbwarn').textContent = 'Storage is temporary: this service has no database connected, so data can reset when Render restarts the app. Add DATABASE_URL in Render to make it permanent.';
       $('#pinwarn').hidden = !j.adminPinIsDefault;
@@ -414,7 +419,8 @@ header.head.has-who{padding-top:58px}
     var b = $('#reps tbody'); b.replaceChildren();
     rows.forEach(function (r, idx) {
       var team = r.role === 'Team', tr = el('tr', team ? 'team' : ''), td = function (n) { var c = el('td'); if (n) c.appendChild(n); tr.appendChild(c); return c; };
-      td(input(r, 'rep', 'text', 'w-l', 'Name'));
+      var hubRow = !team && ST && ST.linked && r.hub; // managed from the store's Team logins: name, PIN and access live there
+      var nameIn = input(r, 'rep', 'text', 'w-l', 'Name'); if (hubRow) { nameIn.readOnly = true; nameIn.title = 'Rename under Team logins'; } td(nameIn);
       td(team ? el('span', 'pill mute', 'Team') : input(r, 'role', 'text', 'w-m', 'Sales Rep'));
       td(input(r, 'territory', 'text', 'w-m', r.rep));
       td(select(r, 'metric', [['Revenue', 'Revenue $'], ['Cases', 'Cases']]));
@@ -432,6 +438,7 @@ header.head.has-who{padding-top:58px}
       td(input(r, 'sim_quota', 'number', 'w-s', '—'));
       var pc = td();
       if (team) pc.appendChild(el('span', 'note', '—'));
+      else if (hubRow) pc.appendChild(el('span', 'pill mute', 'Team logins'));
       else if (r.account === 'active') pc.appendChild(el('span', 'pill ok', 'Email + 2-step'));
       else if (r.pin == null) pc.appendChild(el('span', 'note', 'Set on save'));
       else {
@@ -446,13 +453,14 @@ header.head.has-who{padding-top:58px}
         pc.appendChild(v); pc.appendChild(document.createTextNode(' ')); pc.appendChild(show); pc.appendChild(document.createTextNode(' ')); pc.appendChild(reset);
       }
       var ac = td();
-      if (!team) { var a = el('input'); a.type = 'checkbox'; a.checked = r.active !== false; a.addEventListener('change', function () { r.active = a.checked; setDirty(true); }); var lab = el('label', 'chk'); lab.appendChild(a); lab.appendChild(document.createTextNode('On')); ac.appendChild(lab); }
+      if (hubRow) ac.appendChild(el('span', r.active !== false ? 'pill ok' : 'pill mute', r.active !== false ? 'On' : 'Off'));
+      else if (!team) { var a = el('input'); a.type = 'checkbox'; a.checked = r.active !== false; a.addEventListener('change', function () { r.active = a.checked; setDirty(true); }); var lab = el('label', 'chk'); lab.appendChild(a); lab.appendChild(document.createTextNode('On')); ac.appendChild(lab); }
       var x = td(), rm = el('button', 'btn small danger', 'Remove'); rm.type = 'button';
       rm.addEventListener('click', function () {
         if (!rm.dataset.armed) { rm.dataset.armed = '1'; rm.textContent = 'Confirm'; setTimeout(function () { rm.dataset.armed = ''; rm.textContent = 'Remove'; }, 4000); return; }
         rows.splice(idx, 1); setDirty(true); draw(); say('#save-msg', 'warn', 'Removed from the list. Their logged cases stay in the tracker. Click Save changes to apply.');
       });
-      x.appendChild(rm);
+      if (!(hubRow && r.active !== false)) x.appendChild(rm); // an active store rep is removed under Team logins
       b.appendChild(tr);
     });
   }
