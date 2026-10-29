@@ -572,8 +572,10 @@ app.post('/api/admin/reps', needApi('owner'), async (req, res) => {
     rows.push({ rep, role: team ? 'Team' : String(r.role || 'Sales Rep').slice(0, 40), territory: String(r.territory || rep).slice(0, 60), metric: r.metric === 'Cases' ? 'Cases' : 'Revenue', quota: num(r.quota), counts: ['New only', 'Legacy only'].includes(r.counts) ? r.counts : 'All', product_filter: String(r.product_filter || '').slice(0, 80), carry: !!r.carry, draw: r.pay_kind === 'draw' ? num(r.pay_amount) : null, comm_rate: num(r.comm_rate) != null ? num(r.comm_rate) / 100 : null, comm_floor: num(r.comm_floor), pay_kind: team ? null : (r.pay_kind === 'draw' ? 'draw' : r.pay_kind === 'salary' ? 'salary' : null), pay_amount: team ? null : num(r.pay_amount), sim_quota: num(r.sim_quota) });
   }
   const p = JSON.parse(JSON.stringify(pins()));
+  // reps that come from the store's Team logins can't be dropped here: their row (quota, plan) and PIN record stay, or the next sync would re-add them blank
+  if (hubLinked()) for (const old of quotaRows()) if (old.role !== 'Team' && p.reps[old.rep] && p.reps[old.rep].hub && p.reps[old.rep].hubActive !== false && !rows.some(r => r.rep === old.rep)) rows.push(old);
   rows.filter(r => r.role !== 'Team').forEach(r => { if (!p.reps[r.rep]) p.reps[r.rep] = { pin: pin6(), v: 1, active: true }; });
-  inRows.forEach(r => { const rep = String(r.rep || '').trim(); if (p.reps[rep] && typeof r.active === 'boolean' && p.reps[rep].active !== r.active) { p.reps[rep].active = r.active; p.reps[rep].v++; } });
+  inRows.forEach(r => { const rep = String(r.rep || '').trim(); if (p.reps[rep] && typeof r.active === 'boolean' && p.reps[rep].active !== r.active && !(hubLinked() && p.reps[rep].hub)) { p.reps[rep].active = r.active; p.reps[rep].v++; } });
   Object.keys(p.reps).forEach(k => { if (!rows.some(r => r.rep === k && r.role !== 'Team')) delete p.reps[k]; });
   await put('config/quotas', { rows, updated_at: new Date().toISOString() });
   await put('_auth/pins', p);
