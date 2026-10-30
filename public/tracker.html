@@ -146,6 +146,7 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .jump a.jr{font-size:1.05rem;padding:6px 12px;line-height:1.2}
 .jump a.jcal{} /* the calendar is a pill like the others */
 .jump a[hidden]{display:none}
+#main .stack > .pg-off{display:none!important} /* pages: only the picked pill's area shows */
 html{overflow-anchor:none} /* the pills place the page themselves; the browser's own scroll anchoring made it jump */
 @media (min-width:761px){.jump{flex-wrap:wrap;overflow:visible}} /* computers: pills wrap onto a second line instead of scrolling */
 section[id^="sec-"]{scroll-margin-top:62px}
@@ -1128,7 +1129,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
 </script>
 <script src="/visitcal.js"></script>
 <script src="/addr.js"></script>
-<script src="/wcu.js?v=6"></script>
+<script src="/wcu.js?v=7"></script>
 <script src="/plus.js"></script>
 
 <script>
@@ -1136,12 +1137,29 @@ section[id^="sec-"]{scroll-margin-top:62px}
   var nav = document.getElementById('jump'); if (!nav) return;
   function sync() { nav.querySelectorAll('a[href^="#sec"]:not(.jcal)').forEach(function (a) { var t = document.querySelector(a.getAttribute('href')); a.hidden = !t || t.hidden || !t.childElementCount; }); }
   nav.addEventListener('click', function (e) { var a = e.target.closest('a'); if (a && a.getAttribute('href') === '#refresh') { e.preventDefault(); a.textContent = '…'; location.reload(); return; } if (!a || a.getAttribute('href').charAt(0) !== '#') return; var t = document.querySelector(a.getAttribute('href')); if (!t) return; e.preventDefault();
-    // after the pill bar has closed the other areas and opened this one: land exactly on it, just under the pills; a pill tapped off goes back to the top
-    // one clean jump after the pill bar has closed the other areas (same tap, next frame), then a quiet fix only if something below moved it
-    var where = function () { if (!a.classList.contains('on') && !a.classList.contains('calopen')) return 0; var tgt = document.querySelector(a.getAttribute('href')); if (!tgt || tgt.hidden) return null; return Math.max(0, Math.round(tgt.getBoundingClientRect().top + window.scrollY - nav.getBoundingClientRect().height - 8)); };
-    // runs at the end of this same tap (after the pill bar has folded/opened the areas), before anything is drawn: no in-between frame
-    var jump = function () { document.removeEventListener('click', jump); var y = where(); if (y !== null) window.scrollTo(0, y); pin(where); };
+    // each pill is its own page: only its area shows. The lit pill tapped again goes back to the Dashboard.
+    var jump = function () { document.removeEventListener('click', jump); showPage(a.classList.contains('on') || a.classList.contains('calopen') ? a.getAttribute('href') : '#tiles'); }; // after the pill bar has lit / folded (same tap, before anything is drawn)
     document.addEventListener('click', jump); });
+  // pages: a pill's own area, or the Dashboard (the tiles and every card that has no pill of its own)
+  var pgStack = document.querySelector('#main .stack');
+  var owned = function () { var o = {}; nav.querySelectorAll('a[href^="#sec"]').forEach(function (x) { o[x.getAttribute('href').slice(1)] = 1; }); return o; };
+  var curPage = '#tiles';
+  function showPage(href, keepScroll) {
+    var own = owned(), page = href && href !== '#tiles' && own[href.slice(1)] ? href.slice(1) : null; curPage = page ? '#' + page : '#tiles';
+    [].forEach.call(pgStack.children, function (c) {
+      if (c.tagName === 'FOOTER' || !(c.matches('section, .grid, .tiles') || c.id === 'tiles')) return; // banners and messages show on every page
+      var mine = page ? c.id === page : !(c.id && own[c.id]);
+      c.classList.toggle('pg-off', !mine);
+    });
+    if (page) { var t = document.getElementById(page); if (t && t.classList.contains('folded')) { var h = t.querySelector('.fold-h'); if (h) h.click(); else t.classList.remove('folded'); } }
+    nav.querySelectorAll('a').forEach(function (x) { var h = x.getAttribute('href'); x.classList.toggle('on', h === curPage && h !== '#sec-vcal' || (h === '#sec-vcal' && curPage === '#sec-vcal')); });
+    if (curPage !== '#sec-vcal') { var cv = document.getElementById('sec-vcal'), cp = nav.querySelector('.jcal'); if (cv && !cv.hidden) { cv.hidden = true; if (cp) cp.classList.remove('calopen'); } }
+    if (!keepScroll) { var y = Math.max(0, Math.round(pgStack.getBoundingClientRect().top + window.scrollY - nav.getBoundingClientRect().height - 8)); if (window.scrollY > y || page) window.scrollTo(0, y); }
+  }
+  window.SCTPage = { show: showPage, current: function () { return curPage; } };
+  // links anywhere else on the page that point at an area (alerts, banners) switch to its page
+  document.addEventListener('click', function (e) { var a = e.target.closest('a[href^="#sec"]'); if (!a || a.closest('#jump')) return; var o = owned(); if (!o[a.getAttribute('href').slice(1)]) return; e.preventDefault(); showPage(a.getAttribute('href')); });
+  setTimeout(function () { showPage(location.hash && owned()[location.hash.slice(1)] ? location.hash : '#tiles', !location.hash); }, 0);
   // for a moment after a pill jump, anything that finishes loading and changes the page height is corrected before it is painted (no visible bounce);
   // the moment the person scrolls or taps, it lets go
   var pinRO = null, pinT = null;

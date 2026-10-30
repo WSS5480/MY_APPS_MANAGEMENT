@@ -45,7 +45,7 @@
     if (isThu) return banner('<span>📝 WCUs are due today by 5:00 PM · waiting on ' + esc(missing.join(', ')) + '.</span><button class="btn small" type="button" data-wcugo>Open WCUs</button>', 'warn');
     banner(null);
   }
-  function openSection() { var s = $('#sec-wcu'); if (!s) return; s.hidden = false; s.classList.remove('folded'); var h = s.querySelector('.fold-h'); if (h) h.setAttribute('aria-expanded', 'true'); s.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  function openSection() { var s = $('#sec-wcu'); if (!s) return; if (window.SCTPage) { window.SCTPage.show('#sec-wcu'); return; } s.hidden = false; s.classList.remove('folded'); var h = s.querySelector('.fold-h'); if (h) h.setAttribute('aria-expanded', 'true'); s.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 
   /* ---------- rep: review and submit ---------- */
   function weekOptions() { var out = [], m = mondayOf(chiToday()); for (var i = 0; i < 6; i++) { var w = addDays(m, -7 * i); out.push('<option value="' + w + '"' + (w === WEEK ? ' selected' : '') + '>Week of ' + wkName(w) + (i === 0 ? ' (this week)' : '') + '</option>'); } return out.join(''); }
