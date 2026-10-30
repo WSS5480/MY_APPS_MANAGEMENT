@@ -5,27 +5,27 @@
   if (/[?&]embed=1/.test(location.search)) return;
   var css = document.createElement('style');
   css.textContent =
-    '#sec-leader{padding:0;overflow:hidden;border:0;background:linear-gradient(135deg,#07173a 0%,#0b4d96 62%,#1a6fc4 100%);color:#fff;box-shadow:0 10px 30px -12px rgba(11,77,150,.55)}' +
+    '#sec-leader{padding:0;overflow:hidden;border:0;background:#0b4d96;color:#fff}' +
     '#sec-leader .lb-h{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:6px 14px;padding:16px 18px 10px}' +
     '#sec-leader .lb-t{font:800 1.15rem/1.2 inherit;letter-spacing:.01em;margin:0;color:#fff}' +
     '#sec-leader .lb-s{font-size:.78rem;color:#c7d8f2;letter-spacing:.04em;text-transform:uppercase;font-weight:700}' +
     '#sec-leader .lb-list{display:grid;gap:8px;padding:4px 12px 14px}' +
-    '#sec-leader .lb-r{position:relative;display:grid;grid-template-columns:2.4rem minmax(0,1fr) auto;gap:4px 12px;align-items:center;padding:10px 12px;border-radius:14px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(2px)}' +
+    '#sec-leader .lb-r{position:relative;display:grid;grid-template-columns:2.4rem minmax(0,1fr) auto;gap:4px 12px;align-items:center;padding:10px 12px;border-radius:14px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);}' +
     '#sec-leader .lb-r.me{background:rgba(255,255,255,.16);border-color:rgba(143,198,255,.8);box-shadow:0 0 0 1px rgba(143,198,255,.35) inset}' +
-    '#sec-leader .lb-r.r1{background:linear-gradient(90deg,rgba(255,206,84,.22),rgba(255,255,255,.07) 60%);border-color:rgba(255,206,84,.55)}' +
+    '#sec-leader .lb-r.r1{background:rgba(255,206,84,.16);border-color:rgba(255,206,84,.55)}' +
     '#sec-leader .lb-k{width:2.2rem;height:2.2rem;border-radius:50%;display:grid;place-items:center;font:800 .95rem/1 inherit;background:rgba(255,255,255,.12);color:#fff;grid-row:span 2}' +
-    '#sec-leader .r1 .lb-k{background:linear-gradient(145deg,#ffe08a,#e7a913);color:#4a3200;box-shadow:0 0 14px rgba(255,206,84,.6)}' +
-    '#sec-leader .r2 .lb-k{background:linear-gradient(145deg,#f1f4f8,#a9b4c2);color:#26303d}' +
-    '#sec-leader .r3 .lb-k{background:linear-gradient(145deg,#f0c39a,#b06a33);color:#3b1e06}' +
+    '#sec-leader .r1 .lb-k{background:#f2b829;color:#4a3200}' +
+    '#sec-leader .r2 .lb-k{background:#c9d1dc;color:#26303d}' +
+    '#sec-leader .r3 .lb-k{background:#cd8a52;color:#3b1e06}' +
     '#sec-leader .lb-n{font-weight:700;font-size:.98rem;min-width:0;overflow-wrap:anywhere;display:flex;flex-wrap:wrap;align-items:center;gap:6px}' +
     '#sec-leader .lb-you{font-size:.66rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:2px 7px;border-radius:999px;background:#8fc6ff;color:#07173a}' +
     '#sec-leader .lb-p{font:800 1.35rem/1 inherit;text-align:right;grid-row:span 2;font-variant-numeric:tabular-nums}' +
     '#sec-leader .lb-p small{display:block;font-size:.66rem;font-weight:700;letter-spacing:.06em;color:#c7d8f2;text-transform:uppercase;margin-top:3px}' +
     '#sec-leader .lb-p.hit{color:#7ef0b0}' +
     '#sec-leader .lb-b{grid-column:2;position:relative;height:8px;border-radius:999px;background:rgba(255,255,255,.14);overflow:visible}' +
-    '#sec-leader .lb-f{position:absolute;inset:0 auto 0 0;width:0;border-radius:999px;background:linear-gradient(90deg,#8fc6ff,#ffffff);transition:width 1.1s cubic-bezier(.2,.8,.2,1)}' +
-    '#sec-leader .r1 .lb-f{background:linear-gradient(90deg,#ffd166,#fff3c4)}' +
-    '#sec-leader .lb-f.hit{background:linear-gradient(90deg,#34d399,#bbf7d0)}' +
+    '#sec-leader .lb-f{position:absolute;inset:0 auto 0 0;width:0;border-radius:999px;background:#8fc6ff;transition:width 1.1s cubic-bezier(.2,.8,.2,1)}' +
+    '#sec-leader .r1 .lb-f{background:#ffd166}' +
+    '#sec-leader .lb-f.hit{background:#34d399}' +
     '#sec-leader .lb-pace{position:absolute;top:-4px;bottom:-4px;width:2px;border-radius:2px;background:#ffd166;opacity:.9}' +
     '#sec-leader .lb-m{grid-column:2;font-size:.8rem;color:#d8e4f6;display:flex;flex-wrap:wrap;gap:2px 12px;font-variant-numeric:tabular-nums}' +
     '#sec-leader .lb-m b{color:#fff}' +
