@@ -25,9 +25,8 @@
     '.jump a{flex:none;padding:8px 12px;border-radius:999px;background:var(--panel);border:1px solid var(--line);color:var(--fg);font-size:.8125rem;font-weight:600;text-decoration:none;white-space:nowrap}' +
     '.jump a.on{background:var(--accent);border-color:var(--accent);color:#fff}' +
     '@media (max-width:760px){.jump{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}.jump::-webkit-scrollbar{display:none}}' +
-    '.pg-off{display:none!important}.navgrp{display:flex;flex-direction:column;gap:4px;width:100%}.navgrp-h{all:unset;cursor:pointer;display:flex;align-items:center;gap:.35rem;font:700 .72rem/1.3 var(--font,inherit);letter-spacing:.09em;text-transform:uppercase;opacity:.75;margin:.7rem 0 .1rem;padding:.35rem .5rem;border-radius:8px}.navgrp-h:hover,.navgrp-h.open{opacity:1;background:rgba(255,255,255,.08)}.navgrp-items{display:flex;flex-direction:column;gap:4px;padding-left:.4rem}.navgrp-items[hidden]{display:none}' +
-    'body:not(.side-layout) .navgrp{flex-direction:row;flex-wrap:wrap;align-items:center}body:not(.side-layout) .navgrp-h{margin:0 .2rem 0 0}' +
-    '@media (max-width:760px){.navgrp{display:none!important}}'; // phones: the pills do the job
+    '#jump[hidden]{display:none!important}.pg-off{display:none!important}.navgrp{display:flex;flex-direction:column;gap:4px;width:100%}.navgrp-h{all:unset;cursor:pointer;display:flex;align-items:center;gap:.35rem;font:700 .72rem/1.3 var(--font,inherit);letter-spacing:.09em;text-transform:uppercase;opacity:.75;margin:.7rem 0 .1rem;padding:.35rem .5rem;border-radius:8px}.navgrp-h:hover,.navgrp-h.open{opacity:1;background:rgba(255,255,255,.08)}.navgrp-items{display:flex;flex-direction:column;gap:4px;padding-left:.4rem}.navgrp-items[hidden]{display:none}' +
+    'body:not(.side-layout) .navgrp{flex-direction:row;flex-wrap:wrap;align-items:center}body:not(.side-layout) .navgrp-h{margin:0 .2rem 0 0}';
   document.head.appendChild(css);
   function start() {
     var wrap = document.querySelector('.wrap'), head = wrap && wrap.querySelector('header.head'); if (!head) return;
@@ -37,6 +36,7 @@
     // pills on top
     var nav = document.createElement('nav'); nav.className = 'jump'; nav.id = 'jump'; nav.setAttribute('aria-label', 'Admin pages');
     PAGES.forEach(function (p) { var a = document.createElement('a'); a.href = '#pg-' + p.k; a.textContent = p.l; a.dataset.pg = p.k; nav.appendChild(a); });
+    nav.hidden = true; // no pills in the admin: the left menu does the job
     var after = document.getElementById('hubpane') || head; after.parentNode.insertBefore(nav, after.nextSibling);
     // menu on the left, grouped by who it's for; the old one-off jump buttons give way to it
     var tools = head.querySelector('.tools');
@@ -66,7 +66,7 @@
       [].forEach.call(document.querySelectorAll('[data-pg]'), function (a) { a.classList.toggle('on', a.dataset.pg === page.k); });
       openGroup(page.g || null);
       if (location.hash !== '#pg-' + page.k) history.replaceState(null, '', location.pathname + location.search + '#pg-' + page.k);
-      if (!keepScroll) { var y = Math.max(0, Math.round(nav.getBoundingClientRect().top + window.scrollY - 4)); if (window.scrollY > y) window.scrollTo(0, y); }
+      if (!keepScroll) { var first = page.ids.map(function (id) { return document.getElementById(id); }).filter(function (el) { return el && el.offsetParent; })[0]; window.scrollTo(0, window.innerWidth <= 760 && first ? Math.max(0, first.getBoundingClientRect().top + window.scrollY - 8) : 0); }
       try { localStorage.setItem('adminPage', page.k); } catch (e) {}
     }
     window.AdminPage = { show: show, byId: byId };
