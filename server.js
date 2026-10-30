@@ -387,18 +387,34 @@ app.get('/api/hub/reps', hubAuth, (req, res) => {
   const p = pins().reps;
   res.json({ reps: quotaRows().filter(r => r.role !== 'Team').map(r => ({ rep: r.rep, role: r.role, pin: p[r.rep] ? String(p[r.rep].pin || '') : '', active: !(p[r.rep] && p[r.rep].active === false), hub: p[r.rep] ? p[r.rep].hub || null : null })) });
 });
+// Surgical commission per rep for a month (same plan math as the tracker's scorecard): rate × (sales − floor), the floor rises by any
+// carried shortfall; quarter to date, month-end at today's pace, estimated pay (draw/base + commission) and the cases behind it.
+function surgicalComm(r, ym, cases) {
+  const actual = rowActual(r, ym, cases), target = rowTarget(r, ym, cases), carried = r.carry && target && r.quota ? target - r.quota : 0;
+  const rate = Number(r.comm_rate) || 0, floorBase = Number(r.comm_floor) || 0, floor = floorBase + (rate ? carried : 0);
+  const commission = rate ? Math.round(Math.max(0, actual - floor) * rate) : 0;
+  const today = chiDate(), days = bizDays(ym), elapsed = days.filter((d) => d <= today).length;
+  const projected = ym === today.slice(0, 7) && elapsed ? Math.round(actual / elapsed * days.length) : ym < today.slice(0, 7) ? Math.round(actual) : null;
+  const comm_proj = rate && projected != null ? Math.round(Math.max(0, projected - floor) * rate) : null;
+  return { actual, target, carried, rate, floorBase, floor, commission, projected, comm_proj };
+}
 app.get('/api/hub/commissions', hubAuth, (req, res) => {
   const ym = /^\d{4}-\d{2}$/.test(String(req.query.month || '')) ? String(req.query.month) : chiDate().slice(0, 7);
-  const cases = allCases();
+  const cases = allCases(), [y, m] = ym.split('-').map(Number), q0 = Math.floor((m - 1) / 3) * 3 + 1;
   const reps = quotaRows().filter(r => r.role !== 'Team').map(r => {
-    const actual = rowActual(r, ym, cases), target = rowTarget(r, ym, cases), carried = r.carry && target && r.quota ? target - r.quota : 0;
-    const rate = Number(r.comm_rate) || 0, floor = (Number(r.comm_floor) || 0) + (rate ? carried : 0); // rate is stored as a fraction (0.15 = 15%)
-    const commission = rate ? Math.round(Math.max(0, actual - floor) * rate) : 0;
-    const n = cases.filter(c => c.rep === r.rep && c.date.slice(0, 7) === ym && isDone(c.status)).length;
-    return { rep: r.rep, role: r.role, metric: r.metric, actual: Math.round(actual), quota: r.quota, target, cases: n, comm_rate: Math.round(rate * 10000) / 100, comm_floor: floor, commission, pay_type: r.pay_kind === 'draw' ? 'Draw' : r.pay_kind === 'salary' ? 'Base salary' : r.draw && !r.pay_kind ? 'Draw' : '', pay_amount: Number(r.pay_amount) || Number(r.draw) || null, hub: (pins().reps[r.rep] || {}).hub || null };
+    const c = surgicalComm(r, ym, cases);
+    let qtd = 0; for (let mm = q0; mm <= m; mm++) qtd += surgicalComm(r, y + '-' + String(mm).padStart(2, '0'), cases).commission;
+    const mine = cases.filter(x => x.rep === r.rep && x.date.slice(0, 7) === ym && String(x.status || '').toLowerCase() !== 'cancelled').sort((a, b) => a.date.localeCompare(b.date));
+    const counts = (x) => isDone(x.status) && (r.counts === 'New only' ? x.surgeon_type === 'New' : r.counts === 'Legacy only' ? x.surgeon_type === 'Legacy' : true) && (!r.product_filter || String(x.product || '').toLowerCase().includes(String(r.product_filter).toLowerCase()));
+    const payKind = r.pay_kind === 'draw' ? 'Draw' : r.pay_kind === 'salary' ? 'Base salary' : r.draw && !r.pay_kind ? 'Draw' : '', pay = Number(r.pay_amount) || Number(r.draw) || null;
+    return { rep: r.rep, role: r.role, metric: r.metric, counts: r.counts || 'All', product_filter: r.product_filter || '', actual: Math.round(c.actual), quota: r.quota, target: c.target, carried: c.carried,
+      cases: mine.filter(isDoneCase).length, comm_rate: Math.round(c.rate * 10000) / 100, comm_floor_base: c.floorBase, comm_floor: c.floor, commission: c.commission, projected: c.projected, comm_proj: c.comm_proj, comm_qtd: qtd,
+      pay_type: payKind, pay_amount: pay, est_pay: pay || c.rate ? (pay || 0) + c.commission : null, hub: (pins().reps[r.rep] || {}).hub || null,
+      case_list: mine.slice(0, 200).map(x => ({ date: x.date, surgeon: x.surgeon || '', facility: x.facility || '', product: x.product || '', units: x.units || null, net_sales: Math.round(x.net_sales || 0), status: x.status || '', surgeon_type: x.surgeon_type || '', counts: counts(x) })) };
   });
-  res.json({ month: ym, reps, total: reps.reduce((t, r) => t + r.commission, 0), sales: reps.reduce((t, r) => t + (r.metric === 'Cases' ? 0 : r.actual), 0) });
+  res.json({ month: ym, quarter: 'Q' + Math.ceil(m / 3), reps, total: reps.reduce((t, r) => t + r.commission, 0), sales: reps.reduce((t, r) => t + (r.metric === 'Cases' ? 0 : r.actual), 0) });
 });
+const isDoneCase = (x) => isDone(x.status);
 app.post('/api/hub/sync', hubAuth, async (req, res) => { await syncPeople(true).catch(() => {}); res.json({ ok: true, people: hubPeople.list.length }); });
 // the hub's Setup page: approval emails on/off for this app, a test send, and previews
 app.get('/api/hub/settings', hubAuth, async (req, res) => { await refreshHubMail(); const c = mailCfg(); res.json({ mailOn: c.on !== false, info: mail.info(c), to: c.to || '', viaHub: !!c.viaHub, publicUrl: process.env.PUBLIC_URL || '' }); });
