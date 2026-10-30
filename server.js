@@ -786,7 +786,7 @@ app.get('/api/admin/dashboard', needApi('owner'), (req, res) => {
     const wkV = visits.filter((v) => v.rep === r.rep && v.date >= wk && v.date <= today);
     const wcu = docs.get(wcuKey(r.rep, wk));
     const last = mine.concat(cases.filter((c) => c.rep === r.rep && !isDone(c.status))).map((c) => c.date).filter((d) => d <= today).sort().pop() || null;
-    return { rep: r.rep, metric: r.metric, wtd: Math.round(sum(wtd)), mtd: Math.round(sum(mtd)), quota_actual: Math.round(actual), target, wtd_target: target ? Math.round(target * wkDays / days.length) : null,
+    return { rep: r.rep, metric: r.metric, counts: r.counts || 'All', wtd: Math.round(sum(wtd)), mtd: Math.round(sum(mtd)), wtd_count: rowActual(Object.assign({}, r, { metric: 'Cases' }), ym, cases.filter((c) => c.date >= wk)), quota_actual: Math.round(actual), target, wtd_target: target ? Math.round(target * wkDays / days.length) : null,
       pace: target ? Math.round(target * elapsed / days.length) : null, projected: elapsed ? Math.round(actual / elapsed * days.length) : 0,
       cases_wtd: wtd.length, cases_mtd: mtd.length, cost: Math.round(cost), costed_sales: Math.round(costedSales), uncosted: mtd.length - costed.length,
       visits_wtd: wkV.filter((v) => v.status !== 'planned' && v.status !== 'cancelled').length, visits_planned: wkV.filter((v) => v.status === 'planned').length,
@@ -794,6 +794,9 @@ app.get('/api/admin/dashboard', needApi('owner'), (req, res) => {
       last_case: last, last_active: seen['rep:' + r.rep] || null };
   });
   const T = (k) => reps.reduce((t, r) => t + (Number(r[k]) || 0), 0);
+  // company target: Team quotas, plus the dollar targets of reps whose territory has no Team quota (case-count targets aren't dollars)
+  const teams = quotaRows().filter((r) => r.role === 'Team' && r.metric !== 'Cases' && r.quota), teamTerr = new Set(teams.map((r) => lcs(r.territory)));
+  const coTarget = teams.reduce((t, r) => t + (rowTarget(r, ym, cases) || 0), 0) + reps.filter((r) => r.metric !== 'Cases' && !teamTerr.has(lcs((quotaRows().find((q) => q.rep === r.rep) || {}).territory))).reduce((t, r) => t + (r.target || 0), 0);
   const allMtd = cases.filter((c) => isDone(c.status) && c.date.slice(0, 7) === ym && c.date <= today);
   const feed = [];
   cases.filter((c) => c.created_at).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))).slice(0, 12).forEach((c) => feed.push({ at: c.created_at, rep: c.rep, what: 'Logged a case' + (c.surgeon ? ' · ' + c.surgeon : '') + (c.net_sales ? ' · ' + fmt$(c.net_sales) : '') }));
@@ -806,7 +809,7 @@ app.get('/api/admin/dashboard', needApi('owner'), (req, res) => {
     facilities: [...docs].filter(([k, d]) => k.startsWith('facilities/') && d && d.approved === false).map(([, d]) => ({ name: d.name, by: d.added_by || '', address: d.address || '' })),
     surgeons: [...docs].filter(([k, d]) => k.startsWith('surgeons/') && d && d.approved === false).map(([, d]) => ({ name: d.name, by: d.added_by || '', facility: d.facility || '' })) };
   res.json({ today, week: wk, month: ym, biz: { elapsed, total: days.length, week: wkDays }, reps,
-    totals: { wtd: T('wtd'), mtd: Math.round(allMtd.reduce((t, c) => t + (Number(c.net_sales) || 0), 0)), target: T('target'), wtd_target: T('wtd_target'), pace: T('pace'), projected: T('projected'), cases_mtd: allMtd.length, cases_wtd: T('cases_wtd'),
+    totals: { wtd: T('wtd'), mtd: Math.round(allMtd.reduce((t, c) => t + (Number(c.net_sales) || 0), 0)), target: coTarget, wtd_target: coTarget ? Math.round(coTarget * wkDays / days.length) : 0, pace: coTarget ? Math.round(coTarget * elapsed / days.length) : 0, projected: T('projected'), cases_mtd: allMtd.length, cases_wtd: T('cases_wtd'),
       cost: T('cost'), costed_sales: T('costed_sales'), uncosted: T('uncosted'), visits_wtd: T('visits_wtd') },
     pending_invoices: pendingInv, approvals, feed: feed.slice(0, 20) });
 });
