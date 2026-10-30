@@ -801,7 +801,10 @@
       var f = el('div', 'x-form'); f.id = 'xvc-form';
       var lab = function (t, node, cls) { var l = el('label', cls || '', t); l.appendChild(node); f.appendChild(l); return node; };
       lab('Target surgeon', el('select', 'field')).id = 'xvc-target';
-      var fa = lab('Facility', el('input', 'field')); fa.id = 'xvc-fac'; fa.setAttribute('list', 'dl-facilities');
+      var fa = lab('Facility', el('input', 'field')); fa.id = 'xvc-fac'; fa.setAttribute('list', 'dl-facilities'); fa.placeholder = 'Pick one or type a new facility'; fa.autocomplete = 'off';
+      var fad = lab('New facility · street address (so check-ins can be verified)', el('input', 'field'), 'full'); fad.id = 'xvc-faddr'; fad.placeholder = '123 Main St, City, TX 78501'; fad.parentNode.hidden = true;
+      var facState = function () { var n = fa.value.trim(), known = n && facOf(n); fad.parentNode.hidden = !n || !!(known && known.lat != null); fad.parentNode.firstChild.textContent = known && known.lat == null ? known.name + ' has no address yet · add it so check-ins can be verified' : 'New facility · street address (so check-ins can be verified)'; };
+      fa.addEventListener('input', facState); fa.addEventListener('change', facState);
       var d = lab('Date', el('input', 'field')); d.type = 'date'; d.id = 'xvc-date'; d.value = TODAY;
       var t = lab('Time', el('input', 'field')); t.type = 'time'; t.id = 'xvc-time'; t.value = '09:00';
       opt(lab('Length', el('select', 'field')), [['30', '30 min'], ['45', '45 min'], ['60', '1 hour'], ['90', '1½ hours'], ['120', '2 hours'], ['240', 'Half day (case)']], '60').id = 'xvc-dur';
@@ -812,7 +815,7 @@
       var m = el('div', 'msg'); m.id = 'xvc-msg'; m.hidden = true; sec.appendChild(m);
       var root = el('div'); root.style.marginTop = '14px'; sec.appendChild(root);
       vcal = window.VisitCal.mount(root, { repFilter: T.isLead(), showRep: T.isLead(), getData: function () { return { visits: X.visits.filter(inView), reps: T.repNames(), settings: X.settings }; }, actions: visitActions });
-      $('#xvc-target').addEventListener('change', function () { var f = selFacility($('#xvc-target').value); if (f) $('#xvc-fac').value = f; });
+      $('#xvc-target').addEventListener('change', function () { var f = selFacility($('#xvc-target').value); if (f) $('#xvc-fac').value = f; facState(); });
     }
     var tsel = $('#xvc-target');
     if (tsel !== document.activeElement) {
@@ -830,6 +833,12 @@
     if (!date || !time) { msg.className = 'msg err'; msg.textContent = 'Pick a date and time.'; msg.hidden = false; return; }
     if (!fac) { msg.className = 'msg err'; msg.textContent = 'Add the facility so the check-in can be verified.'; msg.hidden = false; $('#xvc-fac').focus(); return; }
     if (window.VisitCal.windowOf({ date: date, time: time, duration: $('#xvc-dur').value }, X.settings).close < Date.now()) { msg.className = 'msg err'; msg.textContent = 'That time has already passed. Use the visit log below for visits that already happened.'; msg.hidden = false; return; }
+    var addrBox = $('#xvc-faddr'), addr = addrBox && !addrBox.parentNode.hidden ? addrBox.value.trim() : '';
+    if (addr) { // a facility typed in fresh (or one with no address): put it in the directory with its address first
+      var b0 = $('#xvc-btn'); b0.disabled = true;
+      api('/api/directory/facility', { name: fac, address: addr }).then(function (j) { b0.disabled = false; if (j.not_found) { msg.className = 'msg err'; msg.textContent = 'Could not find that address on the map. Check the street, city and ZIP.'; msg.hidden = false; return; } addrBox.value = ''; addrBox.parentNode.hidden = true; planVisit(); }, function (e) { b0.disabled = false; msg.className = 'msg err'; msg.textContent = (e && e.error) || 'Could not save the facility.'; msg.hidden = false; });
+      return;
+    }
     var id = S.db.collection('visits').doc().id;
     var body = { rep: t.rep, target_id: t.id, surgeon: t.surgeon, facility: fac, date: date, time: time, duration: Number($('#xvc-dur').value), type: $('#xvc-type').value, purpose: $('#xvc-purpose').value.trim(), status: 'planned', created_at: new Date().toISOString() };
     X.visits = X.visits.concat([Object.assign({ id: id }, body)]);
