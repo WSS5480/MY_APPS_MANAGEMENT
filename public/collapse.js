@@ -82,7 +82,7 @@
     b.addEventListener('click', function () { setNav(!document.body.classList.contains('nav-collapsed')); });
     side.insertBefore(b, side.firstChild);
     var saved = null; try { saved = localStorage.getItem('navCollapsed'); } catch (e) {}
-    setNav(saved === null ? false : saved === '1'); // open by default: the menu is how you get around
+    setNav(saved === null ? true : saved === '1');
   }
   new MutationObserver(navInit).observe(document.documentElement, { childList: true, subtree: true });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', navInit); else navInit();

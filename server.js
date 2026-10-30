@@ -318,7 +318,7 @@ app.get('/media/:id', async (req, res) => {
     res.setHeader('Content-Length', buf.length); res.end(buf);
   } catch (e) { res.status(500).end(); }
 });
-app.get(['/logo.png', '/logo-dark.png', '/collapse.js', '/d3.min.js', '/shim.js', '/plus.js', '/plus.css', '/addr.js', '/wcu.js', '/import.js', '/logins.js', '/admin-pages.js', '/admin-dash.js', '/visitcal.js', '/idle.js', '/zoom.js', '/spin.js', '/install.js', '/ptr.js', '/update.js', '/webauthn.js', '/qrious.min.js', '/app.css', '/theme-360.css', '/icon-admin-192.png', '/icon-admin-512.png', '/icon-admin-maskable-512.png', '/apple-touch-icon-admin.png', '/sw.js', '/favicon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'], (req, res) => { if (req.path === '/sw.js') res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, req.path)); });
+app.get(['/logo.png', '/logo-dark.png', '/collapse.js', '/d3.min.js', '/shim.js', '/plus.js', '/plus.css', '/addr.js', '/wcu.js', '/import.js', '/logins.js', '/visitcal.js', '/idle.js', '/zoom.js', '/spin.js', '/install.js', '/ptr.js', '/update.js', '/webauthn.js', '/qrious.min.js', '/app.css', '/theme-360.css', '/icon-admin-192.png', '/icon-admin-512.png', '/icon-admin-maskable-512.png', '/apple-touch-icon-admin.png', '/sw.js', '/favicon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'], (req, res) => { if (req.path === '/sw.js') res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, req.path)); });
 app.get('/manifest.webmanifest', (req, res) => { res.type('application/manifest+json'); res.sendFile(path.join(pub, 'manifest.webmanifest')); });
 app.get('/admin.webmanifest', (req, res) => { res.type('application/manifest+json'); res.sendFile(path.join(pub, 'admin.webmanifest')); });
 
@@ -745,67 +745,6 @@ app.get('/api/admin/logins', needApi('owner'), (req, res) => {
     if (p.events.length < 25) p.events.push({ at: e.at, dev: e.dev, how: e.how });
   }
   res.json({ people: Object.values(people), since: log.events.length ? log.events[log.events.length - 1].at : null });
-});
-/* ---------------- admin dashboard: sales WTD / MTD against target, margin, rep activity ---------------- */
-const costMap = () => { const m = {}; ((docs.get('config/costs') || {}).rows || []).forEach((r) => { if (r.product && r.cost != null) m[lcs(r.product)] = Number(r.cost); }); return m; };
-app.get('/api/admin/costs', needApi('owner'), (req, res) => {
-  const cm = costMap(), names = new Set();
-  for (const [k, d] of docs) {
-    if (k.startsWith('cases/') && d && d.product) names.add(String(d.product).trim());
-    if (k.startsWith('products/') && d) (d.case_names && d.case_names.length ? d.case_names : [d.name]).forEach((n) => n && names.add(String(n).trim()));
-  }
-  ((docs.get('config/pricebook') || {}).rows || []).forEach((r) => r.product && names.add(String(r.product).trim()));
-  const used = {}; for (const [k, d] of docs) if (k.startsWith('cases/') && d && d.product) used[lcs(d.product)] = (used[lcs(d.product)] || 0) + 1;
-  const seen = new Set(), rows = [];
-  [...names].sort((a, b) => (used[lcs(b)] || 0) - (used[lcs(a)] || 0) || a.localeCompare(b)).forEach((n) => { if (seen.has(lcs(n))) return; seen.add(lcs(n)); rows.push({ product: n, cost: cm[lcs(n)] ?? null, cases: used[lcs(n)] || 0 }); });
-  res.json({ rows });
-});
-app.put('/api/admin/costs', needApi('owner'), async (req, res) => {
-  const cur = costMap();
-  (Array.isArray(req.body?.rows) ? req.body.rows : []).forEach((r) => { const k = lcs(r.product); if (!k) return; const c = r.cost === '' || r.cost == null ? null : Number(String(r.cost).replace(/[$,]/g, '')); if (c == null || !isFinite(c) || c < 0) delete cur[k]; else cur[k] = Math.round(c * 100) / 100; });
-  const names = {}; (Array.isArray(req.body?.rows) ? req.body.rows : []).forEach((r) => { if (r.product) names[lcs(r.product)] = String(r.product).trim().slice(0, 160); });
-  const prevRows = (docs.get('config/costs') || {}).rows || []; prevRows.forEach((r) => { if (!names[lcs(r.product)]) names[lcs(r.product)] = r.product; });
-  await put('config/costs', { rows: Object.keys(cur).map((k) => ({ product: names[k] || k, cost: cur[k] })), updated_at: new Date().toISOString() });
-  res.json({ ok: true });
-});
-app.get('/api/admin/dashboard', needApi('owner'), (req, res) => {
-  const today = chiDate(), ym = today.slice(0, 7), wk = mondayOf(today), cases = allCases(), cm = costMap();
-  const days = bizDays(ym), elapsed = days.filter((d) => d <= today).length, wkDays = days.filter((d) => d >= wk && d <= today).length;
-  const log = docs.get('_log/logins') || { seen: {} }, seen = Object.assign({}, log.seen); for (const [k, t] of seenBy) seen[k] = new Date(Math.max(t, Date.parse(seen[k] || 0) || 0)).toISOString();
-  const costOf = (c) => { const u = cm[lcs(c.product)]; return u == null ? null : u * (Number(c.units) || 1); };
-  const pp = pins().reps, visits = [...docs].filter(([k]) => k.startsWith('visits/')).map(([, d]) => d);
-  const reps = quotaRows().filter((r) => r.role !== 'Team' && (pp[r.rep] || {}).active !== false).map((r) => {
-    const mine = cases.filter((c) => c.rep === r.rep && isDone(c.status));
-    const mtd = mine.filter((c) => c.date.slice(0, 7) === ym && c.date <= today), wtd = mtd.filter((c) => c.date >= wk);
-    const sum = (l) => l.reduce((t, c) => t + (Number(c.net_sales) || 0), 0);
-    const target = rowTarget(r, ym, cases), actual = rowActual(r, ym, cases);
-    const costed = mtd.filter((c) => costOf(c) != null), cost = costed.reduce((t, c) => t + costOf(c), 0), costedSales = sum(costed);
-    const wkV = visits.filter((v) => v.rep === r.rep && v.date >= wk && v.date <= today);
-    const wcu = docs.get(wcuKey(r.rep, wk));
-    const last = mine.concat(cases.filter((c) => c.rep === r.rep && !isDone(c.status))).map((c) => c.date).filter((d) => d <= today).sort().pop() || null;
-    return { rep: r.rep, metric: r.metric, wtd: Math.round(sum(wtd)), mtd: Math.round(sum(mtd)), quota_actual: Math.round(actual), target, wtd_target: target ? Math.round(target * wkDays / days.length) : null,
-      pace: target ? Math.round(target * elapsed / days.length) : null, projected: elapsed ? Math.round(actual / elapsed * days.length) : 0,
-      cases_wtd: wtd.length, cases_mtd: mtd.length, cost: Math.round(cost), costed_sales: Math.round(costedSales), uncosted: mtd.length - costed.length,
-      visits_wtd: wkV.filter((v) => v.status !== 'planned' && v.status !== 'cancelled').length, visits_planned: wkV.filter((v) => v.status === 'planned').length,
-      wcu: wcu && wcu.status === 'sent' ? (wcu.late ? 'late' : 'sent') : (Date.now() > wcuDueAt(wk).getTime() ? 'missing' : 'due'),
-      last_case: last, last_active: seen['rep:' + r.rep] || null };
-  });
-  const T = (k) => reps.reduce((t, r) => t + (Number(r[k]) || 0), 0);
-  const allMtd = cases.filter((c) => isDone(c.status) && c.date.slice(0, 7) === ym && c.date <= today);
-  const feed = [];
-  cases.filter((c) => c.created_at).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))).slice(0, 12).forEach((c) => feed.push({ at: c.created_at, rep: c.rep, what: 'Logged a case' + (c.surgeon ? ' · ' + c.surgeon : '') + (c.net_sales ? ' · ' + fmt$(c.net_sales) : '') }));
-  visits.filter((v) => v.check && v.check.at).sort((a, b) => String(b.check.at).localeCompare(String(a.check.at))).slice(0, 10).forEach((v) => feed.push({ at: v.check.at, rep: v.rep, what: (v.check.ok ? 'Checked in' : 'Check-in not verified') + ' · ' + (v.surgeon || '') + (v.facility ? ' @ ' + v.facility : '') }));
-  cases.filter((c) => c.invoice && c.invoice.submitted_at).forEach((c) => feed.push({ at: c.invoice.submitted_at, rep: c.rep, what: 'Invoice ' + c.invoice.number + ' · ' + fmt$(c.invoice.amount) + ' (' + c.invoice.status + ')' }));
-  (log.events || []).slice(0, 10).filter((e) => e.role === 'Rep').forEach((e) => feed.push({ at: e.at, rep: e.who, what: 'Signed in · ' + (e.dev === 'phone' ? 'phone' : 'computer') }));
-  feed.sort((a, b) => String(b.at).localeCompare(String(a.at)));
-  const pendingInv = cases.filter((c) => c.invoice && c.invoice.status === 'pending').length;
-  const approvals = { invoices: cases.filter((c) => c.invoice && c.invoice.status === 'pending').map((c) => ({ rep: c.rep, number: c.invoice.number, amount: c.invoice.amount, at: c.invoice.submitted_at })),
-    facilities: [...docs].filter(([k, d]) => k.startsWith('facilities/') && d && d.approved === false).map(([, d]) => ({ name: d.name, by: d.added_by || '', address: d.address || '' })),
-    surgeons: [...docs].filter(([k, d]) => k.startsWith('surgeons/') && d && d.approved === false).map(([, d]) => ({ name: d.name, by: d.added_by || '', facility: d.facility || '' })) };
-  res.json({ today, week: wk, month: ym, biz: { elapsed, total: days.length, week: wkDays }, reps,
-    totals: { wtd: T('wtd'), mtd: Math.round(allMtd.reduce((t, c) => t + (Number(c.net_sales) || 0), 0)), target: T('target'), wtd_target: T('wtd_target'), pace: T('pace'), projected: T('projected'), cases_mtd: allMtd.length, cases_wtd: T('cases_wtd'),
-      cost: T('cost'), costed_sales: T('costed_sales'), uncosted: T('uncosted'), visits_wtd: T('visits_wtd') },
-    pending_invoices: pendingInv, approvals, feed: feed.slice(0, 20) });
 });
 app.get('/api/admin/backup', needApi('owner'), (req, res) => {
   const out = {}; for (const [k, d] of docs) if (!k.startsWith('_auth/') && !k.startsWith('_seed/') && !k.startsWith('_push/')) out[k] = d;
