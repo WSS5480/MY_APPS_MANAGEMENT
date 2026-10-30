@@ -145,7 +145,7 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .jump a[hidden]{display:none}
 section[id^="sec-"]{scroll-margin-top:62px}
 </style>
-<link rel="stylesheet" href="/theme-360.css?v=17"><script src="/collapse.js?v=7" defer></script>
+<link rel="stylesheet" href="/theme-360.css?v=18"><script src="/collapse.js?v=8" defer></script>
 </head><body class="side-layout">
 <div class="wrap" id="root">
   <header class="head" style="position:relative">
@@ -1170,8 +1170,11 @@ section[id^="sec-"]{scroll-margin-top:62px}
     setOn(m[1]); if (!window.__hubReady) return;
     var link = document.querySelector('.both-apps[data-hub="' + m[1] + '"]'); if (!link || !link.dataset.src) return;
     if (fr.getAttribute('src') !== link.dataset.src) fr.src = link.dataset.src;
-    pane.hidden = false; document.body.classList.add('hub-open'); window.scrollTo(0, 0);
+    pane.hidden = false; document.body.classList.add('hub-open'); window.scrollTo(0, 0); fitHub();
   };
+  // the hosted page fills exactly what's visible, so its own scrollbars (including the sideways one on wide tables) stay on screen
+  function fitHub() { var fr = document.getElementById('hubframe'); if (!fr || fr.closest('#hubpane').hidden) return; var top = fr.getBoundingClientRect().top + window.scrollY; fr.style.height = Math.max(360, window.innerHeight - top - 8) + 'px'; }
+  window.addEventListener('resize', fitHub);
   addEventListener('hashchange', hubRoute); hubRoute();
 })();
 </script>

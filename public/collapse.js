@@ -71,6 +71,27 @@
   }
   new MutationObserver(navInit).observe(document.documentElement, { childList: true, subtree: true });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', navInit); else navInit();
+  // wide tables: a second sideways scrollbar at the TOP of the table (the real one sits at the bottom, often off screen)
+  var TW = '.tblwrap, .scroll';
+  function topbars() {
+    [].slice.call(document.querySelectorAll(TW)).forEach(function (w) {
+      var wide = w.scrollWidth > w.clientWidth + 2, bar = w.previousElementSibling && w.previousElementSibling.classList.contains('hbar') ? w.previousElementSibling : null;
+      if (!wide) { if (bar) bar.remove(); return; }
+      if (!bar) {
+        bar = document.createElement('div'); bar.className = 'hbar'; bar.setAttribute('aria-hidden', 'true'); bar.style.cssText = 'overflow-x:auto;overflow-y:hidden;height:14px;margin:0 0 2px';
+        var inner = document.createElement('div'); inner.style.height = '1px'; bar.appendChild(inner);
+        w.parentNode.insertBefore(bar, w);
+        var lock = false;
+        bar.addEventListener('scroll', function () { if (lock) return; lock = true; w.scrollLeft = bar.scrollLeft; lock = false; });
+        w.addEventListener('scroll', function () { if (lock) return; lock = true; bar.scrollLeft = w.scrollLeft; lock = false; });
+      }
+      bar.firstChild.style.width = w.scrollWidth + 'px'; bar.style.width = w.clientWidth + 'px';
+    });
+  }
+  var tb = null;
+  new MutationObserver(function () { clearTimeout(tb); tb = setTimeout(topbars, 120); }).observe(document.documentElement, { childList: true, subtree: true });
+  window.addEventListener('resize', function () { clearTimeout(tb); tb = setTimeout(topbars, 120); });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', topbars); else setTimeout(topbars, 300);
   // "fold all / open all" helper for the keyboard: Alt+Shift+C toggles every card on the page
   document.addEventListener('keydown', function (e) {
     if (!(e.altKey && e.shiftKey && (e.key === 'C' || e.key === 'c'))) return;

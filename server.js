@@ -449,6 +449,18 @@ app.get(['/go/store', '/admin/go/store'], (req, res) => {
   res.redirect(HUB_URL + (next.startsWith('/rep') ? '/rep/sso' : next.startsWith('/admin') ? '/admin/sso' : '/sso') + '?t=' + encodeURIComponent(token) + '&next=' + encodeURIComponent(next));
 });
 app.get('/api/hub/ping', hubAuth, (req, res) => res.json({ ok: true, app: 'case-tracker' }));
+// the store's Team logins removing a tracker-only rep (one that was never a store login): row + PIN go, their logged cases stay
+app.post('/api/hub/rep-remove', hubAuth, async (req, res) => {
+  const rep = String((req.body || {}).rep || '').trim(); if (!rep) return res.status(400).json({ error: 'Which rep?' });
+  const p = JSON.parse(JSON.stringify(pins()));
+  if (p.reps[rep] && p.reps[rep].hub) return res.status(400).json({ error: rep + ' is a store login — delete it under Team logins.' });
+  const rows = quotaRows().filter(r => !(r.rep === rep && r.role !== 'Team'));
+  if (rows.length === quotaRows().length && !p.reps[rep]) return res.status(404).json({ error: 'No such rep in the tracker.' });
+  delete p.reps[rep];
+  await put('config/quotas', Object.assign({}, docs.get('config/quotas') || {}, { rows, updated_at: new Date().toISOString() }));
+  await put('_auth/pins', p);
+  res.json({ ok: true });
+});
 app.get('/api/login-options', async (req, res) => {
   await syncPeople().catch(() => {});
   const p = pins().reps;
