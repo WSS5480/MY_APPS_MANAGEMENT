@@ -54,15 +54,17 @@
     var sec = $('#sec-wcu'), g = function (s) { var n = sec.querySelector(s); return n ? n.value : ''; };
     return {
       week: WEEK, win_ids: (R && R.win_ids) || [], wins: g('#wcu-wins').split('\n'), projected: g('#wcu-proj'), notes: g('#wcu-notes'),
-      pod: [].slice.call(sec.querySelectorAll('#wcu-pod tbody tr')).map(function (tr) { var v = function (k) { return tr.querySelector('[data-p="' + k + '"]').value; }; return { surgeon: v('surgeon'), hospital: v('hospital'), specialty: v('specialty'), products: v('products'), next: v('next') }; }),
+      pod: [].slice.call(sec.querySelectorAll('#wcu-pod .wcu-podc')).map(function (tr) { var v = function (k) { return tr.querySelector('[data-p="' + k + '"]').value; }; return { surgeon: v('surgeon'), hospital: v('hospital'), specialty: v('specialty'), products: v('products'), next: v('next') }; }),
       plan: DAYS.map(function (d) { return { day: d, items: g('[data-plan="' + d + '"]').split('\n') }; })
     };
   }
-  function podRow(p) {
-    p = p || {}; var tr = el('tr');
-    ['surgeon', 'hospital', 'specialty', 'products', 'next'].forEach(function (k) { var td = el('td'), i = el(k === 'next' ? 'textarea' : 'input', 'field'); i.dataset.p = k; i.value = p[k] || ''; if (k === 'next') i.rows = 2; td.appendChild(i); tr.appendChild(td); });
-    var x = el('td'), b = el('button', 'btn small', '✕'); b.type = 'button'; b.title = 'Remove'; b.onclick = function () { tr.remove(); queueSave(); }; x.appendChild(b); tr.appendChild(x);
-    return tr;
+  var PODF = [['surgeon', 'Surgeon name'], ['hospital', 'Hospital'], ['specialty', 'Specialty'], ['products', 'Product(s)'], ['next', 'Next step']];
+  function podRow(p) { // one surgeon per card; fields wrap so every name is readable on a phone
+    p = p || {}; var card = el('div', 'wcu-podc');
+    card.style.cssText = 'border:1px solid var(--line,#dde3ec);border-radius:12px;padding:10px 12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr));gap:8px 12px;align-items:start;position:relative';
+    PODF.forEach(function (f) { var l = el('label', 'f'); l.style.cssText = 'margin:0;min-width:0' + (f[0] === 'next' ? ';grid-column:1/-1' : ''); l.appendChild(el('b', '', f[1])); var i = el(f[0] === 'next' ? 'textarea' : 'input', 'field'); i.dataset.p = f[0]; i.value = p[f[0]] || ''; if (f[0] === 'next') i.rows = 2; i.style.width = '100%'; l.appendChild(i); card.appendChild(l); });
+    var b = el('button', 'btn small', '✕ Remove'); b.type = 'button'; b.style.justifySelf = 'start'; b.onclick = function () { card.remove(); queueSave(); }; card.appendChild(b);
+    return card;
   }
   function queueSave() { clearTimeout(saveT); var m = $('#wcu-saved'); if (m) m.textContent = 'Saving…'; saveT = setTimeout(function () { api('/api/wcu', readForm(), 'PUT').then(function (j) { R = j.report; var m2 = $('#wcu-saved'); if (m2) m2.textContent = 'Draft saved'; }, function (e) { var m2 = $('#wcu-saved'); if (m2) m2.textContent = (e && e.error) || 'Could not save'; }); }, 700); }
   function drawRep(j) {
@@ -71,17 +73,16 @@
       '<p class="note">Built from your week in the tracker: cases from your case log, wins from the visits you flag <b>⭐ Win</b> in the Visit log, targets from your pathway, next week from your planned visits and scheduled cases. Review it, edit anything, then submit. Due every <b>Thursday by 5:00 PM</b>; the COO sees it here in the app.</p>' +
       '<div class="tools" style="margin:6px 0 12px"><button class="btn small" type="button" id="wcu-rebuild">↻ Rebuild from my activity</button><a class="btn small" id="wcu-print" target="_blank" rel="noopener" href="/api/wcu/view?week=' + WEEK + '">Print / PDF</a><span class="note" id="wcu-saved">' + (j.saved ? 'Draft saved' : 'Not saved yet') + '</span></div>' +
       '<label class="f"><b>Top wins for the week</b> <span class="note">· one per line · flag a visit ⭐ Win to add it here</span><textarea class="field" id="wcu-wins" rows="6">' + esc(lines(R.wins)) + '</textarea></label>' +
-      '<h3 style="margin:16px 0 6px">Cases this week: ' + R.cases_count + ' <span class="note">· from your case log</span></h3><div class="scroll"><table><thead><tr>' + (R.days || []).map(function (d) { return '<th>' + esc(d.day) + ' ' + esc(d.date.slice(5).replace('-', '/')) + '</th>'; }).join('') + '</tr></thead><tbody><tr>' +
-        (R.days || []).map(function (d) { return '<td style="vertical-align:top">' + (d.cases.length ? d.cases.map(function (c) { return '<div>' + esc(c) + '</div>'; }).join('') : '<span class="note">—</span>') + '</td>'; }).join('') + '</tr></tbody></table></div>' +
-      '<label class="f" style="max-width:14rem;margin-top:12px"><b>Projected cases next week</b><input class="field" id="wcu-proj" type="number" min="0" value="' + esc(R.projected) + '"></label>' +
-      '<h3 style="margin:16px 0 6px">Pod surgeon targets</h3><div class="scroll"><table id="wcu-pod"><thead><tr><th>Surgeon name</th><th>Hospital</th><th>Specialty</th><th>Product(s)</th><th>Next step</th><th></th></tr></thead><tbody></tbody></table></div><button class="btn small" type="button" id="wcu-addpod" style="margin-top:6px">+ Add surgeon</button>' +
-      '<h3 style="margin:16px 0 6px">Next week plan <span class="note">· one item per line</span></h3><div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(15rem,1fr));gap:10px">' +
+      '<h3 style="margin:16px 0 6px">Cases this week: ' + R.cases_count + ' <span class="note">· from your case log</span></h3><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,10rem),1fr));gap:8px">' + (R.days || []).map(function (d) { return '<div style="border:1px solid var(--line,#dde3ec);border-radius:10px;padding:8px 10px;min-width:0"><b>' + esc(d.day) + ' ' + esc(d.date.slice(5).replace('-', '/')) + '</b>' + (d.cases.length ? d.cases.map(function (c) { return '<div style="margin-top:4px">' + esc(c) + '</div>'; }).join('') : '<div class="note">—</div>') + '</div>'; }).join('') + '</div>' +
+      '<label class="f" style="max-width:14rem;width:100%;margin-top:12px"><b>Projected cases next week</b><input class="field" id="wcu-proj" type="number" min="0" value="' + esc(R.projected) + '"></label>' +
+      '<h3 style="margin:16px 0 6px">Pod surgeon targets</h3><div id="wcu-pod" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr));gap:10px"></div><button class="btn small" type="button" id="wcu-addpod" style="margin-top:6px">+ Add surgeon</button>' +
+      '<h3 style="margin:16px 0 6px">Next week plan <span class="note">· one item per line</span></h3><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr));gap:10px">' +
         DAYS.map(function (d) { var p = (R.plan || []).find(function (x) { return x.day === d; }) || { items: [] }; return '<label class="f"><b>' + d + '</b><textarea class="field" rows="4" data-plan="' + d + '">' + esc(lines(p.items)) + '</textarea></label>'; }).join('') + '</div>' +
       '<label class="f" style="margin-top:12px"><b>Comments / additional notes</b><textarea class="field" id="wcu-notes" rows="3">' + esc(R.notes || '') + '</textarea></label>' +
       '<div class="tools" style="margin-top:14px"><button class="btn primary" type="button" id="wcu-send">' + (st.sent ? 'Submit an update to the COO' : 'Submit to the COO') + '</button><span class="note">Submitting shares it with the COO in the app.</span></div><div class="msg" id="wcu-msg" hidden></div><div id="wcu-arch" style="margin-top:16px"></div>';
     if (FLASH) { var fm = $('#wcu-msg'); fm.className = 'msg ok'; fm.hidden = false; fm.textContent = FLASH; FLASH = ''; }
     repArchive();
-    var tb = sec.querySelector('#wcu-pod tbody'); (R.pod || []).forEach(function (p) { tb.appendChild(podRow(p)); });
+    var tb = sec.querySelector('#wcu-pod'); (R.pod || []).forEach(function (p) { tb.appendChild(podRow(p)); });
     sec.oninput = function (e) { if (e.target.closest('#wcu-week')) return; queueSave(); };
     $('#wcu-week').onchange = function (e) { WEEK = e.target.value; loadRep(); };
     $('#wcu-addpod').onclick = function () { tb.appendChild(podRow({})); };
