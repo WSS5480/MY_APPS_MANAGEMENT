@@ -234,3 +234,9 @@ body.embed .wrap { padding: 1rem !important; max-width: none; }
 .addr-item:last-child { border-bottom: 0; } .addr-item:hover, .addr-item:focus { background: var(--mute-bg, #f3f5f9); outline: none; }
 .addr-l1 { font-weight: 600; } .addr-l2 { font-size: .82rem; color: var(--muted, #667); }
 @media (max-width: 480px) { .addr-row { grid-template-columns: 1fr 4.6rem 5.4rem; } }
+
+/* iOS Safari gives date/time inputs a fixed native width that ignores width:100%, so they spill past their card. Keep every field inside its box. */
+input[type=date], input[type=time], input[type=datetime-local], input[type=month], input[type=week] { -webkit-appearance: none; appearance: none; box-sizing: border-box; min-width: 0; max-width: 100%; min-height: 2.4rem; text-align: left; }
+input[type=date]::-webkit-date-and-time-value, input[type=time]::-webkit-date-and-time-value, input[type=datetime-local]::-webkit-date-and-time-value, input[type=month]::-webkit-date-and-time-value { text-align: left; margin: 0; }
+input, select, textarea { max-width: 100%; box-sizing: border-box; }
+label, .field, .f { min-width: 0; }
