@@ -49,7 +49,7 @@
     [].slice.call(target.querySelectorAll(SEL + '[data-fold]')).slice(0, 1).forEach(unfold); // a group whose first card is folded
   }
   document.addEventListener('click', function (e) {
-    var a = e.target.closest('a[href^="#"]'); if (!a || a.closest('.fold-h')) return;
+    var a = e.target.closest('a[href^="#"]'); if (!a || a.closest('.fold-h') || a.closest('.jump')) return; // pill bars are handled below
     var hash = a.getAttribute('href'); if (hash === '#' || /^#(hub-|refresh)/.test(hash)) return;
     openTarget(hash); setTimeout(function () { openTarget(hash); }, 80); // after any render the click triggers
   });
@@ -58,13 +58,15 @@
     if (!card || card.classList.contains('folded') || !card.hasAttribute('data-fold')) return;
     card.classList.add('folded'); var h = card.querySelector('.fold-h'); if (h) { h.setAttribute('aria-expanded', 'false'); try { localStorage.setItem(key(card, h), '1'); } catch (x) {} }
   }
-  var pillLast = null;
+  // only the picked pill's area is open: picking a pill closes the others; picking the lit pill again closes it
+  function foldTarget(hash) { var t = null; try { t = document.getElementById(hash.slice(1)); } catch (x) {} if (!t) return; fold(t.closest(SEL + '[data-fold]') || (t.matches(SEL) ? t : null)); [].slice.call(t.querySelectorAll(SEL + '[data-fold]')).forEach(fold); }
   document.addEventListener('click', function (e) {
     var a = e.target.closest('.jump a[href^="#"]'); if (!a) return;
     var hash = a.getAttribute('href'); if (hash === '#' || /^#(hub-|refresh)/.test(hash)) return;
-    var bar = a.closest('.jump'); [].forEach.call(bar.querySelectorAll('a.on'), function (x) { if (x !== a) x.classList.remove('on'); }); a.classList.add('on');
-    if (pillLast && pillLast !== hash) { var prev = document.getElementById(pillLast.slice(1)); if (prev) { var pc = prev.closest(SEL + '[data-fold]') || (prev.matches(SEL) ? prev : null); fold(pc); [].slice.call(prev.querySelectorAll(SEL + '[data-fold]')).forEach(fold); } }
-    pillLast = hash;
+    var bar = a.closest('.jump'), was = a.classList.contains('on');
+    [].forEach.call(bar.querySelectorAll('a[href^="#"]'), function (x) { var h = x.getAttribute('href'); if (x === a || /^#(hub-|refresh)/.test(h) || h === '#') return; x.classList.remove('on'); foldTarget(h); });
+    if (was) { a.classList.remove('on'); foldTarget(hash); e.preventDefault(); return; }
+    a.classList.add('on'); openTarget(hash); setTimeout(function () { openTarget(hash); }, 80);
   });
   window.addEventListener('hashchange', function () { openTarget(location.hash); });
   if (location.hash) setTimeout(function () { openTarget(location.hash); }, 400);
