@@ -381,7 +381,8 @@ async function syncPeople(force) {
   // Team logins is the roster: a rep deleted there (or an old tracker-only rep with no login) leaves the tracker's rep list.
   // Their cases, visits and notes stay on record. Skipped if the store sent nobody (a bad sync must never empty the list).
   if (people.length) {
-    const live = new Set(people.filter(u => u.role === 'rep').map(u => u.id)), names = new Set(people.filter(u => u.role === 'rep').map(u => String(u.name || '').trim().toLowerCase()));
+    // a person with a login who sells under a plan stays too, even if their login is an admin/manager (e.g. an operations director with a quota)
+    const live = new Set(people.filter(u => u.role === 'rep').map(u => u.id)), names = new Set(people.filter(u => u.active !== false).map(u => String(u.name || '').trim().toLowerCase()));
     const gone = (name, rec) => rec && rec.hub ? !live.has(rec.hub) : !names.has(String(name).trim().toLowerCase());
     const PLAN = ['role', 'territory', 'metric', 'quota', 'counts', 'product_filter', 'carry', 'draw', 'comm_rate', 'comm_floor', 'pay_kind', 'pay_amount', 'sim_quota'];
     for (const r of rows.filter(x => x.role !== 'Team' && gone(x.rep, p.reps[x.rep]))) { // an old plan carries over to the same person's login when that row has none yet
