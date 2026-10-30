@@ -1080,25 +1080,64 @@ async function geocode(q) {
 // address lookup as you type (OpenStreetMap's Photon, US only): street, city, state, ZIP + coordinates
 const US_STATE = { alabama:'AL',alaska:'AK',arizona:'AZ',arkansas:'AR',california:'CA',colorado:'CO',connecticut:'CT',delaware:'DE','district of columbia':'DC',florida:'FL',georgia:'GA',hawaii:'HI',idaho:'ID',illinois:'IL',indiana:'IN',iowa:'IA',kansas:'KS',kentucky:'KY',louisiana:'LA',maine:'ME',maryland:'MD',massachusetts:'MA',michigan:'MI',minnesota:'MN',mississippi:'MS',missouri:'MO',montana:'MT',nebraska:'NE',nevada:'NV','new hampshire':'NH','new jersey':'NJ','new mexico':'NM','new york':'NY','north carolina':'NC','north dakota':'ND',ohio:'OH',oklahoma:'OK',oregon:'OR',pennsylvania:'PA','rhode island':'RI','south carolina':'SC','south dakota':'SD',tennessee:'TN',texas:'TX',utah:'UT',vermont:'VT',virginia:'VA',washington:'WA','west virginia':'WV',wisconsin:'WI',wyoming:'WY' };
 const sugCache = new Map();
+// where to bias the lookup: the caller's location if the phone shared it, else the middle of the facilities already on the map
+function suggestBias(req) {
+  const lat = Number(req.query.lat), lng = Number(req.query.lng);
+  if (isFinite(lat) && isFinite(lng) && lat && lng) return { lat, lng };
+  const pts = [...docs].filter(([k, d]) => k.startsWith('facilities/') && d.lat != null && d.lng != null).map(([, d]) => d);
+  if (!pts.length) return null;
+  return { lat: pts.reduce((t, d) => t + Number(d.lat), 0) / pts.length, lng: pts.reduce((t, d) => t + Number(d.lng), 0) / pts.length };
+}
+const STREET_NOISE = new Set(['st', 'street', 'rd', 'road', 'dr', 'drive', 'ave', 'avenue', 'blvd', 'boulevard', 'ln', 'lane', 'ct', 'court', 'hwy', 'highway', 'pkwy', 'parkway', 'n', 's', 'e', 'w', 'north', 'south', 'east', 'west', 'suite', 'ste', 'tx', 'texas']);
+const km = (a, b) => { const r = Math.PI / 180, x = (b.lng - a.lng) * r * Math.cos((a.lat + b.lat) / 2 * r), y = (b.lat - a.lat) * r; return Math.sqrt(x * x + y * y) * 6371; };
+async function photonSuggest(q, bias, signal) {
+  const r = await fetch('https://photon.komoot.io/api/?limit=8&lang=en&bbox=-125,24,-66,50' + (bias ? `&lat=${bias.lat}&lon=${bias.lng}&zoom=11&location_bias_scale=0.6` : '') + '&q=' + encodeURIComponent(q), { signal, headers: { 'User-Agent': '360-Medical-Case-Tracker/1.0' } });
+  const j = await r.json(); const out = [];
+  for (const f of (j.features || [])) {
+    const p = f.properties || {}, g = (f.geometry || {}).coordinates || [];
+    if (p.countrycode && p.countrycode !== 'US') continue;
+    const street = [p.housenumber, p.street].filter(Boolean).join(' ') || (p.type === 'house' || p.type === 'street' ? '' : p.name || '');
+    if (!street) continue;
+    const st = (p.state && (US_STATE[String(p.state).toLowerCase()] || (String(p.state).length === 2 ? String(p.state).toUpperCase() : ''))) || '';
+    out.push({ name: p.name && p.name !== street ? p.name : '', street, city: p.city || p.town || p.village || p.district || p.county || '', state: st, zip: p.postcode || '', lat: Number(g[1]), lng: Number(g[0]) });
+  }
+  return out;
+}
+async function nominatimSuggest(q, bias, signal) {
+  const box = bias ? `&viewbox=${bias.lng - 1.5},${bias.lat + 1.2},${bias.lng + 1.5},${bias.lat - 1.2}&bounded=0` : '';
+  const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=8&countrycodes=us&dedupe=1' + box + '&q=' + encodeURIComponent(q), { signal, headers: { 'User-Agent': '360-Medical-Case-Tracker/1.0 (' + (process.env.PUBLIC_URL || 'https://three60-medical-surgical-case-tracker.onrender.com') + ')', 'Accept-Language': 'en' } });
+  const j = await r.json(); const out = [];
+  for (const it of (Array.isArray(j) ? j : [])) {
+    const a = it.address || {}; const street = [a.house_number, a.road].filter(Boolean).join(' ') || (a.amenity || a.building || a.shop || a.office || '');
+    if (!street) continue;
+    const st = a.state ? (US_STATE[String(a.state).toLowerCase()] || '') : '';
+    out.push({ name: a.amenity || a.hospital || a.building || a.office || '', street, city: a.city || a.town || a.village || a.hamlet || a.county || '', state: st, zip: a.postcode || '', lat: Number(it.lat), lng: Number(it.lon) });
+  }
+  return out;
+}
 app.get('/api/address-suggest', needApi(), async (req, res) => {
   const q = String(req.query.q || '').trim().slice(0, 160); if (q.length < 4) return res.json({ items: [] });
-  const key = q.toLowerCase(); if (sugCache.has(key)) return res.json({ items: sugCache.get(key) });
+  const bias = suggestBias(req), key = q.toLowerCase() + '|' + (bias ? bias.lat.toFixed(1) + ',' + bias.lng.toFixed(1) : '');
+  if (sugCache.has(key)) return res.json({ items: sugCache.get(key) });
   const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 6000);
   try {
-    const r = await fetch('https://photon.komoot.io/api/?limit=6&lang=en&bbox=-125,24,-66,50&q=' + encodeURIComponent(q), { signal: ctl.signal, headers: { 'User-Agent': '360-Medical-Case-Tracker/1.0' } });
-    const j = await r.json();
-    const items = []; const seen = new Set();
-    for (const f of (j.features || [])) {
-      const p = f.properties || {}, g = (f.geometry || {}).coordinates || [];
-      if (p.countrycode && p.countrycode !== 'US') continue;
-      const street = [p.housenumber, p.street].filter(Boolean).join(' ') || (p.type === 'house' || p.type === 'street' ? '' : p.name || '');
-      if (!street) continue;
-      const st = (p.state && (US_STATE[String(p.state).toLowerCase()] || (String(p.state).length === 2 ? String(p.state).toUpperCase() : ''))) || '';
-      const it = { name: p.name && p.name !== street ? p.name : '', street, city: p.city || p.town || p.village || p.district || p.county || '', state: st, zip: p.postcode || '', lat: Math.round(Number(g[1]) * 1e6) / 1e6, lng: Math.round(Number(g[0]) * 1e6) / 1e6 };
-      const k = [it.street, it.city, it.state, it.zip].join('|').toLowerCase(); if (seen.has(k)) continue; seen.add(k); items.push(it);
+    const [a, b] = await Promise.all([photonSuggest(q, bias, ctl.signal).catch(() => []), nominatimSuggest(q, bias, ctl.signal).catch(() => [])]);
+    // keep only results that actually contain the words typed (the lookups are fuzzy and like to swap the street name)
+    const words = q.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w && !/^\d+$/.test(w) && !STREET_NOISE.has(w));
+    const num = (q.match(/^\s*(\d+)/) || [])[1];
+    const seen = new Set(), items = [];
+    for (const it of a.concat(b)) {
+      if (!isFinite(it.lat) || !isFinite(it.lng)) continue;
+      const hay = (num ? [it.name, it.street] : [it.name, it.street, it.city, it.zip]).join(' ').toLowerCase(); // "800 sunset dr" must match the street itself, not a city called Sunset
+      if (!words.every(w => hay.includes(w))) continue;
+      if (num && /^\d/.test(it.street) && !it.street.startsWith(num + ' ')) continue;
+      const k = [it.street, it.city, it.state, it.zip].join('|').toLowerCase(); if (seen.has(k)) continue; seen.add(k);
+      items.push({ name: it.name, street: it.street, city: it.city, state: it.state, zip: it.zip, lat: Math.round(it.lat * 1e6) / 1e6, lng: Math.round(it.lng * 1e6) / 1e6, d: bias ? km(bias, it) : 0 });
     }
-    if (sugCache.size > 500) sugCache.clear(); sugCache.set(key, items);
-    res.json({ items });
+    items.sort((x, y) => x.d - y.d); items.forEach(i => delete i.d);
+    const top = items.slice(0, 6);
+    if (sugCache.size > 500) sugCache.clear(); sugCache.set(key, top);
+    res.json({ items: top });
   } catch (e) { res.json({ items: [], error: 'lookup unavailable' }); } finally { clearTimeout(t); }
 });
 app.get('/api/admin/geocode', needApi('owner'), async (req, res) => { const g = await geocode(String(req.query.q || '').slice(0, 300)); res.json(g ? Object.assign({ found: true }, g) : { found: false }); });

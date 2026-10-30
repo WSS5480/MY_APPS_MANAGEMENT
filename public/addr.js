@@ -3,6 +3,14 @@
    value() = { street, city, state, zip, address: "street, city, ST zip", lat, lng } — lat/lng only when a suggestion was picked. */
 (function () {
   var STATES = 'AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY'.split(' ');
+  // bias the lookup to where the phone is (only if location is already allowed — no prompt just for suggestions)
+  var HERE = null;
+  try { var h = JSON.parse(localStorage.getItem('addr.here') || 'null'); if (h && Date.now() - h.at < 6 * 3600e3) HERE = h; } catch (e) {}
+  function locate() {
+    if (!navigator.geolocation) return;
+    var go = function () { navigator.geolocation.getCurrentPosition(function (p) { HERE = { lat: p.coords.latitude, lng: p.coords.longitude, at: Date.now() }; try { localStorage.setItem('addr.here', JSON.stringify(HERE)); } catch (e) {} }, function () {}, { maximumAge: 600000, timeout: 4000 }); };
+    if (navigator.permissions && navigator.permissions.query) navigator.permissions.query({ name: 'geolocation' }).then(function (st) { if (st.state === 'granted') go(); }, function () {}); 
+  }
   function el(t, c, txt) { var e = document.createElement(t); if (c) e.className = c; if (txt != null) e.textContent = txt; return e; }
   function mount(root, opts) {
     opts = opts || {};
@@ -32,10 +40,11 @@
       var q = street.value.trim(); if (q === last) return; last = q; picked = null;
       if (q.length < 4) return hide();
       var extra = [city.value.trim(), state.value].filter(Boolean).join(' ');
-      fetch('/api/address-suggest?q=' + encodeURIComponent(q + (extra ? ' ' + extra : '')), { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : { items: [] }; })
+      fetch('/api/address-suggest?q=' + encodeURIComponent(q + (extra ? ' ' + extra : '')) + (HERE ? '&lat=' + HERE.lat + '&lng=' + HERE.lng : ''), { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : { items: [] }; })
         .then(function (j) { if (street.value.trim() !== q) return; show(j.items || []); }).catch(function () { hide(); });
     }
     street.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(lookup, 280); });
+    street.addEventListener('focus', locate, { once: true });
     street.addEventListener('focus', function () { if (sug.children.length) sug.hidden = false; });
     street.addEventListener('blur', function () { setTimeout(hide, 150); });
     street.addEventListener('keydown', function (e) { if (e.key === 'Escape') hide(); if (e.key === 'ArrowDown' && sug.children.length) { e.preventDefault(); sug.firstChild.focus(); } });
