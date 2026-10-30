@@ -8,15 +8,15 @@
     { k: 'wcu', l: '📝 WCU', g: 'Rep', ids: ['sec-wcu'] },
     { k: 'visits', l: 'Visits', g: 'Rep', ids: ['visits'] },
     { k: 'logins', l: '🔐 Login activity', g: 'Rep', ids: ['sec-logins', 'sec-activity'] },
-    { k: 'reps', l: 'Reps & plans', g: 'Manager', ids: ['reps-pointer', 'reps-card'] },
+    { k: 'reps', l: 'Sales reps', g: 'Admin', ids: ['reps-pointer', 'reps-card'] },
     { k: 'surgeons', l: 'Surgeons', g: 'Manager', ids: ['surgeons'] },
     { k: 'facilities', l: 'Facilities', g: 'Manager', ids: ['facilities'] },
     { k: 'products', l: 'Products & prices', g: 'Manager', ids: ['products', 'sec-costs', 'pricebook'] },
     { k: 'import', l: '⬆ Import history', g: 'Manager', ids: ['sec-import'] },
-    { k: 'managers', l: 'Managers & sign-in', g: 'Admin', ids: ['managers', 'mysign', 'sec-signin-links', 'pin-card'] },
-    { k: 'settings', l: 'Settings', g: 'Admin', ids: ['sec-alerts', 'geo-card', 'sec-close', 'sec-digest'] },
-    { k: 'mail', l: 'Approval emails', g: 'Admin', ids: ['mail-card'] },
-    { k: 'backup', l: 'Backup', g: 'Admin', ids: ['sec-backup'] }
+    { k: 'managers', l: 'Managers & sign-in', g: 'Manager', ids: ['managers', 'mysign', 'sec-signin-links', 'pin-card'] },
+    { k: 'settings', l: 'Settings', g: 'Manager', ids: ['sec-alerts', 'geo-card', 'sec-close', 'sec-digest'] },
+    { k: 'mail', l: 'Approval emails', g: 'Manager', ids: ['mail-card'] },
+    { k: 'backup', l: 'Backup', g: 'Manager', ids: ['sec-backup'] }
   ];
   var NAME_IDS = { 'Alert settings': 'sec-alerts', 'Close a month': 'sec-close', 'Weekly digest': 'sec-digest', 'Sign-in links': 'sec-signin-links', 'Activity': 'sec-activity', 'Backup and restore': 'sec-backup' };
   var OLD = { '#sec-wcu': 'wcu', '#sec-logins': 'logins', '#sec-import': 'import', '#managers': 'managers', '#visits': 'visits', '#surgeons': 'surgeons', '#facilities': 'facilities', '#mail-card': 'mail', '#reps-card': 'reps', '#products': 'products', '#pricebook': 'products', '#geo-card': 'settings' };
@@ -52,6 +52,10 @@
       });
       // a group opens and closes by its name; opening one closes the others (like the pills)
       box.addEventListener('click', function (e) { var h = e.target.closest('.navgrp-h'); if (!h) return; var g = h.dataset.grp, open = box.querySelector('.navgrp-items[data-grp="' + g + '"]').hidden; openGroup(open ? g : null); });
+      // Admin is the same list, in the same order, in the case tracker and the store: Sales reps, then the shared pages (Team logins … My account)
+      var adm = box.querySelector('.navgrp-items[data-grp="Admin"]');
+      ['staff', 'setup', 'geo-card', 'apps', 'howto', 'account'].forEach(function (k) { var a = tools.querySelector('.both-apps[data-hub="' + k + '"], .both-apps[data-local="' + k + '"]'); if (a && adm) adm.appendChild(a); });
+      var hr = tools.querySelector('hr.both-apps'); if (hr) hr.remove();
       var openT = tools.querySelector('a[href="/"]'); tools.insertBefore(box, openT ? openT.nextSibling : tools.firstChild);
     }
     var cur = null;
@@ -79,7 +83,7 @@
       show(k);
     }, true);
     var start = (/^#pg-(\w+)/.exec(location.hash) || [])[1] || OLD[location.hash] || (location.hash.length > 1 && byId[location.hash.slice(1)]) || null;
-    if (/^#hub-/.test(location.hash)) start = null;
+    if (/^#hub-/.test(location.hash)) { start = null; setTimeout(function () { openGroup('Admin'); }, 0); }
     var saved = null; try { saved = localStorage.getItem('adminPage'); } catch (e) {}
     if (start) show(start, true); else if (/^#hub-/.test(location.hash)) { Object.keys(byId).forEach(function () {}); cur = null; } else show(PAGES[0].k, true); // the Dashboard is the landing page
   }
