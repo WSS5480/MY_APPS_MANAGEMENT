@@ -4,13 +4,14 @@
   'use strict';
   if (document.body.classList.contains('embed') || /[?&]embed=1/.test(location.search)) return;
   var PAGES = [
+    { k: 'dash', l: '📊 Dashboard', g: '', ids: ['sec-dash'] },
     { k: 'wcu', l: '📝 WCU', g: 'Rep', ids: ['sec-wcu'] },
     { k: 'visits', l: 'Visits', g: 'Rep', ids: ['visits'] },
     { k: 'logins', l: '🔐 Login activity', g: 'Rep', ids: ['sec-logins', 'sec-activity'] },
     { k: 'reps', l: 'Reps & plans', g: 'Manager', ids: ['reps-pointer', 'reps-card'] },
     { k: 'surgeons', l: 'Surgeons', g: 'Manager', ids: ['surgeons'] },
     { k: 'facilities', l: 'Facilities', g: 'Manager', ids: ['facilities'] },
-    { k: 'products', l: 'Products & prices', g: 'Manager', ids: ['products', 'pricebook'] },
+    { k: 'products', l: 'Products & prices', g: 'Manager', ids: ['products', 'sec-costs', 'pricebook'] },
     { k: 'import', l: '⬆ Import history', g: 'Manager', ids: ['sec-import'] },
     { k: 'managers', l: 'Managers & sign-in', g: 'Admin', ids: ['managers', 'mysign', 'sec-signin-links', 'pin-card'] },
     { k: 'settings', l: 'Settings', g: 'Admin', ids: ['sec-alerts', 'geo-card', 'sec-close', 'sec-digest'] },
@@ -24,7 +25,7 @@
     '.jump a{flex:none;padding:8px 12px;border-radius:999px;background:var(--panel);border:1px solid var(--line);color:var(--fg);font-size:.8125rem;font-weight:600;text-decoration:none;white-space:nowrap}' +
     '.jump a.on{background:var(--accent);border-color:var(--accent);color:#fff}' +
     '@media (max-width:760px){.jump{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}.jump::-webkit-scrollbar{display:none}}' +
-    '.pg-off{display:none!important}.navgrp{display:flex;flex-direction:column;gap:4px;width:100%}.navgrp-h{font:700 .68rem/1.3 var(--font,inherit);letter-spacing:.09em;text-transform:uppercase;opacity:.65;margin:.6rem 0 .1rem}' +
+    '.pg-off{display:none!important}.navgrp{display:flex;flex-direction:column;gap:4px;width:100%}.navgrp-h{all:unset;cursor:pointer;display:flex;align-items:center;gap:.35rem;font:700 .72rem/1.3 var(--font,inherit);letter-spacing:.09em;text-transform:uppercase;opacity:.75;margin:.7rem 0 .1rem;padding:.35rem .5rem;border-radius:8px}.navgrp-h:hover,.navgrp-h.open{opacity:1;background:rgba(255,255,255,.08)}.navgrp-items{display:flex;flex-direction:column;gap:4px;padding-left:.4rem}.navgrp-items[hidden]{display:none}' +
     'body:not(.side-layout) .navgrp{flex-direction:row;flex-wrap:wrap;align-items:center}body:not(.side-layout) .navgrp-h{margin:0 .2rem 0 0}' +
     '@media (max-width:760px){.navgrp{display:none!important}}'; // phones: the pills do the job
   document.head.appendChild(css);
@@ -42,13 +43,19 @@
     if (tools) {
       [].slice.call(tools.querySelectorAll('a.btn')).forEach(function (a) { var h = a.getAttribute('href') || ''; if (OLD[h] || h === '/products') a.remove(); });
       var box = document.createElement('div'); box.className = 'navgrp'; box.id = 'navgrp';
+      var link = function (p, into) { var a = document.createElement('a'); a.className = 'btn'; a.href = '#pg-' + p.k; a.dataset.pg = p.k; a.textContent = p.l; into.appendChild(a); };
+      PAGES.filter(function (p) { return !p.g; }).forEach(function (p) { link(p, box); });
       ['Rep', 'Manager', 'Admin'].forEach(function (g) {
-        var hd = document.createElement('div'); hd.className = 'navgrp-h'; hd.textContent = g; box.appendChild(hd);
-        PAGES.filter(function (p) { return p.g === g; }).forEach(function (p) { var a = document.createElement('a'); a.className = 'btn'; a.href = '#pg-' + p.k; a.dataset.pg = p.k; a.textContent = p.l; box.appendChild(a); });
+        var hd = document.createElement('button'); hd.type = 'button'; hd.className = 'navgrp-h'; hd.dataset.grp = g; hd.innerHTML = '<span class="navgrp-c">▸</span> ' + g; box.appendChild(hd);
+        var items = document.createElement('div'); items.className = 'navgrp-items'; items.dataset.grp = g; items.hidden = true; box.appendChild(items);
+        PAGES.filter(function (p) { return p.g === g; }).forEach(function (p) { link(p, items); });
       });
+      // a group opens and closes by its name; opening one closes the others (like the pills)
+      box.addEventListener('click', function (e) { var h = e.target.closest('.navgrp-h'); if (!h) return; var g = h.dataset.grp, open = box.querySelector('.navgrp-items[data-grp="' + g + '"]').hidden; openGroup(open ? g : null); });
       var openT = tools.querySelector('a[href="/"]'); tools.insertBefore(box, openT ? openT.nextSibling : tools.firstChild);
     }
     var cur = null;
+    function openGroup(g) { [].forEach.call(document.querySelectorAll('.navgrp-items'), function (it) { it.hidden = it.dataset.grp !== g; }); [].forEach.call(document.querySelectorAll('.navgrp-h'), function (h) { var on = h.dataset.grp === g; h.classList.toggle('open', on); h.querySelector('.navgrp-c').textContent = on ? '▾' : '▸'; }); }
     function show(k, keepScroll) {
       var page = PAGES.find(function (p) { return p.k === k; }) || PAGES[0]; cur = page.k;
       if (/^#hub-/.test(location.hash)) { history.replaceState(null, '', location.pathname + location.search); if (window.hubRoute) window.hubRoute(); }
@@ -57,6 +64,7 @@
       [].forEach.call(wrap.querySelectorAll(':scope > .grid'), function (g) { var cards = g.querySelectorAll(':scope > section.card'); g.classList.toggle('pg-off', cards.length > 0 && [].every.call(cards, function (c) { return c.classList.contains('pg-off'); })); });
       page.ids.forEach(function (id) { var el = document.getElementById(id); if (el && el.classList.contains('folded')) { var h = el.querySelector('.fold-h'); if (h) h.click(); else el.classList.remove('folded'); } });
       [].forEach.call(document.querySelectorAll('[data-pg]'), function (a) { a.classList.toggle('on', a.dataset.pg === page.k); });
+      openGroup(page.g || null);
       if (location.hash !== '#pg-' + page.k) history.replaceState(null, '', location.pathname + location.search + '#pg-' + page.k);
       if (!keepScroll) { var y = Math.max(0, Math.round(nav.getBoundingClientRect().top + window.scrollY - 4)); if (window.scrollY > y) window.scrollTo(0, y); }
       try { localStorage.setItem('adminPage', page.k); } catch (e) {}
@@ -73,7 +81,7 @@
     var start = (/^#pg-(\w+)/.exec(location.hash) || [])[1] || OLD[location.hash] || (location.hash.length > 1 && byId[location.hash.slice(1)]) || null;
     if (/^#hub-/.test(location.hash)) start = null;
     var saved = null; try { saved = localStorage.getItem('adminPage'); } catch (e) {}
-    if (start) show(start, true); else if (/^#hub-/.test(location.hash)) { Object.keys(byId).forEach(function () {}); cur = null; } else show(saved || PAGES[0].k, true);
+    if (start) show(start, true); else if (/^#hub-/.test(location.hash)) { Object.keys(byId).forEach(function () {}); cur = null; } else show(PAGES[0].k, true); // the Dashboard is the landing page
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 })();
