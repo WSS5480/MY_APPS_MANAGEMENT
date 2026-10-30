@@ -145,6 +145,7 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .jump a.jr{font-size:1.05rem;padding:6px 12px;line-height:1.2}
 .jump a.jcal{margin-left:auto;font-size:1.05rem;padding:6px 12px;line-height:1.2;position:sticky;right:0;z-index:1;box-shadow:-8px 0 8px -4px var(--bg,#f3f5f9)} /* the calendar sits on the far right, always in reach */
 .jump a[hidden]{display:none}
+@media (min-width:761px){.jump{flex-wrap:wrap;overflow:visible}.jump a.jcal{position:static;box-shadow:none}} /* computers: pills wrap onto a second line instead of sliding under the calendar */
 section[id^="sec-"]{scroll-margin-top:62px}
 </style>
 <link rel="stylesheet" href="/theme-360.css?v=20"><style id="upload-look">/* the dashboard keeps the original tracker's look (accent-topped tiles, big numbers, sentence-case card titles) */
@@ -1134,6 +1135,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
   function sync() { nav.querySelectorAll('a[href^="#sec"]:not(.jcal)').forEach(function (a) { var t = document.querySelector(a.getAttribute('href')); a.hidden = !t || t.hidden || !t.childElementCount; }); }
   nav.addEventListener('click', function (e) { var a = e.target.closest('a'); if (a && a.getAttribute('href') === '#refresh') { e.preventDefault(); a.textContent = '…'; location.reload(); return; } if (!a || a.getAttribute('href').charAt(0) !== '#') return; var t = document.querySelector(a.getAttribute('href')); if (t) { e.preventDefault(); t.scrollIntoView({ behavior: 'smooth', block: 'start' }); } });
   sync(); setInterval(sync, 2000);
+  var syncT = null; new MutationObserver(function () { clearTimeout(syncT); syncT = setTimeout(sync, 60); }).observe(document.getElementById('main'), { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] }); // pills show as soon as their section fills in
   var rb = document.getElementById('btn-refresh'); if (rb) rb.addEventListener('click', function () { rb.disabled = true; rb.textContent = '⟳ Refreshing…'; location.reload(); });
   // reps: the original tracker's view first (quota tiles → pace to quota + pace alerts → estimated commissions → SIM Lab →
   // target surgeon conversion → surgeon activity → case log), then the field tools added since (calendar, upcoming, visits, cards, directory…)
