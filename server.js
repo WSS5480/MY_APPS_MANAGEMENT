@@ -437,7 +437,7 @@ app.get('/api/hub/commissions', hubAuth, (req, res) => {
     const c = surgicalComm(r, ym, cases);
     let qtd = 0; for (let mm = q0; mm <= m; mm++) qtd += surgicalComm(r, y + '-' + String(mm).padStart(2, '0'), cases).commission;
     const mine = cases.filter(x => x.rep === r.rep && x.date.slice(0, 7) === ym && String(x.status || '').toLowerCase() !== 'cancelled').sort((a, b) => a.date.localeCompare(b.date));
-    const counts = (x) => isDone(x.status) && (r.counts === 'New only' ? x.surgeon_type === 'New' : r.counts === 'Legacy only' ? x.surgeon_type === 'Legacy' : true) && (!r.product_filter || String(x.product || '').toLowerCase().includes(String(r.product_filter).toLowerCase()));
+    const counts = (x) => isDone(x.status) && (r.counts === 'New only' ? x.surgeon_type === 'New' : r.counts === 'Legacy only' ? x.surgeon_type === 'Legacy' : true) && prodMatch(r.product_filter, x.product);
     const payKind = r.pay_kind === 'draw' ? 'Draw' : r.pay_kind === 'salary' ? 'Base salary' : r.draw && !r.pay_kind ? 'Draw' : '', pay = Number(r.pay_amount) || Number(r.draw) || null;
     return { rep: r.rep, role: r.role, metric: r.metric, counts: r.counts || 'All', product_filter: r.product_filter || '', actual: Math.round(c.actual), quota: r.quota, target: c.target, carried: c.carried,
       cases: mine.filter(isDoneCase).length, comm_rate: Math.round(c.rate * 10000) / 100, comm_floor_base: c.floorBase, comm_floor: c.floor, commission: c.commission, projected: c.projected, comm_proj: c.comm_proj, comm_qtd: qtd,
@@ -1231,12 +1231,14 @@ function bizDays(ym) { const [y, m] = ym.split('-').map(Number), n = new Date(Da
 const isDone = st => { const s = String(st || '').toLowerCase(); return s !== 'scheduled' && s !== 'cancelled'; };
 const fmt$ = v => '$' + Math.round(v).toLocaleString('en-US');
 function allCases() { return [...docs].filter(([k]) => k.startsWith('cases/')).map(([, d]) => d).filter(c => c && c.date && c.rep); }
+// a product filter can list several names: "Skeletal Dynamics|Geminus|KinematX" counts any of them
+const prodMatch = (filter, product) => { const f = String(filter || '').trim(); if (!f) return true; const p = String(product || '').toLowerCase(); return f.split('|').map((x) => x.trim().toLowerCase()).filter(Boolean).some((x) => p.includes(x)); };
 function rowActual(row, ym, cases) {
   const terr = {}; quotaRows().forEach(r => { if (r.role !== 'Team') terr[r.rep] = r.territory; });
   return cases.filter(c => c.date.slice(0, 7) === ym && isDone(c.status)).filter(c => {
     const who = row.role === 'Team' ? terr[c.rep] === row.territory : c.rep === row.rep;
     const type = row.counts === 'New only' ? c.surgeon_type === 'New' : row.counts === 'Legacy only' ? c.surgeon_type === 'Legacy' : true;
-    const prod = !row.product_filter || String(c.product || '').toLowerCase().includes(row.product_filter.toLowerCase());
+    const prod = prodMatch(row.product_filter, c.product);
     return who && type && prod;
   }).reduce((t, c) => t + (row.metric === 'Cases' ? 1 : (c.net_sales || 0)), 0);
 }

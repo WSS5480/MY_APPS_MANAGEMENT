@@ -1028,7 +1028,7 @@
     if (s === 'cancelled') return 'Not counted: Cancelled';
     if (row.counts === 'New only' && c.surgeon_type !== 'New') return 'Not counted: legacy surgeon (plan pays on new business)';
     if (row.counts === 'Legacy only' && c.surgeon_type !== 'Legacy') return 'Not counted: new surgeon (legacy-only plan)';
-    if (row.product_filter && lc(c.product).indexOf(lc(row.product_filter)) < 0) return 'Not counted: not ' + row.product_filter;
+    if (row.product_filter && !row.product_filter.split('|').some(function (f) { f = lc(f.trim()); return f && lc(c.product).indexOf(f) >= 0; })) return 'Not counted: not ' + row.product_filter.split('|').join(' / ');
     return '';
   }
   function openStatement(rep, month) {
@@ -1049,7 +1049,7 @@
     var closed = closedMonth(month + '-01');
     paper.appendChild(el('div', '', T.monthName(month) + ' · ' + (closed ? 'Month closed' : 'Month open — figures can still change') + ' · prepared ' + new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })));
     if (!row) { paper.appendChild(el('p', '', 'No plan on file for this rep.')); sheet.appendChild(paper); return; }
-    var basis = row.product_filter ? row.product_filter + ' sales' : row.counts === 'New only' ? 'new-business sales' : row.counts === 'Legacy only' ? 'legacy sales' : 'all sales';
+    var basis = row.product_filter ? row.product_filter.split('|').join(' / ') + ' sales' : row.counts === 'New only' ? 'new-business sales' : row.counts === 'Legacy only' ? 'legacy sales' : 'all sales';
     paper.appendChild(el('p', '', 'Plan: ' + (row.comm_rate ? Math.round(row.comm_rate * 1000) / 10 + '% on ' + basis + (row.comm_floor_base ? ' above a ' + money(row.comm_floor_base) + ' monthly floor' + (row.carry ? ' (the floor rises by any shortfall carried from earlier in the quarter)' : '') : ' from the first dollar') : 'Salaried — no commission on this plan') + (row.pay_amount ? ' · ' + money(row.pay_amount) + (row.pay_kind === 'salary' ? ' base salary' : ' monthly draw') : '') + '.'));
     var cases = S.cases.filter(function (c) { return c.rep === rep && c.date && c.date.slice(0, 7) === month; }).sort(function (a, b) { return a.date < b.date ? -1 : 1; });
     var tb = el('table'), hr = el('tr'); ['Date', 'Surgeon', 'Facility', 'Product', 'Type', 'Status', 'Net sales', 'Counts toward commission'].forEach(function (x, i) { hr.appendChild(el('th', i === 6 ? 'r' : '', x)); });

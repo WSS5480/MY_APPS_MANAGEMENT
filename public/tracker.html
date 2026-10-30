@@ -430,7 +430,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
       quotas.forEach(function (q) {
         var who = q.role === 'Team' ? c.territory === q.territory : c.rep === q.rep;
         var type = q.counts === 'New only' ? c.surgeon_type === 'New' : q.counts === 'Legacy only' ? c.surgeon_type === 'Legacy' : true;
-        var prod = !q.product_filter || (c.product || '').toLowerCase().indexOf(q.product_filter.toLowerCase()) >= 0;
+        var prod = !q.product_filter || q.product_filter.split('|').some(function (f) { f = f.trim().toLowerCase(); return f && (c.product || '').toLowerCase().indexOf(f) >= 0; });
         if (who && type && prod) push(q.rep, c, q.metric);
       });
     });
@@ -695,7 +695,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
       var parts = [];
       if (me.pay_amount) parts.push(money(me.pay_amount) + (me.pay_kind === 'salary' ? ' base salary' : ' monthly draw'));
       parts.push(val(me.quota, me.metric) + ' monthly quota');
-      var basisH = me.product_filter ? me.product_filter + ' sales' : me.counts === 'New only' ? 'new-business sales' : 'sales';
+      var basisH = me.product_filter ? me.product_filter.split('|').join(' / ') + ' sales' : me.counts === 'New only' ? 'new-business sales' : 'sales';
       if (me.comm_rate) parts.push(Math.round(me.comm_rate * 100) + '% commission on ' + basisH + (me.comm_floor_base ? ' above ' + (me.carry ? 'the ' : 'a ') + money(me.comm_floor_base) + ' monthly floor' : ' from dollar one'));
       if (me.sim_quota) parts.push('SIM Lab quota of ' + pl(me.sim_quota, 'event', 'events') + ' in ' + qLabel(month));
       if (me.carry) parts.push("a month-end shortfall carries into the next month's target through " + mName(qEnd(month)));
@@ -755,7 +755,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
     /* commissions */
     var planText = function (s) {
       if (!s.comm_rate) return 'Salaried';
-      var basis = s.product_filter ? s.product_filter + ' sales' : s.counts === 'New only' ? 'new-business sales' : 'sales';
+      var basis = s.product_filter ? s.product_filter.split('|').join(' / ') + ' sales' : s.counts === 'New only' ? 'new-business sales' : 'sales';
       return Math.round(s.comm_rate * 100) + '% on ' + basis + (s.comm_floor_base ? ' above ' + money(s.comm_floor_base) + (s.carry ? ' + carried shortfall' : '') : ' from dollar one') + (s.pay_amount ? ' \u00b7 ' + money(s.pay_amount) + (s.pay_kind === 'salary' ? ' base' : ' draw') : '');
     };
     document.querySelectorAll('.qname').forEach(function (n) { n.textContent = qLabel(month); });
@@ -775,7 +775,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
         cst.appendChild(stat('Commission \u00b7 ' + qLabel(month) + ' to date', money(me.comm_qtd), 'All months of the quarter through ' + mName(month)));
         cst.appendChild(stat('Est. pay \u00b7 ' + mName(month), money(me.est_pay), me.pay_amount ? money(me.pay_amount) + (me.pay_kind === 'salary' ? ' base' : ' draw') + ' + ' + money(me.commission) + ' commission' : 'Commission only'));
         var why = me.carried_in > 0 ? ' Your floor this month is ' + money(me.comm_floor) + ' because ' + money(me.carried_in) + ' carried over from ' + mName(me.prev_month) + '.' : '';
-        var basisF = me.product_filter ? me.product_filter + ' sales' : me.counts === 'New only' ? 'new-business sales' : 'sales';
+        var basisF = me.product_filter ? me.product_filter.split('|').join(' / ') + ' sales' : me.counts === 'New only' ? 'new-business sales' : 'sales';
         if (!me.comm_floor) cf.textContent = me.actual > 0 ? pct + ' \u00d7 ' + money(me.actual) + ' ' + basisF + ' = ' + money(me.commission) + ' so far this month, from the first dollar. Every $1,000 in ' + basisF + ' earns ' + per + '.' : 'Commission starts from the first dollar: every $1,000 in ' + basisF + ' earns ' + per + '. Nothing logged yet this month.';
         else if (me.comm_above > 0) cf.textContent = pct + ' \u00d7 (' + money(me.actual) + ' sales \u2212 ' + money(me.comm_floor) + ' floor) = ' + money(me.commission) + ' so far this month. Every extra $1,000 above the floor earns ' + per + '.' + why;
         else cf.textContent = 'You are ' + money(me.comm_floor - me.actual) + ' below your ' + money(me.comm_floor) + ' commission floor. Commission starts on the first dollar above it: every $1,000 above the floor earns ' + per + '.' + why;
