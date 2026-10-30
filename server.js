@@ -858,7 +858,7 @@ function wcuHtml(r, base) {
   const wkLabel = new Date(r.week + 'T12:00:00Z').toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit', timeZone: 'UTC' });
   const h = (t) => `<h3 style="font:700 15px Arial,sans-serif;margin:18px 0 4px;border-bottom:2px solid #0f1b33;padding-bottom:3px">${t}</h3>`;
   return `<div style="font:14px/1.45 Arial,sans-serif;color:#111;max-width:760px">
-  <h2 style="margin:0 0 2px;font:800 20px Arial,sans-serif">Weekly Clinical Update · ${e(r.rep)}</h2><div style="color:#555">Week of ${wkLabel}${r.sent_at ? ` · sent ${new Date(r.sent_at).toLocaleString('en-US', { timeZone: 'America/Chicago', weekday: 'short', hour: 'numeric', minute: '2-digit' })}${r.late ? ' <b style="color:#b42318">(late)</b>' : ''}` : ''}</div>
+  <h2 style="margin:0 0 2px;font:800 20px Arial,sans-serif">WCU · Weekly Clinical Update · ${e(r.rep)}</h2><div style="color:#555">Week of ${wkLabel}${r.sent_at ? ` · sent ${new Date(r.sent_at).toLocaleString('en-US', { timeZone: 'America/Chicago', weekday: 'short', hour: 'numeric', minute: '2-digit' })}${r.late ? ' <b style="color:#b42318">(late)</b>' : ''}` : ''}</div>
   ${h('Top Wins for the Week')}${li(r.wins)}
   ${h(`Cases This Week: ${r.cases_count}`)}<table style="width:100%;border-collapse:collapse;margin-top:6px"><tr>${(r.days || []).map((d) => `<th style="text-align:left;font:600 12px Arial;color:#444;border-bottom:1px solid #ccc;padding:4px">${e(d.day)} ${e(d.date.slice(5).replace('-', '/'))}</th>`).join('')}</tr>
     <tr>${(r.days || []).map((d) => `<td style="vertical-align:top;padding:4px;border-right:1px solid #eee;font-size:13px">${d.cases.length ? d.cases.map((c) => `<div>${e(c)}</div>`).join('') : '<span style="color:#999">—</span>'}</td>`).join('')}</tr></table>
@@ -879,7 +879,7 @@ app.post('/api/wcu/send', needApi(), async (req, res) => {
   Object.assign(doc, { status: 'sent', sent_at: new Date().toISOString(), late: first ? Date.now() > wcuDueAt(wk).getTime() : !!prev.late, resent: !first });
   await put(k, doc);
   // in-app: the COO sees it under Weekly Clinical Updates (and gets an app notification); no email
-  notifyOwner(`Weekly update · ${rep}${doc.late ? ' (late)' : ''}`, `${rep} sent the Weekly Clinical Update for the week of ${wk}.`).catch(() => {});
+  notifyOwner(`WCU · ${rep}${doc.late ? ' (late)' : ''}`, `${rep} sent the WCU for the week of ${wk}.`).catch(() => {});
   res.json({ ok: true, report: doc, state: wcuState(doc, wk) });
 });
 // the COO: every rep's update for a week, with on-time / late / missing
@@ -905,7 +905,7 @@ app.get('/api/wcu/history', needApi(), (req, res) => { // archive: every week si
 app.get('/api/wcu/view', needApi(), (req, res) => { // printable page
   const rep = wcuRepOf(req), wk = mondayOf(/^\d{4}-\d{2}-\d{2}$/.test(String(req.query.week || '')) ? req.query.week : chiDate());
   const d = docs.get(wcuKey(rep, wk)) || wcuBuild(rep, wk);
-  res.set('Cache-Control', 'no-store').type('html').send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Weekly Clinical Update · ${esc(rep)}</title><style>body{margin:24px;background:#fff}@media print{.np{display:none}}</style></head><body><p class="np"><button onclick="print()">Print / save as PDF</button></p>${wcuHtml(d, '')}</body></html>`);
+  res.set('Cache-Control', 'no-store').type('html').send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>WCU · ${esc(rep)}</title><style>body{margin:24px;background:#fff}@media print{.np{display:none}}</style></head><body><p class="np"><button onclick="print()">Print / save as PDF</button></p>${wcuHtml(d, '')}</body></html>`);
 });
 app.get('/api/cal-link', needApi(), (req, res) => {
   const base = (process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');

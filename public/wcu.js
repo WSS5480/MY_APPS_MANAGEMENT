@@ -33,16 +33,16 @@
   function repBanner(st) {
     if (st.sent) return banner(null);
     var due = new Date(st.due), now = new Date(), isThu = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', weekday: 'short' }).format(now) === 'Thu';
-    if (now > due) return banner('<span>⚠️ LATE: your Weekly Clinical Update was due Thursday at 5:00 PM.</span><button class="btn small primary" type="button" data-wcugo>Review &amp; submit now</button>', 'err');
-    if (isThu) return banner('<span>📝 Weekly Clinical Update is due today by 5:00 PM.</span><button class="btn small primary" type="button" data-wcugo>Review &amp; submit</button>', 'warn');
+    if (now > due) return banner('<span>⚠️ LATE: your WCU was due Thursday at 5:00 PM.</span><button class="btn small primary" type="button" data-wcugo>Review &amp; submit now</button>', 'err');
+    if (isThu) return banner('<span>📝 WCU is due today by 5:00 PM.</span><button class="btn small primary" type="button" data-wcugo>Review &amp; submit</button>', 'warn');
     banner(null);
   }
   function cooBanner(list) {
     var due = new Date(list.due), now = new Date(), isThu = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', weekday: 'short' }).format(now) === 'Thu';
     var missing = list.reps.filter(function (r) { return !r.sent; }).map(function (r) { return r.rep; });
     if (!missing.length) return banner(null);
-    if (now > due) return banner('<span>⚠️ Weekly Clinical Updates late: ' + esc(missing.join(', ')) + '.</span><button class="btn small" type="button" data-wcugo>Open updates</button>', 'err');
-    if (isThu) return banner('<span>📝 Weekly Clinical Updates are due today by 5:00 PM · waiting on ' + esc(missing.join(', ')) + '.</span><button class="btn small" type="button" data-wcugo>Open updates</button>', 'warn');
+    if (now > due) return banner('<span>⚠️ WCUs late: ' + esc(missing.join(', ')) + '.</span><button class="btn small" type="button" data-wcugo>Open WCUs</button>', 'err');
+    if (isThu) return banner('<span>📝 WCUs are due today by 5:00 PM · waiting on ' + esc(missing.join(', ')) + '.</span><button class="btn small" type="button" data-wcugo>Open WCUs</button>', 'warn');
     banner(null);
   }
   function openSection() { var s = $('#sec-wcu'); if (!s) return; s.hidden = false; s.classList.remove('folded'); var h = s.querySelector('.fold-h'); if (h) h.setAttribute('aria-expanded', 'true'); s.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
@@ -67,7 +67,7 @@
   function queueSave() { clearTimeout(saveT); var m = $('#wcu-saved'); if (m) m.textContent = 'Saving…'; saveT = setTimeout(function () { api('/api/wcu', readForm(), 'PUT').then(function (j) { R = j.report; var m2 = $('#wcu-saved'); if (m2) m2.textContent = 'Draft saved'; }, function (e) { var m2 = $('#wcu-saved'); if (m2) m2.textContent = (e && e.error) || 'Could not save'; }); }, 700); }
   function drawRep(j) {
     R = j.report; var st = j.state, sec = $('#sec-wcu'); repBanner(WEEK === mondayOf(chiToday()) ? st : { sent: true });
-    sec.innerHTML = '<div class="cardhead"><h2>Weekly Clinical Update</h2><div class="tools"><select class="field" id="wcu-week" style="width:auto">' + weekOptions() + '</select>' + statusPill(st) + '</div></div>' +
+    sec.innerHTML = '<div class="cardhead"><h2>WCU <small class="note">Weekly Clinical Update</small></h2><div class="tools"><select class="field" id="wcu-week" style="width:auto">' + weekOptions() + '</select>' + statusPill(st) + '</div></div>' +
       '<p class="note">Built from your week in the tracker: cases from your case log, wins from completed cases and visit notes, targets from your pathway, next week from your planned visits and scheduled cases. Review it, edit anything, then submit. Due every <b>Thursday by 5:00 PM</b>; the COO sees it here in the app.</p>' +
       '<div class="tools" style="margin:6px 0 12px"><button class="btn small" type="button" id="wcu-rebuild">↻ Rebuild from my activity</button><a class="btn small" id="wcu-print" target="_blank" rel="noopener" href="/api/wcu/view?week=' + WEEK + '">Print / PDF</a><span class="note" id="wcu-saved">' + (j.saved ? 'Draft saved' : 'Not saved yet') + '</span></div>' +
       '<label class="f"><b>Top wins for the week</b> <span class="note">· one per line</span><textarea class="field" id="wcu-wins" rows="6">' + esc(lines(R.wins)) + '</textarea></label>' +
@@ -107,7 +107,7 @@
     var box = $('#wcu-arch'); if (!box) return;
     api('/api/wcu/history').then(function (h) {
       var r = h.reps[0]; if (!r) return;
-      box.innerHTML = '<details' + (r.weeks.length > 1 ? '' : ' open') + '><summary><b>My past updates</b> · ' + stats(r) + '</summary><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">' + r.weeks.map(function (w) { return wkChip(w); }).join('') + '</div><p class="note">Tap a week to open it.</p></details>';
+      box.innerHTML = '<details' + (r.weeks.length > 1 ? '' : ' open') + '><summary><b>My past WCUs</b> · ' + stats(r) + '</summary><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">' + r.weeks.map(function (w) { return wkChip(w); }).join('') + '</div><p class="note">Tap a week to open it.</p></details>';
       box.onclick = function (e) { var c = e.target.closest('[data-wk]'); if (!c) return; WEEK = c.dataset.wk; loadRep().then(function () { openSection(); }); };
     }, function () {});
   }
@@ -119,7 +119,7 @@
     var sentN = list.reps.filter(function (r) { return r.sent; }).length;
     if (!list.reps.some(function (r) { return r.rep === PICK; })) PICK = (list.reps.find(function (r) { return r.sent; }) || list.reps[0] || {}).rep || '';
     var badge = function (r) { return r.sent ? (r.late ? '⚠ late' : '✓ on time') : (r.late ? '✗ missing' : (r.draft ? '… draft' : '○ not started')); };
-    sec.innerHTML = '<div class="cardhead"><h2>Weekly Clinical Updates</h2><div class="tools"><select class="field" id="wcu-week" style="width:auto">' + weekOptions() + '</select><span class="pill ' + (sentN === list.reps.length ? 'ok' : 'warn') + '">' + sentN + ' of ' + list.reps.length + ' submitted</span></div></div>' +
+    sec.innerHTML = '<div class="cardhead"><h2>WCU <small class="note">Weekly Clinical Updates</small></h2><div class="tools"><select class="field" id="wcu-week" style="width:auto">' + weekOptions() + '</select><span class="pill ' + (sentN === list.reps.length ? 'ok' : 'warn') + '">' + sentN + ' of ' + list.reps.length + ' submitted</span></div></div>' +
       '<div class="tools" style="flex-wrap:wrap;gap:8px;margin:4px 0 10px"><label class="f" style="margin:0;min-width:16rem"><b>Rep</b><select class="field" id="wcu-rep">' + list.reps.map(function (r) { return '<option value="' + esc(r.rep) + '"' + (r.rep === PICK ? ' selected' : '') + '>' + esc(r.rep) + ' — ' + badge(r) + '</option>'; }).join('') + '</select></label><span id="wcu-repstat"></span></div>' +
       '<div id="wcu-one"></div><div id="wcu-hist" style="margin-top:16px"></div>';
     $('#wcu-week').onchange = function (e) { WEEK = e.target.value; loadCoo(); };
@@ -149,7 +149,7 @@
       var show = function (rep) {
         if (!rep) { body.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr));gap:8px">' + h.reps.map(function (r) { return '<div style="border:1px solid var(--line,#dde3ec);border-radius:10px;padding:8px 10px"><b>' + esc(r.rep) + '</b><div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:4px;align-items:center">' + stats(r) + '</div></div>'; }).join('') + '</div>'; return; }
         var r = h.reps.find(function (x) { return x.rep === rep; });
-        body.innerHTML = '<div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center">' + stats(r) + '</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">' + r.weeks.map(function (w) { return wkChip(w, r.rep); }).join('') + '</div><p class="note">Tap a week to open that update.</p>';
+        body.innerHTML = '<div style="display:flex;flex-wrap:wrap;gap:4px;align-items:center">' + stats(r) + '</div><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">' + r.weeks.map(function (w) { return wkChip(w, r.rep); }).join('') + '</div><p class="note">Tap a week to open that WCU.</p>';
       };
       $('#wcu-hrep').onchange = function (e) { show(e.target.value); }; show('');
       body.onclick = function (e) { var c = e.target.closest('[data-wk]'); if (!c) return; WEEK = c.dataset.wk; PICK = c.dataset.r; loadCoo().then(function () { openSection(); }); };

@@ -64,6 +64,7 @@ header.head.has-who{padding-top:58px}
 @media (max-width:700px){.who-badge{top:12px;right:12px;max-width:calc(100% - 24px)}}
 </style>
 <link rel="stylesheet" href="/theme-360.css?v=18"><script src="/collapse.js?v=9" defer></script>
+<style>.repgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr));gap:10px 14px;align-items:start;border:1px solid var(--line,#dde3ec);border-radius:12px;padding:12px}.repgrid .f{display:flex;flex-direction:column;gap:4px;margin:0;min-width:0}.repgrid .f>b{font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}.repgrid .field{width:100%}.repgrid .f>input[type=checkbox],.repgrid .f>.pill,.repgrid .f>.note{align-self:flex-start}</style>
 </head><body class="side-layout">
 <div class="wrap">
   <header class="head" style="position:relative">
@@ -71,14 +72,14 @@ header.head.has-who{padding-top:58px}
     <div class="brand"><small class="appname">Case tracker admin</small><div class="ver" id="ver"></div><div class="appswitch" id="appswitch" hidden><a class="on">Case tracker</a><a id="sw-store" href="#">Peptide store ↗</a></div><div class="appswitch views" id="views" style="margin-top:.35rem"><a class="on">Admin</a><a id="v-store" href="#" hidden>Store</a><a id="v-rep" href="#" hidden>Rep</a><a href="/">Tracker</a></div></div>
     <div class="who-badge" id="who-badge" hidden title=""><span class="wb-ic" id="wb-ic" aria-hidden="true"></span><span><b id="wb-name"></b><small id="wb-role"></small></span></div>
     <div class="headtxt"><h1>Admin</h1><span class="conf">360 MEDICAL - SURGICAL CASE TRACKER</span><p class="sub">Reps, PINs, quotas and commission plans. Changes here show in the tracker within seconds.</p></div>
-    <div class="tools"><button class="btn" id="btn-refresh" type="button" onclick="this.disabled=true;this.textContent='⟳ Refreshing…';location.reload()">⟳ Refresh</button><a class="btn" href="/">Open tracker</a><a class="btn" href="#sec-wcu">📝 Weekly updates</a><a class="btn" href="#managers">Managers</a><a class="btn" href="#visits">Visits</a><a class="btn" href="#surgeons">Surgeons</a><a class="btn" href="#facilities">Facilities</a><a class="btn" href="/products">Products</a><a class="btn" href="#mail-card">Approval emails</a><a class="btn" href="/admin/download">Admin app</a><hr class="navline both-apps" hidden><a class="btn both-apps" hidden data-go="/admin#staff" data-hub="staff">Team logins</a><a class="btn both-apps" hidden data-go="/admin#setup" data-hub="setup">Email &amp; approvals</a><a class="btn both-apps" hidden data-local="geo-card" href="#hub-geo">Geofencing</a><a class="btn both-apps" hidden data-go="/admin#apps" data-hub="apps">Apps &amp; downloads</a><a class="btn both-apps" hidden data-go="/admin#howto" data-hub="howto">How to</a><a class="btn both-apps" hidden data-go="/admin#account" data-hub="account">My account</a><button class="btn" id="logout" type="button">Log out</button></div>
+    <div class="tools"><button class="btn" id="btn-refresh" type="button" onclick="this.disabled=true;this.textContent='⟳ Refreshing…';location.reload()">⟳ Refresh</button><a class="btn" href="/">Open tracker</a><a class="btn" href="#sec-wcu">📝 WCU</a><a class="btn" href="#managers">Managers</a><a class="btn" href="#visits">Visits</a><a class="btn" href="#surgeons">Surgeons</a><a class="btn" href="#facilities">Facilities</a><a class="btn" href="/products">Products</a><a class="btn" href="#mail-card">Approval emails</a><a class="btn" href="/admin/download">Admin app</a><hr class="navline both-apps" hidden><a class="btn both-apps" hidden data-go="/admin#staff" data-hub="staff">Team logins</a><a class="btn both-apps" hidden data-go="/admin#setup" data-hub="setup">Email &amp; approvals</a><a class="btn both-apps" hidden data-local="geo-card" href="#hub-geo">Geofencing</a><a class="btn both-apps" hidden data-go="/admin#apps" data-hub="apps">Apps &amp; downloads</a><a class="btn both-apps" hidden data-go="/admin#howto" data-hub="howto">How to</a><a class="btn both-apps" hidden data-go="/admin#account" data-hub="account">My account</a><button class="btn" id="logout" type="button">Log out</button></div>
   </header>
   <div id="hubpane" hidden><iframe id="hubframe" title="Shared admin page"></iframe></div>
 
   <div class="msg warn" id="dbwarn" hidden></div>
   <div class="msg warn" id="pinwarn" hidden>You are still on the starting admin PIN. Set your own below.</div>
 
-  <section class="card" id="sec-wcu"><p class="note">Loading weekly updates…</p></section>
+  <section class="card" id="sec-wcu"><p class="note">Loading WCUs…</p></section>
   <section class="card" id="reps-pointer" hidden><div class="cardhead"><h2>Reps and plans</h2><a class="btn primary" href="#hub-staff">Open Team logins</a></div><p class="note">Reps, PINs, access and each rep's quota and commission plan are all under <a href="#hub-staff">Team logins</a> — one roster for the store and the tracker.</p></section>
   <section class="card" id="reps-card">
     <div class="cardhead">
@@ -87,9 +88,8 @@ header.head.has-who{padding-top:58px}
     </div>
     <p class="note" id="hub-reps-note" hidden>Reps are added, renamed, given PINs and switched on or off under <b>Team logins</b> (the table above this card, one roster for both apps). Set each rep's plan here.</p>
     <p class="note">Quota and commission rules drive the scorecard, pace alerts and commission estimates. <b>Counts</b> limits quota to new or legacy surgeons; <b>Product</b> limits it to one product line. <b>Carry</b> adds a month's shortfall to the next month's target within the quarter. A <b>Team</b> row sets a quota for a whole territory. Turning access off signs the rep out right away.</p>
-    <div class="scroll"><table id="reps"><thead><tr>
-      <th>Name</th><th>Role</th><th>Territory</th><th>Metric</th><th>Monthly quota</th><th>Counts</th><th>Product</th><th>Carry</th><th>Comm %</th><th>Comm floor $</th><th>Pay</th><th>Pay $ / mo</th><th>SIM / qtr</th><th>PIN</th><th>Access</th><th></th>
-    </tr></thead><tbody></tbody></table></div>
+    <label class="f" style="max-width:28rem;margin:4px 0 10px"><b>Rep</b><select class="field" id="rep-pick"></select></label>
+    <div id="reps"></div>
     <div class="msg" id="save-msg" hidden style="margin-top:12px"></div>
   </section>
 
@@ -369,7 +369,7 @@ header.head.has-who{padding-top:58px}
 <script src="/idle.js"></script>
 <script src="/zoom.js"></script>
 <script src="/visitcal.js"></script>
-<script src="/wcu.js?v=2"></script>
+<script src="/wcu.js?v=3"></script>
 <script src="/addr.js"></script>
 <script>
 (function () {
@@ -418,10 +418,17 @@ header.head.has-who{padding-top:58px}
     s.addEventListener('change', function () { r[k] = s.value || null; setDirty(true); if (k === 'role') draw(); });
     return s;
   }
-  function draw() {
-    var b = $('#reps tbody'); b.replaceChildren();
-    rows.forEach(function (r, idx) {
-      var team = r.role === 'Team', tr = el('tr', team ? 'team' : ''), td = function (n) { var c = el('td'); if (n) c.appendChild(n); tr.appendChild(c); return c; };
+  var REP_COLS = ['Name', 'Role', 'Territory', 'Metric', 'Monthly quota', 'Counts', 'Product', 'Carry shortfall', 'Comm %', 'Comm floor $', 'Pay', 'Pay $ / mo', 'SIM / qtr', 'PIN', 'Access', ''], repPick = 0;
+  function draw() { // one rep at a time: pick from the dropdown, fields wrap so nothing scrolls sideways
+    var b = $('#reps'); b.replaceChildren();
+    if (repPick >= rows.length) repPick = Math.max(0, rows.length - 1);
+    var ps = $('#rep-pick'); ps.replaceChildren();
+    rows.forEach(function (r, i) { ps.appendChild(new Option((r.rep || '(new)') + (r.role === 'Team' ? ' · team quota' : r.active === false ? ' · off' : ''), String(i), false, i === repPick)); });
+    ps.onchange = function () { repPick = Number(ps.value); draw(); };
+    ps.closest('label').hidden = !rows.length;
+    if (!rows.length) { b.appendChild(el('p', 'note', 'No reps yet.')); return; }
+    [rows[repPick]].forEach(function (r) { var idx = repPick;
+      var team = r.role === 'Team', col = 0, tr = el('div', 'repgrid' + (team ? ' team' : '')), td = function (n) { var c = el('div', 'f'), lb = REP_COLS[col++]; if (lb) c.appendChild(el('b', '', lb)); if (n) c.appendChild(n); tr.appendChild(c); return c; };
       var hubRow = !team && ST && ST.linked && r.hub; // managed from the store's Team logins: name, PIN and access live there
       var nameIn = input(r, 'rep', 'text', 'w-l', 'Name'); if (hubRow) { nameIn.readOnly = true; nameIn.title = 'Rename under Team logins'; } td(nameIn);
       td(team ? el('span', 'pill mute', 'Team') : input(r, 'role', 'text', 'w-m', 'Sales Rep'));
@@ -458,18 +465,18 @@ header.head.has-who{padding-top:58px}
       var ac = td();
       if (hubRow) ac.appendChild(el('span', r.active !== false ? 'pill ok' : 'pill mute', r.active !== false ? 'On' : 'Off'));
       else if (!team) { var a = el('input'); a.type = 'checkbox'; a.checked = r.active !== false; a.addEventListener('change', function () { r.active = a.checked; setDirty(true); }); var lab = el('label', 'chk'); lab.appendChild(a); lab.appendChild(document.createTextNode('On')); ac.appendChild(lab); }
-      var x = td(), rm = el('button', 'btn small danger', 'Remove'); rm.type = 'button';
+      var x = td(), rm = el('button', 'btn small danger', 'Remove'); rm.type = 'button'; x.style.alignSelf = 'end';
       rm.addEventListener('click', function () {
         if (!rm.dataset.armed) { rm.dataset.armed = '1'; rm.textContent = 'Confirm'; setTimeout(function () { rm.dataset.armed = ''; rm.textContent = 'Remove'; }, 4000); return; }
-        rows.splice(idx, 1); setDirty(true); draw(); say('#save-msg', 'warn', 'Removed from the list. Their logged cases stay in the tracker. Click Save changes to apply.');
+        rows.splice(idx, 1); repPick = 0; setDirty(true); draw(); say('#save-msg', 'warn', 'Removed from the list. Their logged cases stay in the tracker. Click Save changes to apply.');
       });
       if (!(hubRow && r.active !== false)) x.appendChild(rm); // an active store rep is removed under Team logins
       b.appendChild(tr);
     });
   }
 
-  $('#add-rep').addEventListener('click', function () { rows.push({ rep: '', role: 'Sales Rep', territory: '', metric: 'Revenue', quota: null, counts: 'All', product_filter: '', carry: false, comm_rate: null, comm_floor: null, pay_kind: '', pay_amount: null, sim_quota: null, pin: null, active: true, _orig: null }); setDirty(true); draw(); var ins = $('#reps tbody').lastChild.querySelector('input'); if (ins) ins.focus(); });
-  $('#add-team').addEventListener('click', function () { rows.push({ rep: '', role: 'Team', territory: '', metric: 'Revenue', quota: null, counts: 'All', product_filter: '', carry: false, sim_quota: null, _orig: null }); setDirty(true); draw(); });
+  $('#add-rep').addEventListener('click', function () { rows.push({ rep: '', role: 'Sales Rep', territory: '', metric: 'Revenue', quota: null, counts: 'All', product_filter: '', carry: false, comm_rate: null, comm_floor: null, pay_kind: '', pay_amount: null, sim_quota: null, pin: null, active: true, _orig: null }); repPick = rows.length - 1; setDirty(true); draw(); var ins = $('#reps').querySelector('input'); if (ins) ins.focus(); });
+  $('#add-team').addEventListener('click', function () { rows.push({ rep: '', role: 'Team', territory: '', metric: 'Revenue', quota: null, counts: 'All', product_filter: '', carry: false, sim_quota: null, _orig: null }); repPick = rows.length - 1; setDirty(true); draw(); });
 
   $('#save').addEventListener('click', function () {
     var b = $('#save'); b.disabled = true;
