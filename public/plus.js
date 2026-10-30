@@ -376,7 +376,7 @@
       d.appendChild(el('div', '', money(inv.amount) + ' · ' + inv.date));
       d.appendChild(el('div', 'note', [c.surgeon, c.facility, c.product].filter(Boolean).join(' · ') + ' · case ' + dayName(c.date)));
       if (inv.status === 'rejected') d.appendChild(el('div', 'pill bad', 'Sent back: ' + (inv.reason || '')));
-      var row = el('div', 'tools'); row.appendChild(btn(lead ? 'Review' : 'Open case', 'small primary', function () { if (window.SCTPage) window.SCTPage.show('#sec-log'); var lg = $('#sec-log'); if (lg && lg.classList.contains('folded')) { var fh = lg.querySelector('.fold-h'); if (fh) fh.click(); else lg.classList.remove('folded'); } T.openEditor(c.id); setTimeout(function () { var x = $('#ce-inv'); if (x) x.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 200); }));
+      var row = el('div', 'tools'); row.appendChild(btn(lead ? 'Review' : 'Open case', 'small primary', function () { var lg = $('#sec-log'); if (lg && lg.classList.contains('folded')) { var fh = lg.querySelector('.fold-h'); if (fh) fh.click(); else lg.classList.remove('folded'); } T.openEditor(c.id); setTimeout(function () { var x = $('#ce-inv'); if (x) x.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 200); }));
       (inv.files || []).slice(0, 1).forEach(function (id) { var a = el('a', 'btn small', '📄 View'); a.href = '/img/' + encodeURIComponent(id); a.target = '_blank'; a.rel = 'noopener'; row.appendChild(a); });
       d.appendChild(row); g.appendChild(d);
     });
