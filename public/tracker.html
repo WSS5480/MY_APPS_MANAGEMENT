@@ -184,7 +184,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
 
   <div id="main">
     <nav class="jump" id="jump" aria-label="Jump to section">
-      <a href="#refresh" class="jr" aria-label="Refresh" title="Refresh">⟳</a><a href="#tiles">📊 Dashboard</a><a href="/products">🛍 Products</a><a href="#sec-upcoming">Upcoming</a><a href="#sec-log">Cases</a><a href="#sec-visits">Visit log</a><a href="#sec-dir">Directory</a><a href="#sec-pref">Pref cards</a><a href="#sec-score">Scorecard</a><a href="#sec-cred">Credentials</a><a href="#sec-vcal" class="jcal" aria-label="Calendar" title="Calendar">📅</a>
+      <a href="#refresh" class="jr" aria-label="Refresh" title="Refresh">⟳</a><a href="#tiles">📊 Dashboard</a><a href="/products">🛍 Products</a><a href="#sec-upcoming">Upcoming</a><a href="#sec-log">Cases</a><a href="#sec-wcu">📝 Weekly update</a><a href="#sec-visits">Visit log</a><a href="#sec-dir">Directory</a><a href="#sec-pref">Pref cards</a><a href="#sec-score">Scorecard</a><a href="#sec-cred">Credentials</a><a href="#sec-vcal" class="jcal" aria-label="Calendar" title="Calendar">📅</a>
     </nav>
     <div class="stack">
       <section class="tiles" id="tiles"></section>
@@ -282,6 +282,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
         <div class="empty" id="surgeons-empty" hidden>No completed cases for this month yet.</div>
       </section>
 
+      <section class="card" id="sec-wcu"><p class="note">Loading weekly update…</p></section>
       <section class="card" id="sec-log">
         <div class="cardhead">
           <h2>Case log · <span class="mname"></span> · <span class="vname"></span></h2>
@@ -1114,6 +1115,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
 </script>
 <script src="/visitcal.js"></script>
 <script src="/addr.js"></script>
+<script src="/wcu.js?v=2"></script>
 <script src="/plus.js"></script>
 
 <script>
@@ -1125,8 +1127,8 @@ section[id^="sec-"]{scroll-margin-top:62px}
   var rb = document.getElementById('btn-refresh'); if (rb) rb.addEventListener('click', function () { rb.disabled = true; rb.textContent = '⟳ Refreshing…'; location.reload(); });
   // reps: the original tracker's view first (quota tiles → pace to quota + pace alerts → estimated commissions → SIM Lab →
   // target surgeon conversion → surgeon activity → case log), then the field tools added since (calendar, upcoming, visits, cards, directory…)
-  var REP_ORDER = ['tiles', 'sec-score', 'sec-comm', 'sec-sim', 'sec-notes', 'sec-mix', 'sec-conv', 'sec-surgeons', 'sec-log', 'sec-vcal', 'sec-upcoming', 'sec-visits', 'sec-pref', 'sec-dir', 'sec-billing', 'sec-cred', 'sec-notify'];
-  var REP_OPEN = ['sec-comm', 'sec-sim', 'sec-conv', 'sec-surgeons', 'sec-log']; // shown open, like the original
+  var REP_ORDER = ['tiles', 'sec-score', 'sec-comm', 'sec-sim', 'sec-notes', 'sec-mix', 'sec-conv', 'sec-surgeons', 'sec-log', 'sec-wcu', 'sec-vcal', 'sec-upcoming', 'sec-visits', 'sec-pref', 'sec-dir', 'sec-billing', 'sec-cred', 'sec-notify'];
+  var REP_OPEN = ['sec-comm', 'sec-sim', 'sec-conv', 'sec-surgeons', 'sec-log', 'sec-wcu']; // shown open, like the original
   fetch('/api/me', { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (me) {
     if (me && me.name) {
       document.getElementById('wb-name').textContent = me.name; document.getElementById('wb-ic').textContent = String(me.name).trim().charAt(0).toUpperCase();

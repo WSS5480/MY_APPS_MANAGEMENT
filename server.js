@@ -303,7 +303,7 @@ app.get('/media/:id', async (req, res) => {
     res.setHeader('Content-Length', buf.length); res.end(buf);
   } catch (e) { res.status(500).end(); }
 });
-app.get(['/logo.png', '/logo-dark.png', '/collapse.js', '/d3.min.js', '/shim.js', '/plus.js', '/plus.css', '/addr.js', '/visitcal.js', '/idle.js', '/zoom.js', '/spin.js', '/install.js', '/ptr.js', '/update.js', '/webauthn.js', '/qrious.min.js', '/app.css', '/theme-360.css', '/icon-admin-192.png', '/icon-admin-512.png', '/icon-admin-maskable-512.png', '/apple-touch-icon-admin.png', '/sw.js', '/favicon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'], (req, res) => { if (req.path === '/sw.js') res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, req.path)); });
+app.get(['/logo.png', '/logo-dark.png', '/collapse.js', '/d3.min.js', '/shim.js', '/plus.js', '/plus.css', '/addr.js', '/wcu.js', '/visitcal.js', '/idle.js', '/zoom.js', '/spin.js', '/install.js', '/ptr.js', '/update.js', '/webauthn.js', '/qrious.min.js', '/app.css', '/theme-360.css', '/icon-admin-192.png', '/icon-admin-512.png', '/icon-admin-maskable-512.png', '/apple-touch-icon-admin.png', '/sw.js', '/favicon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'], (req, res) => { if (req.path === '/sw.js') res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, req.path)); });
 app.get('/manifest.webmanifest', (req, res) => { res.type('application/manifest+json'); res.sendFile(path.join(pub, 'manifest.webmanifest')); });
 app.get('/admin.webmanifest', (req, res) => { res.type('application/manifest+json'); res.sendFile(path.join(pub, 'admin.webmanifest')); });
 
@@ -787,6 +787,126 @@ function calSession(tok) {
   if (s.acct) { const a = mgrs()[s.acct]; return a && a.active !== false && a.v === s.v ? s : null; }
   return p.v === s.v ? s : null;
 }
+/* ---------------- Weekly Clinical Update (WCU) ----------------
+   Built from the rep's activity for the week (cases, visits, targets, plans); the rep reviews, edits and sends it to the COO.
+   Due every Thursday by 5:00 PM Central for the week (Monday–Friday). Stored as wcu/<rep>|<monday>. */
+const WCU_STEPS = ['Not started', '1 Discovery', '2 Observe', '3 Debrief', '4 360 Experience', '5 Case commitment', '6 Outcomes & QTi'];
+const wAdd = (iso, n) => new Date(Date.parse(iso + 'T12:00:00Z') + n * 864e5).toISOString().slice(0, 10);
+const mondayOf = (iso) => { const d = new Date(iso + 'T12:00:00Z'), w = d.getUTCDay(); return wAdd(iso, w === 0 ? -6 : 1 - w); };
+const wcuKey = (rep, wk) => 'wcu/' + String(rep).replace(/[\/|]/g, '-') + '|' + wk;
+const chiNowParts = () => { const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', weekday: 'short', hour: 'numeric', minute: 'numeric', hour12: false }).formatToParts(new Date()).map((x) => [x.type, x.value])); return { wd: p.weekday, h: Number(p.hour) % 24, m: Number(p.minute) }; };
+const wcuDueAt = (wk) => { // Thursday 5:00 PM Central as an instant
+  const thu = wAdd(wk, 3), probe = new Date(thu + 'T17:00:00Z');
+  const off = (new Date(probe.toLocaleString('en-US', { timeZone: 'UTC' })) - new Date(probe.toLocaleString('en-US', { timeZone: 'America/Chicago' }))) / 36e5;
+  return new Date(Date.parse(thu + 'T17:00:00Z') + off * 36e5);
+};
+const DAYN = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+const niceDay = (iso) => new Date(iso + 'T12:00:00Z').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
+function wcuBuild(rep, wk) {
+  const end = wAdd(wk, 4), nextWk = wAdd(wk, 7), nextEnd = wAdd(wk, 11), all = [...docs];
+  const of = (col) => all.filter(([k, d]) => k.startsWith(col + '/') && d && d.rep === rep).map(([k, d]) => Object.assign({ id: k.split('/')[1] }, d));
+  const cases = of('cases'), visits = of('visits'), targets = of('targets'), prefs = of('prefcards');
+  const live = (c) => String(c.status || '').toLowerCase() !== 'cancelled';
+  const done = (c) => /completed|po received|invoiced|paid/i.test(c.status || '');
+  const week = cases.filter((c) => live(c) && c.date >= wk && c.date <= end).sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')));
+  const caseLine = (c) => [c.surgeon || 'Surgeon TBD', [c.product, c.units ? '×' + c.units : ''].filter(Boolean).join(' '), c.facility ? '@ ' + c.facility : ''].filter(Boolean).join(' · ');
+  const days = DAYN.map((name, i) => ({ day: name, date: wAdd(wk, i), cases: week.filter((c) => c.date === wAdd(wk, i)).map(caseLine) }));
+  const wins = [];
+  week.filter(done).forEach((c) => wins.push(`On ${niceDay(c.date)}, I had a case with ${c.surgeon || 'a surgeon'}${c.product ? ` using ${c.product}${c.units ? ` (${c.units})` : ''}` : ''}${c.facility ? ` at ${c.facility}` : ''}.`));
+  visits.filter((v) => v.date >= wk && v.date <= end && v.status !== 'cancelled' && (v.notes || (v.step_to > (v.step_from || 0)))).sort((a, b) => a.date.localeCompare(b.date)).forEach((v) =>
+    wins.push(`On ${niceDay(v.date)}, I met with ${v.surgeon || 'a surgeon'}${v.facility ? ` at ${v.facility}` : ''}${v.notes ? `: ${v.notes}` : ''}${v.step_to > (v.step_from || 0) ? ` (moved to ${WCU_STEPS[v.step_to] || 'step ' + v.step_to})` : ''}.`));
+  const nextCases = cases.filter((c) => live(c) && c.date >= nextWk && c.date <= nextEnd);
+  const dir = all.filter(([k]) => k.startsWith('surgeons/')).map(([, d]) => d);
+  const spec = (n) => { const k = lcs(n).replace(/^dr\.?\s*/, ''); const d = dir.find((x) => lcs(x.name).replace(/^dr\.?\s*/, '') === k); return d ? d.specialty || '' : ''; };
+  const productsFor = (n) => { const p = prefs.find((x) => lcs(x.surgeon) === lcs(n)); if (p && p.products && p.products.length) return p.products.join(', ');
+    const used = cases.filter((c) => lcs(c.surgeon) === lcs(n) && c.product).map((c) => c.product); return [...new Set(used)].slice(0, 3).join(', '); };
+  const nextStepFor = (t) => { const v = visits.filter((x) => x.target_id === t.id || lcs(x.surgeon) === lcs(t.surgeon)).sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
+    return (v && v.next_step) || (t.step ? `At ${WCU_STEPS[t.step] || 'step ' + t.step}` : 'First visit'); };
+  const pod = targets.map((t) => ({ surgeon: t.surgeon || '', hospital: t.facility || '', specialty: spec(t.surgeon), products: productsFor(t.surgeon), next: nextStepFor(t) }));
+  const plan = DAYN.map((name, i) => { const d = wAdd(nextWk, i), items = [];
+    visits.filter((v) => v.date === d && v.status !== 'cancelled').forEach((v) => items.push(`${v.time ? v.time + ' · ' : ''}${v.type || 'Visit'} with ${v.surgeon || 'target surgeon'}${v.facility ? ` at ${v.facility}` : ''}${v.purpose ? ` — ${v.purpose}` : ''}`));
+    visits.filter((v) => v.next_date === d && v.next_step).forEach((v) => items.push(`Follow up with ${v.surgeon || 'surgeon'}: ${v.next_step}`));
+    nextCases.filter((c) => c.date === d).forEach((c) => items.push(`Support case: ${caseLine(c)}`));
+    return { day: name, date: d, items }; });
+  return { rep, week: wk, status: 'draft', wins, cases_count: week.length, days, projected: nextCases.length, pod, plan, notes: '', built_at: new Date().toISOString() };
+}
+const wcuState = (doc, wk) => { const due = wcuDueAt(wk), sent = doc && doc.status === 'sent';
+  return { due: due.toISOString(), sent: !!sent, sent_at: sent ? doc.sent_at : null, late: sent ? !!doc.late : Date.now() > due.getTime() }; };
+const wcuClean = (b, base) => { const lines = (v) => (Array.isArray(v) ? v : String(v || '').split('\n')).map((x) => String(x || '').trim().slice(0, 600)).filter(Boolean).slice(0, 40);
+  return Object.assign({}, base, {
+    wins: lines(b.wins), projected: Math.max(0, Math.min(999, parseInt(b.projected, 10) || 0)), notes: String(b.notes || '').slice(0, 4000),
+    pod: (Array.isArray(b.pod) ? b.pod : []).slice(0, 40).map((r) => ({ surgeon: String(r.surgeon || '').slice(0, 120), hospital: String(r.hospital || '').slice(0, 120), specialty: String(r.specialty || '').slice(0, 80), products: String(r.products || '').slice(0, 200), next: String(r.next || '').slice(0, 400) })).filter((r) => r.surgeon || r.next),
+    plan: DAYN.map((name, i) => { const p = (Array.isArray(b.plan) ? b.plan : []).find((x) => x && x.day === name) || {}; return { day: name, date: base.plan ? (base.plan[i] || {}).date : '', items: lines(p.items) }; }),
+    updated_at: new Date().toISOString() }); };
+const wcuRepOf = (req) => (req.s.role === 'rep' ? req.s.rep : String(req.query.rep || req.body?.rep || ''));
+app.get('/api/wcu', needApi(), (req, res) => {
+  const rep = wcuRepOf(req); if (!rep) return res.status(400).json({ error: 'Which rep?' });
+  const wk = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.week || '')) ? mondayOf(req.query.week) : mondayOf(chiDate());
+  const saved = docs.get(wcuKey(rep, wk));
+  res.json({ report: saved || wcuBuild(rep, wk), saved: !!saved, fresh: wcuBuild(rep, wk), state: wcuState(saved, wk), week: wk, rep });
+});
+app.put('/api/wcu', needApi(), async (req, res) => {
+  if (req.s.role !== 'rep') return res.status(403).json({ error: 'Reps write their own weekly update.' });
+  const rep = req.s.rep, wk = mondayOf(/^\d{4}-\d{2}-\d{2}$/.test(String(req.body?.week || '')) ? req.body.week : chiDate()), k = wcuKey(rep, wk);
+  const prev = docs.get(k) || wcuBuild(rep, wk), fresh = wcuBuild(rep, wk);
+  const doc = wcuClean(req.body || {}, Object.assign({}, prev, { days: fresh.days, cases_count: fresh.cases_count, plan: prev.plan || fresh.plan }));
+  if (prev.status === 'sent') { doc.status = 'sent'; doc.edited_after_send = true; }
+  await put(k, doc); res.json({ ok: true, report: doc, state: wcuState(doc, wk) });
+});
+function wcuHtml(r, base) {
+  const e = (v) => esc(String(v ?? '')), li = (a) => (a && a.length ? `<ul style="margin:6px 0 0 18px;padding:0">${a.map((x) => `<li style="margin:3px 0">${e(x)}</li>`).join('')}</ul>` : '<p style="color:#777;margin:6px 0">—</p>');
+  const wkLabel = new Date(r.week + 'T12:00:00Z').toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: '2-digit', timeZone: 'UTC' });
+  const h = (t) => `<h3 style="font:700 15px Arial,sans-serif;margin:18px 0 4px;border-bottom:2px solid #0f1b33;padding-bottom:3px">${t}</h3>`;
+  return `<div style="font:14px/1.45 Arial,sans-serif;color:#111;max-width:760px">
+  <h2 style="margin:0 0 2px;font:800 20px Arial,sans-serif">Weekly Clinical Update · ${e(r.rep)}</h2><div style="color:#555">Week of ${wkLabel}${r.sent_at ? ` · sent ${new Date(r.sent_at).toLocaleString('en-US', { timeZone: 'America/Chicago', weekday: 'short', hour: 'numeric', minute: '2-digit' })}${r.late ? ' <b style="color:#b42318">(late)</b>' : ''}` : ''}</div>
+  ${h('Top Wins for the Week')}${li(r.wins)}
+  ${h(`Cases This Week: ${r.cases_count}`)}<table style="width:100%;border-collapse:collapse;margin-top:6px"><tr>${(r.days || []).map((d) => `<th style="text-align:left;font:600 12px Arial;color:#444;border-bottom:1px solid #ccc;padding:4px">${e(d.day)} ${e(d.date.slice(5).replace('-', '/'))}</th>`).join('')}</tr>
+    <tr>${(r.days || []).map((d) => `<td style="vertical-align:top;padding:4px;border-right:1px solid #eee;font-size:13px">${d.cases.length ? d.cases.map((c) => `<div>${e(c)}</div>`).join('') : '<span style="color:#999">—</span>'}</td>`).join('')}</tr></table>
+  ${h(`Projected Cases Next Week: ${r.projected}`)}
+  ${h('Pod Surgeon Targets')}<table style="width:100%;border-collapse:collapse;margin-top:6px"><tr>${['Surgeon Name', 'Hospital', 'Specialty', 'Product/Products', 'Next Step'].map((x) => `<th style="text-align:left;font:600 12px Arial;color:#444;border-bottom:1px solid #ccc;padding:4px">${x}</th>`).join('')}</tr>
+    ${(r.pod || []).map((p) => `<tr>${[p.surgeon, p.hospital, p.specialty, p.products, p.next].map((x) => `<td style="padding:4px;border-bottom:1px solid #eee;vertical-align:top">${e(x)}</td>`).join('')}</tr>`).join('') || '<tr><td colspan="5" style="color:#999;padding:4px">—</td></tr>'}</table>
+  ${h('Next Week Plan')}${(r.plan || []).map((d) => `<div style="margin-top:8px"><b>${e(d.day)}:</b>${li(d.items)}</div>`).join('')}
+  ${h('Comments/Additional Notes')}<div style="white-space:pre-line">${e(r.notes) || '<span style="color:#999">—</span>'}</div>
+  ${base ? `<p style="margin-top:22px"><a href="${e(base)}/#sec-wcu" style="background:#0f1b33;color:#fff;padding:9px 16px;border-radius:8px;text-decoration:none;font-weight:600">Open in the tracker</a></p>` : ''}</div>`;
+}
+app.post('/api/wcu/send', needApi(), async (req, res) => {
+  if (req.s.role !== 'rep') return res.status(403).json({ error: 'Reps send their own weekly update.' });
+  const rep = req.s.rep, wk = mondayOf(/^\d{4}-\d{2}-\d{2}$/.test(String(req.body?.week || '')) ? req.body.week : chiDate()), k = wcuKey(rep, wk);
+  const prev = docs.get(k) || wcuBuild(rep, wk), fresh = wcuBuild(rep, wk);
+  const doc = wcuClean(req.body || {}, Object.assign({}, prev, { days: fresh.days, cases_count: fresh.cases_count }));
+  if (!doc.wins.length) return res.status(400).json({ error: 'Add at least one win for the week before sending.' });
+  const first = prev.status !== 'sent';
+  Object.assign(doc, { status: 'sent', sent_at: new Date().toISOString(), late: first ? Date.now() > wcuDueAt(wk).getTime() : !!prev.late, resent: !first });
+  await put(k, doc);
+  // in-app: the COO sees it under Weekly Clinical Updates (and gets an app notification); no email
+  notifyOwner(`Weekly update · ${rep}${doc.late ? ' (late)' : ''}`, `${rep} sent the Weekly Clinical Update for the week of ${wk}.`).catch(() => {});
+  res.json({ ok: true, report: doc, state: wcuState(doc, wk) });
+});
+// the COO: every rep's update for a week, with on-time / late / missing
+app.get('/api/wcu/list', needApi('owner'), (req, res) => {
+  const wk = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.week || '')) ? mondayOf(req.query.week) : mondayOf(chiDate());
+  const p = pins().reps;
+  const reps = quotaRows().filter((r) => r.role !== 'Team' && p[r.rep] && p[r.rep].active !== false).map((r) => r.rep);
+  res.json({ week: wk, due: wcuDueAt(wk).toISOString(), reps: reps.map((rep) => { const d = docs.get(wcuKey(rep, wk)); return Object.assign({ rep, report: d && d.status === 'sent' ? d : null, draft: !!(d && d.status !== 'sent') }, wcuState(d, wk)); }) });
+});
+app.get('/api/wcu/history', needApi(), (req, res) => { // archive: every week since the first update, newest first
+  const now = mondayOf(chiDate()); let first = now;
+  for (const k of docs.keys()) if (k.startsWith('wcu/')) { const wk = k.split('|')[1]; if (wk && wk < first) first = wk; }
+  const weeks = []; for (let w = now; w >= first && weeks.length < 52; w = wAdd(w, -7)) weeks.push(w);
+  const p = pins().reps;
+  const reps = req.s.role === 'rep' ? [req.s.rep] : quotaRows().filter((r) => r.role !== 'Team' && p[r.rep] && p[r.rep].active !== false).map((r) => r.rep);
+  const rows = reps.map((rep) => {
+    const wk = weeks.map((w) => { const d = docs.get(wcuKey(rep, w)), st = wcuState(d, w); return { week: w, sent: st.sent, late: st.late, sent_at: st.sent_at, open: !st.sent && !st.late, cases: d && d.status === 'sent' ? d.cases_count : null }; });
+    const closed = wk.filter((x) => x.sent || x.late);
+    return { rep, weeks: wk, on_time: wk.filter((x) => x.sent && !x.late).length, late: wk.filter((x) => x.sent && x.late).length, missing: wk.filter((x) => !x.sent && x.late).length, rate: closed.length ? Math.round(100 * wk.filter((x) => x.sent && !x.late).length / closed.length) : null };
+  });
+  res.json({ weeks, reps: rows });
+});
+app.get('/api/wcu/view', needApi(), (req, res) => { // printable page
+  const rep = wcuRepOf(req), wk = mondayOf(/^\d{4}-\d{2}-\d{2}$/.test(String(req.query.week || '')) ? req.query.week : chiDate());
+  const d = docs.get(wcuKey(rep, wk)) || wcuBuild(rep, wk);
+  res.set('Cache-Control', 'no-store').type('html').send(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Weekly Clinical Update · ${esc(rep)}</title><style>body{margin:24px;background:#fff}@media print{.np{display:none}}</style></head><body><p class="np"><button onclick="print()">Print / save as PDF</button></p>${wcuHtml(d, '')}</body></html>`);
+});
 app.get('/api/cal-link', needApi(), (req, res) => {
   const base = (process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
   res.json({ url: base + '/cal/' + calToken(req.s) + '.ics' });
