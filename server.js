@@ -453,7 +453,7 @@ app.get('/api/login-options', async (req, res) => {
   await syncPeople().catch(() => {});
   const p = pins().reps;
   // admins and managers from the store (Team logins) sign in here by name + their PIN too
-  const admins = hubLinked() ? hubPeople.list.filter(u => u.role !== 'rep' && u.active !== false && u.apps && u.apps.tracker).map(u => ({ id: u.id, name: u.name, role: u.role === 'owner' ? 'Admin' : 'Manager' })) : [];
+  const admins = hubLinked() ? hubPeople.list.filter(u => u.role !== 'rep' && u.active !== false && u.apps && u.apps.tracker).map((u, i, all) => ({ id: u.id, name: all.some(o => o !== u && String(o.name).trim().toLowerCase() === String(u.name).trim().toLowerCase()) ? `${u.name} (${u.email})` : u.name, role: u.role === 'owner' ? 'Admin' : 'Manager' })) : [];
   res.json({ reps: quotaRows().filter(r => r.role !== 'Team' && p[r.rep] && p[r.rep].active !== false && !repAcct(r.rep)).map(r => r.rep), admins, pin_login: !pinOff(), managers: Object.values(mgrs()).some(m => m.active !== false && m.totp_on), hub: hubLinked() ? HUB_URL : '' });
 });
 app.post('/api/login', async (req, res) => {
@@ -492,7 +492,9 @@ const needApi = role => (req, res, next) => {
   req.s = s; next();
 };
 
-app.get('/api/me', needApi(), (req, res) => res.json({ hub: hubLinked() ? HUB_URL : '', viaHub: !!req.s.hub, role: req.s.role, rep: req.s.rep || null, uid: uidOf(req.s), db: dbMode, name: whoName(req.s), manager: !!req.s.mgr, account: !!(req.s.mgr || req.s.acct), super: isSuper(req.s), dev: req.s.dev || 'computer', idle_min: req.s.dev === 'computer' ? IDLE_MS / 60e3 : null }));
+// can this person use the peptide store? (reps: their Team logins row; store managers: theirs; the COO PIN: yes, as the store's admin)
+const storeOk = (s) => { if (!hubLinked()) return false; if (s.role === 'rep') { const u = hubPerson(s.rep); return !!(u && u.apps && u.apps.store !== false); } if (s.hubStaff || s.hub) { const u = hubPeople.list.find(x => x.id === s.hubId); return !u || !u.apps || u.apps.store !== false; } return !s.mgr; };
+app.get('/api/me', needApi(), (req, res) => res.json({ hub: hubLinked() && storeOk(req.s) ? HUB_URL : '', hubStaff: !!req.s.hubStaff, viaHub: !!req.s.hub, role: req.s.role, rep: req.s.rep || null, uid: uidOf(req.s), db: dbMode, name: whoName(req.s), manager: !!req.s.mgr, account: !!(req.s.mgr || req.s.acct), super: isSuper(req.s), dev: req.s.dev || 'computer', idle_min: req.s.dev === 'computer' ? IDLE_MS / 60e3 : null }));
 app.post('/api/activity', needApi(), (req, res) => res.json({ ok: true }));
 app.get('/api/sync', needApi(), (req, res) => {
   sweepVisits();

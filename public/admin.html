@@ -392,7 +392,7 @@ header.head.has-who{padding-top:58px}
       draw(); setDirty(false); fillRepSel();
       var emb = document.body.classList.contains('embed');
       $('#add-rep').hidden = !!j.linked; $('#hub-reps-note').hidden = !j.linked || !emb;
-      $('#reps-pointer').hidden = !j.linked || emb; $('#reps-card').hidden = !!j.linked && !emb; // linked: the plans table lives inside Team logins
+      $('#reps-pointer').hidden = !j.linked || emb || !!window.__hubStaff; $('#reps-card').hidden = !!j.linked && !emb; // linked: the plans table lives inside Team logins
       $('#dbwarn').hidden = j.db === 'postgres';
       $('#dbwarn').textContent = 'Storage is temporary: this service has no database connected, so data can reset when Render restarts the app. Add DATABASE_URL in Render to make it permanent.';
       $('#pinwarn').hidden = !j.adminPinIsDefault;
@@ -476,7 +476,7 @@ header.head.has-who{padding-top:58px}
     renames.forEach(function (r) { chain = chain.then(function () { return api('/api/admin/rename', { from: r._orig, to: r.rep }); }); });
     chain.then(function () { return api('/api/admin/reps', { rows: rows.map(function (r) { var o = Object.assign({}, r); delete o._orig; delete o.pin; return o; }) }); })
       .then(function () { setDirty(false); return load(); })
-      .then(function () { say('#save-msg', 'ok', 'Saved.' + (renames.length ? ' Renamed reps keep all their cases, targets and notes.' : '') + ' New reps get a PIN: click Show to see it.'); })
+      .then(function () { say('#save-msg', 'ok', 'Saved.' + (renames.length ? ' Renamed reps keep all their cases, targets and notes.' : '') + (rows.some(function (r) { return r.role !== 'Team' && !r._orig; }) ? ' New reps get a PIN: click Show to see it.' : '')); })
       .catch(function (e) { b.disabled = false; say('#save-msg', 'err', (e && e.error) || 'Could not save. Check your connection and try again.'); });
   });
 
@@ -1089,6 +1089,7 @@ header.head.has-who{padding-top:58px}
 <script>
 fetch('/api/me', { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (me) {
   if (!me || !me.name) return;
+  window.__hubStaff = !!me.hubStaff; if (me.hubStaff) { var rp = document.getElementById('reps-pointer'); if (rp) rp.hidden = true; }
   document.getElementById('wb-name').textContent = me.name;
   document.getElementById('wb-ic').textContent = String(me.name).trim().charAt(0).toUpperCase();
   document.getElementById('wb-role').textContent = me.manager ? (me.super ? 'Admin · full access' : 'Manager') : 'Admin';
@@ -1096,7 +1097,7 @@ fetch('/api/me', { credentials: 'same-origin' }).then(function (r) { return r.ok
   if (me.hub) { document.getElementById('managers').hidden = true; document.getElementById('mysign').hidden = true; var mg = document.querySelector('a[href="#managers"]'); if (mg) mg.hidden = true;
     var sw = document.getElementById('appswitch'); var framed = false; try { framed = window.top !== window; } catch (e) { framed = true; } var hostable = !/iPhone|iPad|iPod/.test(navigator.userAgent) && /Chrome|Edg|Firefox/.test(navigator.userAgent); var toStore = function (next) { return framed ? me.hub + next : (hostable ? '/admin/store?next=' : '/admin/go/store?next=') + encodeURIComponent(next); }; var vs = document.getElementById('v-store'), vr = document.getElementById('v-rep'); vs.href = toStore('/'); vr.href = toStore('/rep'); vs.hidden = vr.hidden = false; if (framed) { vs.target = vr.target = '_top'; }
       var sws = document.getElementById('sw-store'); sws.href = toStore('/admin'); if (framed) sws.target = '_top'; sw.hidden = false;
-    document.querySelectorAll('.both-apps').forEach(function (el) { el.hidden = false; if (el.dataset.hub) { el.href = '#hub-' + el.dataset.hub; el.dataset.src = framed ? '' : '/admin/go/store?next=' + encodeURIComponent('/admin?embed=1#' + el.dataset.hub); if (framed) { el.href = me.hub + el.dataset.go; el.target = '_top'; } } });
+    document.querySelectorAll('.both-apps').forEach(function (el) { if (me.hubStaff && (/^(staff|setup)$/.test(el.dataset.hub || '') || el.dataset.local === 'geo-card')) return; /* owner-only on the store side */ el.hidden = false; if (el.dataset.hub) { el.href = '#hub-' + el.dataset.hub; el.dataset.src = framed ? '' : '/admin/go/store?next=' + encodeURIComponent('/admin?embed=1#' + el.dataset.hub); if (framed) { el.href = me.hub + el.dataset.go; el.target = '_top'; } } });
     window.__hubReady = true; hubRoute(); }
 }).catch(function () {});
 </script>
