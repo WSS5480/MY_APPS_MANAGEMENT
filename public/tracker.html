@@ -140,7 +140,8 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .jump{position:sticky;top:0;z-index:20;display:flex;gap:6px;overflow-x:auto;padding:8px 2px;margin:0 0 10px;background:var(--bg);scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .jump::-webkit-scrollbar{display:none}
 .jump a{flex:none;padding:8px 12px;border-radius:999px;background:var(--panel);border:1px solid var(--line);color:var(--fg);font-size:.8125rem;font-weight:600;text-decoration:none;white-space:nowrap}
-.jump a[href="#sec-vcal"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.jump a[href="#sec-vcal"]{background:var(--panel,#fff);border-color:var(--line);color:inherit}
+.jump a.jcal.calopen{background:var(--accent);border-color:var(--accent);color:#fff}
 .jump a.jr{font-size:1.05rem;padding:6px 12px;line-height:1.2}
 .jump a.jcal{margin-left:auto;font-size:1.05rem;padding:6px 12px;line-height:1.2;position:sticky;right:0;z-index:1;box-shadow:-8px 0 8px -4px var(--bg,#f3f5f9)} /* the calendar sits on the far right, always in reach */
 .jump a[hidden]{display:none}
@@ -268,7 +269,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
         </div>
       </section>
 
-      <section class="card" id="sec-vcal"></section>
+      <section class="card" id="sec-vcal" hidden data-nofold></section>
       <section class="card" id="sec-visits"></section>
       <section class="card" id="sec-dir"></section>
       <section class="card" id="sec-pref"></section>
@@ -1154,7 +1155,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
     var foot = tail.filter(function (k) { return k.tagName === 'FOOTER'; });
     REP_ORDER.forEach(function (id) { (groups[id] || []).forEach(function (k) { if (k.tagName !== 'FOOTER') stack.appendChild(k); }); });
     foot.forEach(function (k) { stack.appendChild(k); });
-    var vc = document.getElementById('sec-vcal'); if (vc) { vc.setAttribute('data-nofold', ''); vc.classList.remove('folded'); vc.removeAttribute('data-fold'); var vh = vc.querySelector('.fold-h'); if (vh) vh.setAttribute('aria-expanded', 'true'); } // the calendar is the rep's front page: always open
+    var vc = document.getElementById('sec-vcal'); if (vc && !vc.hidden) { vc.setAttribute('data-nofold', ''); vc.classList.remove('folded'); vc.removeAttribute('data-fold'); var vh = vc.querySelector('.fold-h'); if (vh) vh.setAttribute('aria-expanded', 'true'); } // the calendar is the rep's front page: always open
     // the original's sections start open (pace + alerts travel with the scorecard group)
     var openCard = function (c) { if (!c) return; c.setAttribute('data-fold-open', ''); c.classList.remove('folded'); var h = c.querySelector('.fold-h'); if (h) h.setAttribute('aria-expanded', 'true'); };
     REP_OPEN.forEach(function (id) { openCard(document.getElementById(id)); });
@@ -1162,6 +1163,23 @@ section[id^="sec-"]{scroll-margin-top:62px}
     var links = { 'tiles': 1, 'sec-log': 3, 'sec-comm': 2, 'sec-conv': 2.5, 'sec-vcal': 1000, '/products': 4.5, 'sec-upcoming': 5, 'sec-visits': 6, 'sec-pref': 7, 'sec-dir': 8, 'sec-cred': 9 };
     Array.from(nav.children).sort(function (x, y) { var w = function (el) { var h = el.getAttribute('href'); if (h === '#refresh') return 0; return links[h.charAt(0) === '#' ? h.slice(1) : h] || 99; }; return w(x) - w(y); }).forEach(function (a) { nav.appendChild(a); });
   }).catch(function () {});
+})();
+</script>
+<script>
+/* the visit calendar stays out of the way until the 📅 pill is tapped; then it opens right under the pills (tap again to close) */
+(function () {
+  var cal = function () { return document.getElementById('sec-vcal'); };
+  function showCal(on) {
+    var c = cal(), stack = document.querySelector('#main .stack'), pill = document.querySelector('#jump .jcal'); if (!c || !stack) return;
+    if (on) { stack.insertBefore(c, stack.firstChild); c.hidden = false; c.classList.remove('folded'); if (pill) pill.classList.add('calopen'); setTimeout(function () { c.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 30); }
+    else { c.hidden = true; if (pill) pill.classList.remove('calopen'); }
+  }
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest('a[href="#sec-vcal"]'); if (!a) return;
+    e.preventDefault(); e.stopPropagation(); var c = cal(); showCal(!c || c.hidden);
+  }, true);
+  if (location.hash === '#sec-vcal') setTimeout(function () { showCal(true); }, 600);
+  window.addEventListener('hashchange', function () { if (location.hash === '#sec-vcal') showCal(true); });
 })();
 </script>
 <script src="/ptr.js"></script>

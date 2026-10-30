@@ -469,6 +469,26 @@
     }, function () { box.textContent = 'Could not get the link. Check your connection.'; });
   }
 
+  // put the tracker's cases and visits into Outlook: a subscribed calendar that refreshes on its own (read-only in Outlook)
+  function outlookBox() {
+    var box = $('#x-outlook'); if (!box) return; if (!box.hidden && box.dataset.ready) { box.hidden = true; return; }
+    box.hidden = false; box.textContent = 'Getting your calendar link…';
+    api('/api/cal-link').then(function (j) {
+      var https = j.url, web = j.url.replace(/^https?:/, 'webcal:'), name = encodeURIComponent('360 Medical cases & visits');
+      box.replaceChildren(); box.dataset.ready = '1';
+      box.appendChild(el('b', '', 'Show your cases and visits in Outlook'));
+      box.appendChild(el('div', '', 'Pick the Outlook you use. It adds a "360 Medical cases & visits" calendar next to your own; new and changed visits show up there on their own (Outlook refreshes it every few hours). Plan and change visits here in the tracker.'));
+      var row = el('div', 'tools'); row.style.flexWrap = 'wrap';
+      var a1 = el('a', 'btn primary small', 'Outlook (work · Microsoft 365)'); a1.href = 'https://outlook.office.com/calendar/0/addfromweb?url=' + encodeURIComponent(https) + '&name=' + name; a1.target = '_blank'; a1.rel = 'noopener';
+      var a2 = el('a', 'btn small', 'Outlook.com / Hotmail'); a2.href = 'https://outlook.live.com/calendar/0/addfromweb?url=' + encodeURIComponent(https) + '&name=' + name; a2.target = '_blank'; a2.rel = 'noopener';
+      var a3 = el('a', 'btn small', 'Outlook app on this computer / iPhone'); a3.href = web;
+      row.appendChild(a1); row.appendChild(a2); row.appendChild(a3);
+      row.appendChild(btn('Copy link', 'small', function () { (navigator.clipboard ? navigator.clipboard.writeText(https) : Promise.reject()).then(function () { T.setStatus('saved', 'Calendar link copied'); }, function () { prompt('Copy this link:', https); }); }));
+      box.appendChild(row);
+      box.appendChild(el('div', 'meta', 'Outlook app: if a button does nothing, open Outlook → Calendar → Add calendar → Subscribe from web, and paste the copied link. Keep the link private: anyone with it can see your calendar. Resetting your PIN turns it off.'));
+    }, function () { box.textContent = 'Could not get the link. Check your connection.'; });
+  }
+
   /* ---------- section: pathway visit log ---------- */
   function drawVisits(ctx) {
     var sec = $('#sec-visits'), targets = S.targets.filter(inView);
@@ -797,7 +817,10 @@
     var sec = $('#sec-vcal'), targets = S.targets.filter(inView);
     if (!X.built.vcal) {
       X.built.vcal = true; sec.replaceChildren();
-      sec.appendChild(el('h2', '', 'Target visit calendar'));
+      var vhd = el('div', 'cardhead'); vhd.appendChild(el('h2', '', 'Target visit calendar'));
+      var vtools = el('div', 'tools'); vtools.appendChild(btn('📆 Add to Outlook', 'small', outlookBox)); vtools.appendChild(btn('✕ Close', 'small', function () { sec.hidden = true; var pl = document.querySelector('#jump .jcal'); if (pl) pl.classList.remove('calopen'); }));
+      vhd.appendChild(vtools); sec.appendChild(vhd);
+      var ob = el('div', 'msg'); ob.id = 'x-outlook'; ob.hidden = true; sec.appendChild(ob);
       sec.appendChild(el('p', 'note', 'Tap a day to see its visits; open a visit and tap Check in when you arrive (your phone shares its location once to confirm you are there). Green = verified, red = not verified or missed.'));
       var f = el('div', 'x-form'); f.id = 'xvc-form';
       var lab = function (t, node, cls) { var l = el('label', cls || '', t); l.appendChild(node); f.appendChild(l); return node; };
