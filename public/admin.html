@@ -81,6 +81,7 @@ header.head.has-who{padding-top:58px}
 
   <section class="card" id="sec-dash" data-nofold></section>
   <section class="card" id="sec-wcu"><p class="note">Loading WCUs…</p></section>
+  <section class="card" id="sec-replist" data-nofold hidden></section>
   <section class="card" id="reps-pointer" hidden><div class="cardhead"><h2>Reps and plans</h2><a class="btn primary" href="#hub-staff">Open Team logins</a></div><p class="note">Reps, PINs, access and each rep's quota and commission plan are all under <a href="#hub-staff">Team logins</a> — one roster for the store and the tracker.</p></section>
   <section class="card" id="reps-card">
     <div class="cardhead">
@@ -379,8 +380,8 @@ header.head.has-who{padding-top:58px}
 <script src="/addr.js"></script>
 <script src="/import.js?v=1"></script>
 <script src="/logins.js?v=1"></script>
-<script src="/exec.js?v=1"></script><script src="/admin-dash.js?v=4"></script>
-<script src="/admin-pages.js?v=7"></script>
+<script src="/exec.js?v=1"></script><script src="/replist.js?v=2"></script><script src="/admin-dash.js?v=4"></script>
+<script src="/admin-pages.js?v=8"></script>
 <script>
 (function () {
   'use strict';
@@ -405,7 +406,7 @@ header.head.has-who{padding-top:58px}
       draw(); setDirty(false); fillRepSel();
       var emb = document.body.classList.contains('embed');
       $('#add-rep').hidden = !!j.linked; $('#hub-reps-note').hidden = !j.linked || !emb;
-      $('#reps-pointer').hidden = !j.linked || emb || !!window.__hubStaff; $('#reps-card').hidden = !!j.linked && !emb; // linked: the plans table lives inside Team logins
+      $('#reps-pointer').hidden = true; /* the Sales reps list (replist.js) covers it */ $('#reps-card').hidden = !!j.linked && !emb; // linked: the plans table lives inside Team logins
       $('#dbwarn').hidden = j.db === 'postgres';
       $('#dbwarn').textContent = 'Storage is temporary: this service has no database connected, so data can reset when Render restarts the app. Add DATABASE_URL in Render to make it permanent.';
       $('#pinwarn').hidden = !j.adminPinIsDefault;

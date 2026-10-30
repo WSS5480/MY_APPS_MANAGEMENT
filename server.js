@@ -249,6 +249,8 @@ function visible(s) {
   const out = {};
   if (s.role === 'owner') {
     for (const [p, d] of docs) if (p[0] !== '_') out[p] = d;
+    // a rep whose access is off is hidden from every report: their plan row stays on the server (kept on save below), not in the COO's views
+    const pp = pins().reps; out['config/quotas'] = Object.assign({}, docs.get('config/quotas') || {}, { rows: quotaRows().filter(r => r.role === 'Team' || (pp[r.rep] || {}).active !== false) });
     return out;
   }
   for (const [p, d] of docs) {
@@ -318,7 +320,7 @@ app.get('/media/:id', async (req, res) => {
     res.setHeader('Content-Length', buf.length); res.end(buf);
   } catch (e) { res.status(500).end(); }
 });
-app.get(['/logo.png', '/logo-dark.png', '/collapse.js', '/d3.min.js', '/shim.js', '/plus.js', '/plus.css', '/addr.js', '/wcu.js', '/leader.js', '/import.js', '/logins.js', '/admin-pages.js', '/admin-dash.js', '/exec.js', '/visitcal.js', '/idle.js', '/zoom.js', '/spin.js', '/install.js', '/ptr.js', '/update.js', '/webauthn.js', '/qrious.min.js', '/app.css', '/theme-360.css', '/icon-admin-192.png', '/icon-admin-512.png', '/icon-admin-maskable-512.png', '/apple-touch-icon-admin.png', '/sw.js', '/favicon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'], (req, res) => { if (req.path === '/sw.js') res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, req.path)); });
+app.get(['/logo.png', '/logo-dark.png', '/collapse.js', '/d3.min.js', '/shim.js', '/plus.js', '/plus.css', '/addr.js', '/wcu.js', '/leader.js', '/import.js', '/logins.js', '/admin-pages.js', '/admin-dash.js', '/exec.js', '/replist.js', '/visitcal.js', '/idle.js', '/zoom.js', '/spin.js', '/install.js', '/ptr.js', '/update.js', '/webauthn.js', '/qrious.min.js', '/app.css', '/theme-360.css', '/icon-admin-192.png', '/icon-admin-512.png', '/icon-admin-maskable-512.png', '/apple-touch-icon-admin.png', '/sw.js', '/favicon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'], (req, res) => { if (req.path === '/sw.js') res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, req.path)); });
 app.get('/manifest.webmanifest', (req, res) => { res.type('application/manifest+json'); res.sendFile(path.join(pub, 'manifest.webmanifest')); });
 app.get('/admin.webmanifest', (req, res) => { res.type('application/manifest+json'); res.sendFile(path.join(pub, 'admin.webmanifest')); });
 
@@ -433,7 +435,7 @@ app.get('/api/hub/commissions', hubAuth, (req, res) => {
   const ym = /^\d{4}-\d{2}$/.test(String(req.query.month || '')) ? String(req.query.month) : chiDate().slice(0, 7);
   const cases = allCases(), [y, m] = ym.split('-').map(Number), q0 = Math.floor((m - 1) / 3) * 3 + 1;
   const pp = pins().reps;
-  const reps = quotaRows().filter(r => r.role !== 'Team' && (!pp[r.rep] || pp[r.rep].active !== false || cases.some(x => x.rep === r.rep && x.date.slice(0, 7) === ym))).map(r => {
+  const reps = quotaRows().filter(r => r.role !== 'Team' && (!pp[r.rep] || pp[r.rep].active !== false)).map(r => {
     const c = surgicalComm(r, ym, cases);
     let qtd = 0; for (let mm = q0; mm <= m; mm++) qtd += surgicalComm(r, y + '-' + String(mm).padStart(2, '0'), cases).commission;
     const mine = cases.filter(x => x.rep === r.rep && x.date.slice(0, 7) === ym && String(x.status || '').toLowerCase() !== 'cancelled').sort((a, b) => a.date.localeCompare(b.date));
@@ -607,6 +609,7 @@ app.post('/api/doc', needApi(), async (req, res) => {
     }
     if (p === 'config/quotas' && s.role === 'owner' && op !== 'delete') {
       const d = clean(req.body.data); const rows = Array.isArray(d.rows) ? d.rows.map(clean) : quotaRows();
+      const pp = pins().reps; quotaRows().forEach(r => { if (r.role !== 'Team' && (pp[r.rep] || {}).active === false && !rows.some(x => x.rep === r.rep)) rows.push(r); }); // inactive reps aren't sent to the COO's screen: keep their rows
       await put(p, { rows, updated_at: new Date().toISOString() }); return res.json({ ok: true });
     }
     if (col === 'coonotes' && parts.length === 2 && s.role === 'owner') {
@@ -742,7 +745,9 @@ app.get('/api/admin/logins', needApi('owner'), (req, res) => {
   const people = {};
   const add = (key, who, role) => people[key] || (people[key] = { key, who, role, last_login: null, last_seen: seen[key] || null, d7: 0, d30: 0, phone: 0, computer: 0, events: [] });
   quotaRows().filter((r) => r.role !== 'Team' && (pins().reps[r.rep] || {}).active !== false).forEach((r) => add('rep:' + r.rep, r.rep, 'Rep'));
+  const offReps = new Set(Object.entries(pins().reps).filter(([, v]) => v.active === false).map(([k]) => 'rep:' + k)); // access off = hidden from reports
   for (const e of log.events) {
+    if (offReps.has(e.key)) continue;
     const p = add(e.key, e.who, e.role), age = now - Date.parse(e.at);
     if (!p.last_login) p.last_login = e.at; if (age <= 7 * 864e5) p.d7++; if (age <= 30 * 864e5) { p.d30++; p[e.dev === 'phone' ? 'phone' : 'computer']++; }
     if (p.events.length < 25) p.events.push({ at: e.at, dev: e.dev, how: e.how });
@@ -803,6 +808,7 @@ app.get('/api/admin/dashboard', needApi('owner'), (req, res) => {
   visits.filter((v) => v.check && v.check.at).sort((a, b) => String(b.check.at).localeCompare(String(a.check.at))).slice(0, 10).forEach((v) => feed.push({ at: v.check.at, rep: v.rep, what: (v.check.ok ? 'Checked in' : 'Check-in not verified') + ' · ' + (v.surgeon || '') + (v.facility ? ' @ ' + v.facility : '') }));
   cases.filter((c) => c.invoice && c.invoice.submitted_at).forEach((c) => feed.push({ at: c.invoice.submitted_at, rep: c.rep, what: 'Invoice ' + c.invoice.number + ' · ' + fmt$(c.invoice.amount) + ' (' + c.invoice.status + ')' }));
   (log.events || []).slice(0, 10).filter((e) => e.role === 'Rep').forEach((e) => feed.push({ at: e.at, rep: e.who, what: 'Signed in · ' + (e.dev === 'phone' ? 'phone' : 'computer') }));
+  { const off = new Set(Object.keys(pp).filter((k) => pp[k].active === false)); for (let i = feed.length - 1; i >= 0; i--) if (off.has(feed[i].rep)) feed.splice(i, 1); } // access off = hidden from reports
   feed.sort((a, b) => String(b.at).localeCompare(String(a.at)));
   const pendingInv = cases.filter((c) => c.invoice && c.invoice.status === 'pending').length;
   const approvals = { invoices: cases.filter((c) => c.invoice && c.invoice.status === 'pending').map((c) => ({ rep: c.rep, number: c.invoice.number, amount: c.invoice.amount, at: c.invoice.submitted_at })),
@@ -1347,7 +1353,7 @@ function repDigest(rep, today) {
   return { title: '360 Medical · your week', body: parts.join(' · ') || 'Nothing to flag this week.', url: '/' };
 }
 function teamDigest(today) {
-  const cases = allCases(), ym = today.slice(0, 7), reps = quotaRows().filter(r => r.role !== 'Team'), st = settings();
+  const cases = allCases(), ym = today.slice(0, 7), reps = quotaRows().filter(r => r.role !== 'Team' && (pins().reps[r.rep] || {}).active !== false), st = settings();
   const total = cases.filter(c => c.date.slice(0, 7) === ym && isDone(c.status)).reduce((t, c) => t + (c.net_sales || 0), 0);
   const teams = quotaRows().filter(r => r.role === 'Team');
   const quota = quotaRows().filter(r => r.metric === 'Revenue' && (r.role === 'Team' || !teams.some(t => t.territory === r.territory))).reduce((t, r) => t + (r.quota || 0), 0);
