@@ -699,7 +699,8 @@ app.post('/api/admin/import-cases', needApi('owner'), async (req, res) => {
   const roster = quotaRows().filter((r) => r.role !== 'Team').map((r) => r.rep), aliases = req.body?.repMap && typeof req.body.repMap === 'object' ? req.body.repMap : {};
   const findRep = (n) => { const t = String(n || '').trim(); if (!t) return ''; if (aliases[t]) return String(aliases[t]); const l = t.toLowerCase();
     return roster.find((r) => r.toLowerCase() === l) || roster.find((r) => r.toLowerCase().split(/\s+/)[0] === l.split(/\s+/)[0] && (l.split(/\s+/).length === 1 || r.toLowerCase().split(/\s+/).slice(-1)[0] === l.split(/\s+/).slice(-1)[0])) || t; };
-  const seen = new Set(); for (const [k, d] of docs) if (k.startsWith('cases/') && d && d.date) seen.add(impKey(d));
+  // duplicates = already in the tracker (two identical rows in the same file are two cases, e.g. two units on one day); rows with an id from an export match by that id
+  const seen = new Set(), seenSrc = new Set(); for (const [k, d] of docs) if (k.startsWith('cases/') && d && d.date) { seen.add(impKey(d)); if (d.src_id) seenSrc.add(d.src_id); }
   const batch = 'imp-' + new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '') + '-' + crypto.randomBytes(2).toString('hex');
   const out = { ok: 0, dup: 0, bad: 0, errors: [], unknownReps: {}, months: {}, sales: 0, sample: [] }, good = [];
   rows.forEach((r, i) => {
@@ -715,7 +716,8 @@ app.post('/api/admin/import-cases', needApi('owner'), async (req, res) => {
     const c = { date, rep, surgeon: String(r.surgeon || '').trim().slice(0, 120), facility: String(r.facility || '').trim().slice(0, 160), service_line: String(r.service_line || '').trim().slice(0, 60),
       product: String(r.product || '').trim().slice(0, 160), units: units || 1, net_sales: ns, surgeon_type, status, po: String(r.po || '').trim().slice(0, 60), lot: String(r.lot || '').trim().slice(0, 60),
       notes: String(r.notes || '').trim().slice(0, 1000), time: '', created_by: uidOf(req.s), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), imported: batch };
-    const k = impKey(c); if (seen.has(k)) { out.dup++; return; } seen.add(k);
+    const src = String(r.src_id || r._id || '').trim().slice(0, 60); if (src) c.src_id = src;
+    if (src ? seenSrc.has(src) : seen.has(impKey(c))) { out.dup++; return; } if (src) seenSrc.add(src);
     if (!roster.includes(rep)) out.unknownReps[rep] = (out.unknownReps[rep] || 0) + 1;
     out.ok++; out.sales += Number(ns) || 0; out.months[date.slice(0, 7)] = (out.months[date.slice(0, 7)] || 0) + 1; if (out.sample.length < 8) out.sample.push(c); good.push(c);
   });
