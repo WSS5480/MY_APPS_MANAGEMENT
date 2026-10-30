@@ -699,7 +699,7 @@
       var b = el('div'); b.appendChild(el('div', 'x-sub', 'Add a facility'));
       var fb = el('div', 'x-form'), labB = function (t, n, c) { var l = el('label', c || '', t); l.appendChild(n); fb.appendChild(l); return n; };
       var fn = labB('Facility name', el('input', 'field')); fn.id = 'xd-fname'; fn.placeholder = 'e.g. Rio Grande Regional';
-      var fdw = el('label', 'full', 'Address'); fb.appendChild(fdw); X.dirAddr = window.AddrFields.mount(fdw, {});
+      var fdw = el('label', 'full', 'Address'); fb.appendChild(fdw); X.dirAddr = window.AddrFields.mount(fdw, { nameInput: fn });
       fb.appendChild(btn('Add facility', 'primary', addFacility)); b.appendChild(fb);
       sp.appendChild(a); sp.appendChild(b); sec.appendChild(sp);
       var m = el('div', 'msg'); m.id = 'xd-msg'; m.hidden = true; sec.appendChild(m);
@@ -925,7 +925,7 @@
       lab('Target surgeon', el('select', 'field')).id = 'xvc-target';
       var fa = lab('Facility', el('input', 'field')); fa.id = 'xvc-fac'; fa.setAttribute('list', 'dl-facilities'); fa.placeholder = 'Pick one or type a new facility'; fa.autocomplete = 'off';
       var fadWrap = el('label', 'full', 'New facility · address (so check-ins can be verified)'); fadWrap.id = 'xvc-faddr-wrap'; fadWrap.hidden = true; f.appendChild(fadWrap);
-      X.vcAddr = window.AddrFields.mount(fadWrap, {});
+      X.vcAddr = window.AddrFields.mount(fadWrap, { nameInput: fa, skipName: function (n) { var k = facOf(n); return !!(k && k.lat != null); } });
       var facState = function () { var n = fa.value.trim(), known = n && facOf(n); fadWrap.hidden = !n || !!(known && known.lat != null); fadWrap.firstChild.textContent = known && known.lat == null ? known.name + ' has no address yet · add it so check-ins can be verified' : 'New facility · address (so check-ins can be verified)'; };
       fa.addEventListener('input', facState); fa.addEventListener('change', facState);
       var d = lab('Date', el('input', 'field')); d.type = 'date'; d.id = 'xvc-date'; d.value = TODAY;

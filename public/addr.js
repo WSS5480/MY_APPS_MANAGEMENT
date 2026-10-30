@@ -57,6 +57,30 @@
       return { street: s, city: c, state: st, zip: z, address: address, lat: picked ? picked.lat : null, lng: picked ? picked.lng : null };
     }
     function clear() { set({ state: opts.state || 'TX' }); hide(); }
+    // the facility NAME box looks places up too: typing "Doctors Hospital" lists matching hospitals/clinics with their addresses; picking one fills everything
+    if (opts.nameInput) {
+      var ni = opts.nameInput, nw = el('div', 'addr-streetwrap'), ns = el('div', 'addr-sug'), nt = null, nlast = ''; ns.hidden = true;
+      ni.parentNode.insertBefore(nw, ni); nw.appendChild(ni); nw.appendChild(ns);
+      var nhide = function () { ns.hidden = true; ns.replaceChildren(); };
+      var nlook = function () {
+        var q = ni.value.trim(); if (q === nlast) return; nlast = q;
+        if (q.length < 3 || (opts.skipName && opts.skipName(q))) return nhide();
+        fetch('/api/address-suggest?kind=place&q=' + encodeURIComponent(q) + (HERE ? '&lat=' + HERE.lat + '&lng=' + HERE.lng : ''), { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : { items: [] }; })
+          .then(function (j) { if (ni.value.trim() !== q) return; ns.replaceChildren(); var items = (j.items || []).filter(function (it) { return it.name; }); if (!items.length) return nhide();
+            items.forEach(function (it) {
+              var b = el('button', 'addr-item'); b.type = 'button';
+              b.appendChild(el('div', 'addr-l1', it.name)); b.appendChild(el('div', 'addr-l2', [it.street, it.city, it.state, it.zip].filter(Boolean).join(', ')));
+              b.addEventListener('mousedown', function (e) { e.preventDefault(); });
+              b.addEventListener('click', function () { ni.value = it.name; nlast = it.name; set(it); nhide(); ni.dispatchEvent(new Event('input', { bubbles: true })); if (opts.onPick) opts.onPick(value()); });
+              ns.appendChild(b);
+            });
+            ns.hidden = false; }).catch(nhide);
+      };
+      ni.addEventListener('input', function () { clearTimeout(nt); nt = setTimeout(nlook, 300); });
+      ni.addEventListener('focus', locate, { once: true });
+      ni.addEventListener('blur', function () { setTimeout(nhide, 150); });
+      ni.addEventListener('keydown', function (e) { if (e.key === 'Escape') nhide(); if (e.key === 'ArrowDown' && ns.children.length) { e.preventDefault(); ns.firstChild.focus(); } });
+    }
     return { value: value, set: set, clear: clear, els: { street: street, city: city, state: state, zip: zip }, root: wrap };
   }
   // "1102 W Trenton Rd, Edinburg, TX 78539" → parts (for editing a saved address)

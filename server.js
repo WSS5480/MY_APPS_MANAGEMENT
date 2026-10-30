@@ -1406,19 +1406,19 @@ async function photonSuggest(q, bias, signal) {
 }
 async function nominatimSuggest(q, bias, signal) {
   const box = bias ? `&viewbox=${bias.lng - 1.5},${bias.lat + 1.2},${bias.lng + 1.5},${bias.lat - 1.2}&bounded=0` : '';
-  const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=8&countrycodes=us&dedupe=1' + box + '&q=' + encodeURIComponent(q), { signal, headers: { 'User-Agent': '360-Medical-Case-Tracker/1.0 (' + (process.env.PUBLIC_URL || 'https://three60-medical-surgical-case-tracker.onrender.com') + ')', 'Accept-Language': 'en' } });
+  const r = await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=8&countrycodes=us&dedupe=1' + box + '&q=' + encodeURIComponent(q), { signal, headers: { 'User-Agent': '360-Medical-Case-Tracker/1.0 (' + (process.env.PUBLIC_URL || 'https://three60-medical-surgical-case-tracker.onrender.com') + ')', 'Accept-Language': 'en' } });
   const j = await r.json(); const out = [];
   for (const it of (Array.isArray(j) ? j : [])) {
     const a = it.address || {}; const street = [a.house_number, a.road].filter(Boolean).join(' ') || (a.amenity || a.building || a.shop || a.office || '');
     if (!street) continue;
     const st = a.state ? (US_STATE[String(a.state).toLowerCase()] || '') : '';
-    out.push({ name: a.amenity || a.hospital || a.building || a.office || '', street, city: a.city || a.town || a.village || a.hamlet || a.county || '', state: st, zip: a.postcode || '', lat: Number(it.lat), lng: Number(it.lon) });
+    out.push({ name: it.name || a.amenity || a.hospital || a.building || a.office || '', street, city: a.city || a.town || a.village || a.hamlet || a.county || '', state: st, zip: a.postcode || '', lat: Number(it.lat), lng: Number(it.lon) });
   }
   return out;
 }
 app.get('/api/address-suggest', needApi(), async (req, res) => {
-  const q = String(req.query.q || '').trim().slice(0, 160); if (q.length < 4) return res.json({ items: [] });
-  const bias = suggestBias(req), key = q.toLowerCase() + '|' + (bias ? bias.lat.toFixed(1) + ',' + bias.lng.toFixed(1) : '');
+  const q = String(req.query.q || '').trim().slice(0, 160), place = req.query.kind === 'place'; if (q.length < (place ? 3 : 4)) return res.json({ items: [] });
+  const bias = suggestBias(req), key = (place ? 'P|' : '') + q.toLowerCase() + '|' + (bias ? bias.lat.toFixed(1) + ',' + bias.lng.toFixed(1) : '');
   if (sugCache.has(key)) return res.json({ items: sugCache.get(key) });
   const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 6000);
   try {
@@ -1429,10 +1429,11 @@ app.get('/api/address-suggest', needApi(), async (req, res) => {
     const seen = new Set(), items = [];
     for (const it of a.concat(b)) {
       if (!isFinite(it.lat) || !isFinite(it.lng)) continue;
-      const hay = (num ? [it.name, it.street] : [it.name, it.street, it.city, it.zip]).join(' ').toLowerCase(); // "800 sunset dr" must match the street itself, not a city called Sunset
+      if (place && !it.name) continue; // looking a place up by its name: it has to have one
+      const hay = (place ? [it.name, it.city] : num ? [it.name, it.street] : [it.name, it.street, it.city, it.zip]).join(' ').toLowerCase(); // "800 sunset dr" must match the street itself, not a city called Sunset
       if (!words.every(w => hay.includes(w))) continue;
-      if (num && /^\d/.test(it.street) && !it.street.startsWith(num + ' ')) continue;
-      const k = [it.street, it.city, it.state, it.zip].join('|').toLowerCase(); if (seen.has(k)) continue; seen.add(k);
+      if (!place && num && /^\d/.test(it.street) && !it.street.startsWith(num + ' ')) continue;
+      const k = [place ? it.name : '', it.street, it.city, it.state, it.zip].join('|').toLowerCase(); if (seen.has(k)) continue; seen.add(k);
       items.push({ name: it.name, street: it.street, city: it.city, state: it.state, zip: it.zip, lat: Math.round(it.lat * 1e6) / 1e6, lng: Math.round(it.lng * 1e6) / 1e6, d: bias ? km(bias, it) : 0 });
     }
     items.sort((x, y) => x.d - y.d); items.forEach(i => delete i.d);

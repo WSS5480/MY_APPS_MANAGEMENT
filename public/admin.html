@@ -924,7 +924,7 @@ header.head.has-who{padding-top:58px}
       mb.appendChild(m);
     }
   }
-  var FC_ADDR = window.AddrFields.mount($('#fc-addr'), { onPick: function (v) { $('#fc-lat').value = v.lat; $('#fc-lng').value = v.lng; say('#fc-msg', 'ok', 'Placed on the map: ' + v.address); } });
+  var FC_ADDR = window.AddrFields.mount($('#fc-addr'), { nameInput: $('#fc-name'), onPick: function (v) { $('#fc-lat').value = v.lat; $('#fc-lng').value = v.lng; say('#fc-msg', 'ok', 'Placed on the map: ' + v.address); } });
   function openFac(f) {
     fcEdit = f && f.id ? f : null; $('#fc-form').hidden = false;
     $('#fc-name').value = (f && f.name) || ''; FC_ADDR.set(f && f.address ? window.AddrFields.parse(f.address) : { state: 'TX' }); $('#fc-radius').value = (f && f.radius_m) || '';
