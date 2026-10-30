@@ -63,7 +63,7 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
 header.head.has-who{padding-top:58px}
 @media (max-width:700px){.who-badge{top:12px;right:12px;max-width:calc(100% - 24px)}}
 </style>
-<link rel="stylesheet" href="/theme-360.css?v=16"><script src="/collapse.js?v=5" defer></script>
+<link rel="stylesheet" href="/theme-360.css?v=17"><script src="/collapse.js?v=5" defer></script>
 </head><body class="side-layout">
 <div class="wrap">
   <header class="head" style="position:relative">
@@ -199,7 +199,7 @@ header.head.has-who{padding-top:58px}
     <div class="scroll"><table id="fc"><thead><tr><th>Facility</th><th>Address</th><th>Map point</th><th>Radius</th><th></th></tr></thead><tbody></tbody></table></div>
     <form class="form" id="fc-form" hidden style="display:grid;grid-template-columns:repeat(auto-fit,minmax(12rem,1fr));gap:10px;margin-top:12px;align-items:end">
       <label class="f">Facility name (as reps type it)<input class="field" id="fc-name" list="fc-names" required></label>
-      <label class="f" style="grid-column:span 2">Street address<input class="field" id="fc-address" placeholder="1102 W Trenton Rd, Edinburg, TX 78539"></label>
+      <label class="f" style="grid-column:1 / -1">Address<div id="fc-addr"></div></label>
       <label class="f">Radius (meters)<input class="field" id="fc-radius" type="number" min="50" max="3000" placeholder="400"></label>
       <label class="f">Latitude<input class="field" id="fc-lat" inputmode="decimal" placeholder="auto"></label>
       <label class="f">Longitude<input class="field" id="fc-lng" inputmode="decimal" placeholder="auto"></label>
@@ -368,6 +368,7 @@ header.head.has-who{padding-top:58px}
 <script src="/idle.js"></script>
 <script src="/zoom.js"></script>
 <script src="/visitcal.js"></script>
+<script src="/addr.js"></script>
 <script>
 (function () {
   'use strict';
@@ -908,17 +909,18 @@ header.head.has-who{padding-top:58px}
       mb.appendChild(m);
     }
   }
+  var FC_ADDR = window.AddrFields.mount($('#fc-addr'), { onPick: function (v) { $('#fc-lat').value = v.lat; $('#fc-lng').value = v.lng; say('#fc-msg', 'ok', 'Placed on the map: ' + v.address); } });
   function openFac(f) {
     fcEdit = f && f.id ? f : null; $('#fc-form').hidden = false;
-    $('#fc-name').value = (f && f.name) || ''; $('#fc-address').value = (f && f.address) || ''; $('#fc-radius').value = (f && f.radius_m) || '';
+    $('#fc-name').value = (f && f.name) || ''; FC_ADDR.set(f && f.address ? window.AddrFields.parse(f.address) : { state: 'TX' }); $('#fc-radius').value = (f && f.radius_m) || '';
     $('#fc-lat').value = f && f.lat != null ? f.lat : ''; $('#fc-lng').value = f && f.lng != null ? f.lng : ''; $('#fc-aliases').value = ((f && f.aliases) || []).join(', ');
-    $('#fc-form').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); $((f && f.name) ? '#fc-address' : '#fc-name').focus();
+    $('#fc-form').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); ((f && f.name) ? FC_ADDR.els.street : $('#fc-name')).focus();
   }
   $('#fc-add').addEventListener('click', function () { openFac(null); });
   $('#fc-cancel').addEventListener('click', function () { $('#fc-form').hidden = true; fcEdit = null; });
-  $('#fc-address').addEventListener('input', function () { $('#fc-lat').value = ''; $('#fc-lng').value = ''; });
+  [FC_ADDR.els.street, FC_ADDR.els.city, FC_ADDR.els.state, FC_ADDR.els.zip].forEach(function (i) { i.addEventListener('input', function () { $('#fc-lat').value = ''; $('#fc-lng').value = ''; }); });
   $('#fc-find').addEventListener('click', function () {
-    var q = $('#fc-address').value.trim(); if (!q) { $('#fc-address').focus(); return; }
+    var q = FC_ADDR.value().address; if (!q) { FC_ADDR.els.street.focus(); return; }
     say('#fc-msg', 'warn', 'Looking up the address…');
     fetch('/api/admin/geocode?q=' + encodeURIComponent(q)).then(function (r) { return r.json(); }).then(function (g) {
       if (!g.found) return say('#fc-msg', 'err', 'Address not found on the map. Check it, or use your location when you are there.');
@@ -933,7 +935,8 @@ header.head.has-who{padding-top:58px}
   });
   $('#fc-form').addEventListener('submit', function (e) {
     e.preventDefault();
-    var body = { id: fcEdit && fcEdit.id, name: $('#fc-name').value.trim(), address: $('#fc-address').value.trim(), radius_m: $('#fc-radius').value, lat: $('#fc-lat').value, lng: $('#fc-lng').value, aliases: $('#fc-aliases').value.split(',') };
+    var av = FC_ADDR.value(); if (av.lat != null && !$('#fc-lat').value) { $('#fc-lat').value = av.lat; $('#fc-lng').value = av.lng; }
+    var body = { id: fcEdit && fcEdit.id, name: $('#fc-name').value.trim(), address: av.address, radius_m: $('#fc-radius').value, lat: $('#fc-lat').value, lng: $('#fc-lng').value, aliases: $('#fc-aliases').value.split(',') };
     if (!body.address && (body.lat === '' || body.lng === '')) return say('#fc-msg', 'err', 'Add an address, or use your location at the facility.');
     say('#fc-msg', 'warn', 'Saving…');
     api('/api/admin/facilities', body).then(function (j) { $('#fc-form').hidden = true; fcEdit = null; say('#fc-msg', 'ok', j.facility.name + ' saved' + (j.facility.map_label ? ': ' + j.facility.map_label : '.')); loadVisits(); }, function (er) { say('#fc-msg', 'err', (er && er.error) || 'Could not save.'); });

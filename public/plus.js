@@ -581,7 +581,7 @@
       var b = el('div'); b.appendChild(el('div', 'x-sub', 'Add a facility'));
       var fb = el('div', 'x-form'), labB = function (t, n, c) { var l = el('label', c || '', t); l.appendChild(n); fb.appendChild(l); return n; };
       var fn = labB('Facility name', el('input', 'field')); fn.id = 'xd-fname'; fn.placeholder = 'e.g. Rio Grande Regional';
-      var fd = labB('Street address', el('input', 'field'), 'full'); fd.id = 'xd-faddr'; fd.placeholder = 'Street, city, TX ZIP';
+      var fdw = el('label', 'full', 'Address'); fb.appendChild(fdw); X.dirAddr = window.AddrFields.mount(fdw, {});
       fb.appendChild(btn('Add facility', 'primary', addFacility)); b.appendChild(fb);
       sp.appendChild(a); sp.appendChild(b); sec.appendChild(sp);
       var m = el('div', 'msg'); m.id = 'xd-msg'; m.hidden = true; sec.appendChild(m);
@@ -621,9 +621,10 @@
   }
   function addFacility() {
     var name = $('#xd-fname').value.trim(); if (!name) { $('#xd-fname').focus(); return; }
-    api('/api/directory/facility', { name: name, address: $('#xd-faddr').value.trim() }).then(function (j) {
+    var av = X.dirAddr.value();
+    api('/api/directory/facility', { name: name, address: av.address, lat: av.lat, lng: av.lng }).then(function (j) {
       dirMsg(j.updated ? 'ok' : j.existed || j.not_found ? 'warn' : 'ok', j.updated ? 'Address saved for ' + j.facility.name + (j.facility.approved === false ? '. The COO will confirm it before it counts for check-ins.' : ' and placed on the map.') : j.existed ? j.facility.name + ' is already in the directory' + (j.facility.lat != null ? ' with an address.' : '. Tap Add address next to it below.') : j.not_found ? j.facility.name + ' added, but that address wasn\'t found on the map. Tap Add address to try again.' : j.facility.name + ' added' + (j.facility.approved === false ? '. The COO will confirm the address before it counts for check-ins.' : '.'));
-      $('#xd-fname').value = ''; $('#xd-faddr').value = '';
+      $('#xd-fname').value = ''; X.dirAddr.clear();
     }, function (e) { dirMsg('err', (e && e.error) || (navigator.onLine ? 'Could not add.' : 'Adding to the directory needs a connection.')); });
   }
 
@@ -802,8 +803,9 @@
       var lab = function (t, node, cls) { var l = el('label', cls || '', t); l.appendChild(node); f.appendChild(l); return node; };
       lab('Target surgeon', el('select', 'field')).id = 'xvc-target';
       var fa = lab('Facility', el('input', 'field')); fa.id = 'xvc-fac'; fa.setAttribute('list', 'dl-facilities'); fa.placeholder = 'Pick one or type a new facility'; fa.autocomplete = 'off';
-      var fad = lab('New facility · street address (so check-ins can be verified)', el('input', 'field'), 'full'); fad.id = 'xvc-faddr'; fad.placeholder = '123 Main St, City, TX 78501'; fad.parentNode.hidden = true;
-      var facState = function () { var n = fa.value.trim(), known = n && facOf(n); fad.parentNode.hidden = !n || !!(known && known.lat != null); fad.parentNode.firstChild.textContent = known && known.lat == null ? known.name + ' has no address yet · add it so check-ins can be verified' : 'New facility · street address (so check-ins can be verified)'; };
+      var fadWrap = el('label', 'full', 'New facility · address (so check-ins can be verified)'); fadWrap.id = 'xvc-faddr-wrap'; fadWrap.hidden = true; f.appendChild(fadWrap);
+      X.vcAddr = window.AddrFields.mount(fadWrap, {});
+      var facState = function () { var n = fa.value.trim(), known = n && facOf(n); fadWrap.hidden = !n || !!(known && known.lat != null); fadWrap.firstChild.textContent = known && known.lat == null ? known.name + ' has no address yet · add it so check-ins can be verified' : 'New facility · address (so check-ins can be verified)'; };
       fa.addEventListener('input', facState); fa.addEventListener('change', facState);
       var d = lab('Date', el('input', 'field')); d.type = 'date'; d.id = 'xvc-date'; d.value = TODAY;
       var t = lab('Time', el('input', 'field')); t.type = 'time'; t.id = 'xvc-time'; t.value = '09:00';
@@ -833,10 +835,10 @@
     if (!date || !time) { msg.className = 'msg err'; msg.textContent = 'Pick a date and time.'; msg.hidden = false; return; }
     if (!fac) { msg.className = 'msg err'; msg.textContent = 'Add the facility so the check-in can be verified.'; msg.hidden = false; $('#xvc-fac').focus(); return; }
     if (window.VisitCal.windowOf({ date: date, time: time, duration: $('#xvc-dur').value }, X.settings).close < Date.now()) { msg.className = 'msg err'; msg.textContent = 'That time has already passed. Use the visit log below for visits that already happened.'; msg.hidden = false; return; }
-    var addrBox = $('#xvc-faddr'), addr = addrBox && !addrBox.parentNode.hidden ? addrBox.value.trim() : '';
-    if (addr) { // a facility typed in fresh (or one with no address): put it in the directory with its address first
+    var aw = $('#xvc-faddr-wrap'), av = aw && !aw.hidden && X.vcAddr ? X.vcAddr.value() : null;
+    if (av && av.address) { // a facility typed in fresh (or one with no address): put it in the directory with its address first
       var b0 = $('#xvc-btn'); b0.disabled = true;
-      api('/api/directory/facility', { name: fac, address: addr }).then(function (j) { b0.disabled = false; if (j.not_found) { msg.className = 'msg err'; msg.textContent = 'Could not find that address on the map. Check the street, city and ZIP.'; msg.hidden = false; return; } addrBox.value = ''; addrBox.parentNode.hidden = true; planVisit(); }, function (e) { b0.disabled = false; msg.className = 'msg err'; msg.textContent = (e && e.error) || 'Could not save the facility.'; msg.hidden = false; });
+      api('/api/directory/facility', { name: fac, address: av.address, lat: av.lat, lng: av.lng }).then(function (j) { b0.disabled = false; if (j.not_found) { msg.className = 'msg err'; msg.textContent = 'Could not find that address on the map. Pick it from the suggestions, or check the street, city and ZIP.'; msg.hidden = false; return; } X.vcAddr.clear(); aw.hidden = true; planVisit(); }, function (e) { b0.disabled = false; msg.className = 'msg err'; msg.textContent = (e && e.error) || 'Could not save the facility.'; msg.hidden = false; });
       return;
     }
     var id = S.db.collection('visits').doc().id;

@@ -303,7 +303,7 @@ app.get('/media/:id', async (req, res) => {
     res.setHeader('Content-Length', buf.length); res.end(buf);
   } catch (e) { res.status(500).end(); }
 });
-app.get(['/logo.png', '/logo-dark.png', '/collapse.js', '/d3.min.js', '/shim.js', '/plus.js', '/plus.css', '/visitcal.js', '/idle.js', '/zoom.js', '/spin.js', '/install.js', '/ptr.js', '/update.js', '/webauthn.js', '/qrious.min.js', '/app.css', '/theme-360.css', '/icon-admin-192.png', '/icon-admin-512.png', '/icon-admin-maskable-512.png', '/apple-touch-icon-admin.png', '/sw.js', '/favicon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'], (req, res) => { if (req.path === '/sw.js') res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, req.path)); });
+app.get(['/logo.png', '/logo-dark.png', '/collapse.js', '/d3.min.js', '/shim.js', '/plus.js', '/plus.css', '/addr.js', '/visitcal.js', '/idle.js', '/zoom.js', '/spin.js', '/install.js', '/ptr.js', '/update.js', '/webauthn.js', '/qrious.min.js', '/app.css', '/theme-360.css', '/icon-admin-192.png', '/icon-admin-512.png', '/icon-admin-maskable-512.png', '/apple-touch-icon-admin.png', '/sw.js', '/favicon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'], (req, res) => { if (req.path === '/sw.js') res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, req.path)); });
 app.get('/manifest.webmanifest', (req, res) => { res.type('application/manifest+json'); res.sendFile(path.join(pub, 'manifest.webmanifest')); });
 app.get('/admin.webmanifest', (req, res) => { res.type('application/manifest+json'); res.sendFile(path.join(pub, 'admin.webmanifest')); });
 
@@ -1077,6 +1077,30 @@ async function geocode(q) {
     return { lat: Math.round(Number(j[0].lat) * 1e6) / 1e6, lng: Math.round(Number(j[0].lon) * 1e6) / 1e6, label: j[0].display_name };
   } catch (e) { return null; } finally { clearTimeout(t); }
 }
+// address lookup as you type (OpenStreetMap's Photon, US only): street, city, state, ZIP + coordinates
+const US_STATE = { alabama:'AL',alaska:'AK',arizona:'AZ',arkansas:'AR',california:'CA',colorado:'CO',connecticut:'CT',delaware:'DE','district of columbia':'DC',florida:'FL',georgia:'GA',hawaii:'HI',idaho:'ID',illinois:'IL',indiana:'IN',iowa:'IA',kansas:'KS',kentucky:'KY',louisiana:'LA',maine:'ME',maryland:'MD',massachusetts:'MA',michigan:'MI',minnesota:'MN',mississippi:'MS',missouri:'MO',montana:'MT',nebraska:'NE',nevada:'NV','new hampshire':'NH','new jersey':'NJ','new mexico':'NM','new york':'NY','north carolina':'NC','north dakota':'ND',ohio:'OH',oklahoma:'OK',oregon:'OR',pennsylvania:'PA','rhode island':'RI','south carolina':'SC','south dakota':'SD',tennessee:'TN',texas:'TX',utah:'UT',vermont:'VT',virginia:'VA',washington:'WA','west virginia':'WV',wisconsin:'WI',wyoming:'WY' };
+const sugCache = new Map();
+app.get('/api/address-suggest', needApi(), async (req, res) => {
+  const q = String(req.query.q || '').trim().slice(0, 160); if (q.length < 4) return res.json({ items: [] });
+  const key = q.toLowerCase(); if (sugCache.has(key)) return res.json({ items: sugCache.get(key) });
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 6000);
+  try {
+    const r = await fetch('https://photon.komoot.io/api/?limit=6&lang=en&bbox=-125,24,-66,50&q=' + encodeURIComponent(q), { signal: ctl.signal, headers: { 'User-Agent': '360-Medical-Case-Tracker/1.0' } });
+    const j = await r.json();
+    const items = []; const seen = new Set();
+    for (const f of (j.features || [])) {
+      const p = f.properties || {}, g = (f.geometry || {}).coordinates || [];
+      if (p.countrycode && p.countrycode !== 'US') continue;
+      const street = [p.housenumber, p.street].filter(Boolean).join(' ') || (p.type === 'house' || p.type === 'street' ? '' : p.name || '');
+      if (!street) continue;
+      const st = (p.state && (US_STATE[String(p.state).toLowerCase()] || (String(p.state).length === 2 ? String(p.state).toUpperCase() : ''))) || '';
+      const it = { name: p.name && p.name !== street ? p.name : '', street, city: p.city || p.town || p.village || p.district || p.county || '', state: st, zip: p.postcode || '', lat: Math.round(Number(g[1]) * 1e6) / 1e6, lng: Math.round(Number(g[0]) * 1e6) / 1e6 };
+      const k = [it.street, it.city, it.state, it.zip].join('|').toLowerCase(); if (seen.has(k)) continue; seen.add(k); items.push(it);
+    }
+    if (sugCache.size > 500) sugCache.clear(); sugCache.set(key, items);
+    res.json({ items });
+  } catch (e) { res.json({ items: [], error: 'lookup unavailable' }); } finally { clearTimeout(t); }
+});
 app.get('/api/admin/geocode', needApi('owner'), async (req, res) => { const g = await geocode(String(req.query.q || '').slice(0, 300)); res.json(g ? Object.assign({ found: true }, g) : { found: false }); });
 app.post('/api/admin/facilities', needApi('owner'), async (req, res) => {
   const b = req.body || {}, id = b.id && /^[A-Za-z0-9_-]{1,40}$/.test(b.id) ? b.id : 'f' + crypto.randomBytes(7).toString('hex');
@@ -1103,13 +1127,13 @@ app.post('/api/admin/visit-ack', needApi('owner'), async (req, res) => {
 const nameKey = v => String(v || '').toLowerCase().replace(/\bdr\.?\s*/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 const byName = s => whoName(s);
 function findDir(col, name) { const k = nameKey(name); if (!k) return null; for (const [p, d] of docs) if (p.startsWith(col + '/') && (nameKey(d.name) === k || (d.aliases || []).some(a => nameKey(a) === k))) return Object.assign({ id: p.slice(col.length + 1) }, d); return null; }
-async function ensureFacility(name, address, s) {
+async function ensureFacility(name, address, s, picked) {
   name = String(name || '').trim().slice(0, 120); if (!name || nameKey(name).length < 2) return null;
   const hit = findDir('facilities', name); if (hit) return hit;
   const id = 'f' + crypto.randomBytes(7).toString('hex');
   let lat = null, lng = null, label = '';
   address = String(address || '').trim().slice(0, 300);
-  if (address) { const g = await geocode(address); if (g) { lat = g.lat; lng = g.lng; label = g.label; } }
+  if (address) { const g = picked || await geocode(address); if (g) { lat = g.lat; lng = g.lng; label = g.label; } }
   const doc = { name, address, lat, lng, map_label: label, radius_m: null, aliases: [], approved: s.role === 'owner', added_by: byName(s), created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
   await put('facilities/' + id, doc);
   if (s.role !== 'owner') {
@@ -1258,9 +1282,10 @@ app.post('/api/directory/facility', needApi(), async (req, res) => {
   const b = req.body || {}; if (!String(b.name || '').trim()) return res.status(400).json({ error: 'Facility name is required.' });
   req.s.base = baseUrl(req);
   const existed = findDir('facilities', b.name), address = String(b.address || '').trim().slice(0, 300);
+  const pickedLat = Number(b.lat), pickedLng = Number(b.lng), picked = address && isFinite(pickedLat) && isFinite(pickedLng) && Math.abs(pickedLat) <= 90 && Math.abs(pickedLng) <= 180 && b.lat !== '' && b.lat != null ? { lat: Math.round(pickedLat * 1e6) / 1e6, lng: Math.round(pickedLng * 1e6) / 1e6, label: address } : null;
   if (existed && address && existed.lat == null) {
     // fill in the missing address on a facility that's already in the list
-    const g = await geocode(address);
+    const g = picked || await geocode(address);
     if (!g) return res.status(400).json({ error: 'Could not find that address on the map. Check the street, city and ZIP.' });
     const k = 'facilities/' + existed.id, doc = Object.assign({}, docs.get(k), { address, lat: g.lat, lng: g.lng, map_label: g.label, approved: req.s.role === 'owner', address_by: byName(req.s), updated_at: new Date().toISOString() });
     await put(k, doc);
@@ -1270,7 +1295,7 @@ app.post('/api/directory/facility', needApi(), async (req, res) => {
     }
     return res.json({ ok: true, existed: true, updated: true, facility: Object.assign({ id: existed.id }, doc) });
   }
-  const d = existed || await ensureFacility(b.name, address, req.s);
+  const d = existed || await ensureFacility(b.name, address, req.s, picked);
   if (!existed && d && address && d.lat == null) return res.json({ ok: true, existed: false, facility: d, not_found: true });
   res.json({ ok: true, existed: !!existed, facility: d });
 });

@@ -222,3 +222,14 @@ body.embed .head, body.embed #hubpane, body.embed .jump, body.embed .mtop { disp
 body.embed .wrap { padding: 1rem !important; max-width: none; }
 .appswitch.views a, .appswitch.views span { font-size: .66rem; padding: 0 .1rem; }
 .appswitch a.off { opacity: .4; cursor: default; }
+
+/* address fields with lookup (addr.js) */
+.addr { display: grid; gap: 6px; width: 100%; }
+.addr-streetwrap { position: relative; }
+.addr-row { display: grid; grid-template-columns: 1fr 5.2rem 6rem; gap: 6px; }
+.addr .field { width: 100%; min-width: 0; }
+.addr-sug { position: absolute; left: 0; right: 0; top: 100%; z-index: 30; background: var(--card, #fff); color: var(--ink, #111); border: 1px solid var(--line, #d9dee7); border-radius: 10px; box-shadow: 0 10px 30px rgba(15, 27, 51, .18); max-height: 16rem; overflow: auto; margin-top: 2px; }
+.addr-item { display: block; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line, #eef1f5); padding: 8px 10px; font: inherit; color: inherit; cursor: pointer; }
+.addr-item:last-child { border-bottom: 0; } .addr-item:hover, .addr-item:focus { background: var(--mute-bg, #f3f5f9); outline: none; }
+.addr-l1 { font-weight: 600; } .addr-l2 { font-size: .82rem; color: var(--muted, #667); }
+@media (max-width: 480px) { .addr-row { grid-template-columns: 1fr 4.6rem 5.4rem; } }
