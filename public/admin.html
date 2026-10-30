@@ -373,10 +373,11 @@ header.head.has-who{padding-top:58px}
 <script src="/idle.js"></script>
 <script src="/zoom.js"></script>
 <script src="/visitcal.js"></script>
-<script src="/wcu.js?v=7"></script>
+<script src="/wcu.js?v=8"></script>
 <script src="/addr.js"></script>
 <script src="/import.js?v=1"></script>
 <script src="/logins.js?v=1"></script>
+<script src="/admin-pages.js?v=1"></script>
 <script>
 (function () {
   'use strict';
@@ -1132,7 +1133,7 @@ fetch('/api/me', { credentials: 'same-origin' }).then(function (r) { return r.ok
     var wrap = document.querySelector('.wrap'); document.querySelectorAll('.hidex').forEach(function (e) { e.classList.remove('hidex'); });
     if (!card) return;
     [].slice.call(wrap.children).forEach(function (ch) {
-      if (ch.classList.contains('head') || ch.id === 'hubpane') return;
+      if (ch.classList.contains('head') || ch.id === 'hubpane' || ch.id === 'jump') return;
       if (ch === card || ch.contains(card)) { if (ch !== card) [].slice.call(ch.children).forEach(function (sib) { sib.classList.toggle('hidex', sib !== card && !sib.contains(card)); }); }
       else ch.classList.add('hidex');
     });
