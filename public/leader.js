@@ -5,7 +5,7 @@
   if (/[?&]embed=1/.test(location.search)) return;
   var css = document.createElement('style');
   css.textContent =
-    '#sec-leader{padding:0;overflow:hidden;border:0;background:#0b4d96;color:#fff}' +
+    '#sec-leader{padding:0;overflow:hidden;border:0;background:#0f1b33;color:#fff}' +
     '#sec-leader .lb-h{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:6px 14px;padding:16px 18px 10px}' +
     '#sec-leader .lb-t{font:800 1.15rem/1.2 inherit;letter-spacing:.01em;margin:0;color:#fff}' +
     '#sec-leader .lb-s{font-size:.78rem;color:#c7d8f2;letter-spacing:.04em;text-transform:uppercase;font-weight:700}' +
