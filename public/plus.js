@@ -916,7 +916,7 @@
     if (!X.built.vcal) {
       X.built.vcal = true; sec.replaceChildren();
       var vhd = el('div', 'cardhead'); vhd.appendChild(el('h2', '', 'Target visit calendar'));
-      var vtools = el('div', 'tools'); vtools.appendChild(btn('📆 Add to Outlook', 'small', outlookBox)); vtools.appendChild(btn('✕ Close', 'small', function () { sec.hidden = true; var pl = document.querySelector('#jump .jcal'); if (pl) pl.classList.remove('calopen'); }));
+      var vtools = el('div', 'tools'); vtools.appendChild(btn('📆 Add to Outlook', 'small', outlookBox)); vtools.appendChild(btn('✕ Close', 'small', function () { sec.hidden = true; var pl = document.querySelector('#jump .jcal'); if (pl) { pl.classList.remove('calopen'); pl.classList.remove('on'); } window.scrollTo({ top: 0, behavior: 'smooth' }); }));
       vhd.appendChild(vtools); sec.appendChild(vhd);
       var ob = el('div', 'msg'); ob.id = 'x-outlook'; ob.hidden = true; sec.appendChild(ob);
       sec.appendChild(el('p', 'note', 'Tap a day to see its visits; open a visit and tap Check in when you arrive (your phone shares its location once to confirm you are there). Green = verified, red = not verified or missed.'));
