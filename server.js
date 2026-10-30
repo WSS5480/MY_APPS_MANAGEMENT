@@ -363,6 +363,21 @@ async function syncPeople(force) {
   }
   // a rep whose Case tracker box was unticked in the store is switched off here (their records stay)
   for (const [name, rec] of Object.entries(p.reps)) if (rec.hub && rec.hubActive !== false && !people.some(u => u.role === 'rep' && u.id === rec.hub && u.active !== false)) { rec.active = false; rec.hubActive = false; pinsChanged = true; }
+  // Team logins is the roster: a rep deleted there (or an old tracker-only rep with no login) leaves the tracker's rep list.
+  // Their cases, visits and notes stay on record. Skipped if the store sent nobody (a bad sync must never empty the list).
+  if (people.length) {
+    const live = new Set(people.filter(u => u.role === 'rep').map(u => u.id)), names = new Set(people.filter(u => u.role === 'rep').map(u => String(u.name || '').trim().toLowerCase()));
+    const gone = (name, rec) => rec && rec.hub ? !live.has(rec.hub) : !names.has(String(name).trim().toLowerCase());
+    const PLAN = ['role', 'territory', 'metric', 'quota', 'counts', 'product_filter', 'carry', 'draw', 'comm_rate', 'comm_floor', 'pay_kind', 'pay_amount', 'sim_quota'];
+    for (const r of rows.filter(x => x.role !== 'Team' && gone(x.rep, p.reps[x.rep]))) { // an old plan carries over to the same person's login when that row has none yet
+      const first = String(r.rep).trim().toLowerCase();
+      const to = rows.find(x => x !== r && x.role !== 'Team' && !gone(x.rep, p.reps[x.rep]) && x.comm_rate == null && !x.quota && String(x.rep).trim().toLowerCase().split(/\s+/)[0] === first);
+      if (to && r.comm_rate != null) { PLAN.forEach(k => { if (k === 'territory') return; to[k] = r[k]; }); rowsChanged = true; }
+    }
+    for (const name of Object.keys(p.reps)) if (gone(name, p.reps[name])) { delete p.reps[name]; pinsChanged = true; }
+    const keep = rows.filter(x => x.role === 'Team' || !gone(x.rep, p.reps[x.rep]));
+    if (keep.length !== rows.length) { rows.length = 0; rows.push(...keep); rowsChanged = true; }
+  }
   if (pinsChanged) await put('_auth/pins', p);
   if (rowsChanged) await put('config/quotas', Object.assign({}, docs.get('config/quotas') || {}, { rows }));
   return people;
@@ -401,7 +416,8 @@ function surgicalComm(r, ym, cases) {
 app.get('/api/hub/commissions', hubAuth, (req, res) => {
   const ym = /^\d{4}-\d{2}$/.test(String(req.query.month || '')) ? String(req.query.month) : chiDate().slice(0, 7);
   const cases = allCases(), [y, m] = ym.split('-').map(Number), q0 = Math.floor((m - 1) / 3) * 3 + 1;
-  const reps = quotaRows().filter(r => r.role !== 'Team').map(r => {
+  const pp = pins().reps;
+  const reps = quotaRows().filter(r => r.role !== 'Team' && (!pp[r.rep] || pp[r.rep].active !== false || cases.some(x => x.rep === r.rep && x.date.slice(0, 7) === ym))).map(r => {
     const c = surgicalComm(r, ym, cases);
     let qtd = 0; for (let mm = q0; mm <= m; mm++) qtd += surgicalComm(r, y + '-' + String(mm).padStart(2, '0'), cases).commission;
     const mine = cases.filter(x => x.rep === r.rep && x.date.slice(0, 7) === ym && String(x.status || '').toLowerCase() !== 'cancelled').sort((a, b) => a.date.localeCompare(b.date));
