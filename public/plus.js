@@ -295,6 +295,94 @@
     picker('📎 Add photo', false);
   }
 
+  /* ---------- invoice: the rep attaches it (photo or PDF) with its details; it waits for the COO's approval ---------- */
+  var invSig = '', INVP = { pending: ['warn', 'Waiting for COO approval'], approved: ['ok', 'Approved'], rejected: ['bad', 'Sent back'] };
+  function applyCase(cs) { S.cases = S.cases.map(function (x) { return x.id === cs.id ? Object.assign({}, x, { invoice: cs.invoice, status: cs.status, net_sales: cs.net_sales }) : x; }); }
+  function invFiles(list) { var w = el('div', 'x-thumbs'); (list || []).forEach(function (id) { var a = el('a', 'btn small', '📄 View invoice'); a.href = '/img/' + encodeURIComponent(id); a.target = '_blank'; a.rel = 'noopener'; w.appendChild(a); }); return w; }
+  function invSummary(inv) {
+    var d = el('div'); d.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,9rem),1fr));gap:6px 12px;margin:6px 0';
+    [['Invoice #', inv.number], ['Invoice date', inv.date], ['Amount', money(inv.amount)], ['PO #', inv.po || '—'], ['Bill to', inv.bill_to || '—'], ['Terms', inv.terms || '—']].forEach(function (f) { var x = el('div'); x.appendChild(el('div', 'x-lab', f[0])); x.appendChild(el('div', 'strong', f[1])); d.appendChild(x); });
+    return d;
+  }
+  function invForm(c, box, inv) {
+    var f = el('div', 'x-form'); f.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr));gap:8px 12px';
+    var lab = function (t, node, full) { var l = el('label', full ? 'full' : '', t); if (full) l.style.gridColumn = '1/-1'; l.appendChild(node); f.appendChild(l); return node; };
+    var num = lab('Invoice # *', el('input', 'field')), dt = lab('Invoice date *', el('input', 'field')), amt = lab('Amount $ *', el('input', 'field')), po = lab('PO #', el('input', 'field')), bt = lab('Bill to (hospital / facility)', el('input', 'field')), tm = lab('Terms', el('input', 'field'));
+    dt.type = 'date'; amt.inputMode = 'decimal'; tm.placeholder = 'e.g. Net 30';
+    num.value = (inv && inv.number) || c.invoice_no || c.po || ''; dt.value = (inv && inv.date) || T.TODAY; amt.value = inv ? inv.amount : (c.net_sales || ''); po.value = (inv && inv.po) || c.po || ''; bt.value = (inv && inv.bill_to) || c.facility || ''; tm.value = (inv && inv.terms) || '';
+    var nt = lab('Notes for the COO', el('textarea', 'field'), true); nt.rows = 2; nt.value = (inv && inv.notes) || '';
+    var files = ((inv && inv.files) || []).slice(), fl = el('div', 'x-thumbs'); fl.style.gridColumn = '1/-1';
+    function drawFiles() {
+      fl.replaceChildren();
+      files.forEach(function (id) { var w = el('span', 'pill mute'); var a = el('a', '', '📄 invoice'); a.href = '/img/' + encodeURIComponent(id); a.target = '_blank'; w.appendChild(a); var x = el('button', 'btn small', '×'); x.type = 'button'; x.onclick = function () { files = files.filter(function (i) { return i !== id; }); drawFiles(); }; w.appendChild(x); fl.appendChild(w); });
+      [['📷 Photo of invoice', 'image/*', true], ['📎 Add photo or PDF', 'image/*,application/pdf', false]].forEach(function (o) {
+        if (o[2] && !(window.matchMedia && matchMedia('(pointer: coarse)').matches)) return;
+        var inp = el('input'); inp.type = 'file'; inp.accept = o[1]; inp.hidden = true; if (o[2]) inp.setAttribute('capture', 'environment');
+        var b = btn(o[0], 'small', function () { inp.click(); });
+        inp.onchange = function () { var file = inp.files[0]; if (!file) return; b.textContent = 'Uploading…'; b.disabled = true;
+          var go = /pdf$/i.test(file.type) ? new Promise(function (ok, bad) { if (file.size > 3e6) return bad({ error: 'That PDF is over 3 MB. Take a photo of it instead.' }); var r = new FileReader(); r.onload = function () { ok(r.result); }; r.onerror = bad; r.readAsDataURL(file); }) : shrink(file);
+          go.then(function (data) { return api('/api/upload', { data: data, rep: c.rep }); }).then(function (j) { files.push(j.id); drawFiles(); }, function (e) { b.disabled = false; b.textContent = o[0]; msg.className = 'msg err'; msg.hidden = false; msg.textContent = (e && e.error) || 'Upload failed.'; }); };
+        fl.appendChild(b); fl.appendChild(inp);
+      });
+    }
+    drawFiles(); f.appendChild(fl);
+    var msg = el('div', 'msg'); msg.hidden = true; msg.style.gridColumn = '1/-1';
+    var send = btn(T.isLead() ? 'Save invoice' : 'Send for approval', 'primary', function () {
+      send.disabled = true; msg.hidden = true;
+      api('/api/cases/' + encodeURIComponent(c.id) + '/invoice', { number: num.value, date: dt.value, amount: amt.value, po: po.value, bill_to: bt.value, terms: tm.value, notes: nt.value, files: files })
+        .then(function (j) { applyCase(j.case); invSig = ''; drawInv(); T.render(); }, function (e) { send.disabled = false; msg.className = 'msg err'; msg.hidden = false; msg.textContent = (e && e.error) || 'Could not send. Check your connection.'; });
+    });
+    var row = el('div', 'tools'); row.style.gridColumn = '1/-1'; row.appendChild(send); if (inv) row.appendChild(btn('Cancel', 'small', function () { invSig = ''; drawInv(); }));
+    f.appendChild(row); f.appendChild(msg); box.appendChild(f); num.focus();
+  }
+  function drawInv(force) {
+    var box = $('#ce-inv'), c = curCase(); if (!box) return; if (!c) { box.replaceChildren(); invSig = ''; return; }
+    var inv = c.invoice, sig = c.id + ':' + JSON.stringify(inv || null); if (!force && sig === invSig) return; invSig = sig; box.replaceChildren();
+    var head = el('div', 'tools'); head.style.cssText = 'justify-content:space-between;flex-wrap:wrap'; head.appendChild(el('span', 'x-lab', 'Invoice'));
+    if (inv) { var p = INVP[inv.status] || ['mute', inv.status]; head.appendChild(el('span', 'pill ' + p[0], p[1] + (inv.status !== 'pending' && inv.reviewed_by ? ' · ' + inv.reviewed_by : ''))); }
+    box.appendChild(head);
+    var locked = !!closedMonth(c.date), lead = T.isLead();
+    // status: reps reach Invoiced / Paid only after approval
+    var stSel = $('#ce-status'); if (stSel) [].forEach.call(stSel.options, function (o) { if (o.value === 'Invoiced' || o.value === 'Paid') o.disabled = !lead && !(inv && inv.status === 'approved') && stSel.value !== o.value; });
+    if (!inv) { box.appendChild(el('p', 'note', lead ? 'No invoice yet.' : 'Add the invoice (photo or PDF) and its details. The case moves to Invoiced once the COO approves it.')); if (!locked) box.appendChild(btn('🧾 Add invoice', 'primary small', function () { box.replaceChildren(head); invForm(c, box, null); })); return; }
+    box.appendChild(invSummary(inv)); box.appendChild(invFiles(inv.files));
+    if (inv.notes) box.appendChild(el('p', 'note', 'Notes: ' + inv.notes));
+    if (inv.status === 'rejected' && inv.reason) { var r = el('div', 'msg err', 'Sent back: ' + inv.reason); box.appendChild(r); }
+    box.appendChild(el('p', 'note', 'Sent ' + new Date(inv.submitted_at).toLocaleString() + ' by ' + (inv.submitted_by || '') + (inv.reviewed_at ? ' · reviewed ' + new Date(inv.reviewed_at).toLocaleString() : '')));
+    var acts = el('div', 'tools'); acts.style.flexWrap = 'wrap';
+    if (lead && inv.status === 'pending' && !locked) {
+      acts.appendChild(btn('✓ Approve', 'primary small', function (e) { e.target.disabled = true; api('/api/cases/' + encodeURIComponent(c.id) + '/invoice/review', { approve: true }).then(function (j) { applyCase(j.case); invSig = ''; drawInv(); T.render(); }, function (er) { e.target.disabled = false; alert((er && er.error) || 'Could not approve.'); }); }));
+      acts.appendChild(btn('Send back', 'small', function () { var why = prompt('What needs fixing? The rep sees this.'); if (!why) return; api('/api/cases/' + encodeURIComponent(c.id) + '/invoice/review', { approve: false, reason: why }).then(function (j) { applyCase(j.case); invSig = ''; drawInv(); T.render(); }, function (er) { alert((er && er.error) || 'Could not send it back.'); }); }));
+    }
+    if (!locked && (inv.status !== 'approved' || lead)) acts.appendChild(btn(inv.status === 'rejected' ? 'Fix and resend' : 'Edit invoice', 'small', function () { box.replaceChildren(head); invForm(c, box, inv); }));
+    box.appendChild(acts);
+  }
+
+  // COO: invoices waiting for approval · reps: their invoices that are waiting or were sent back
+  var invqSig = '';
+  function drawInvQueue() {
+    var sec = $('#sec-invq'); if (!sec) return; var lead = T.isLead();
+    var list = S.cases.filter(function (c) { return c.invoice && (c.invoice.status === 'pending' || (!lead && c.invoice.status === 'rejected')) && (lead || c.rep === S.myRep); })
+      .sort(function (a, b) { return String(a.invoice.submitted_at).localeCompare(String(b.invoice.submitted_at)); });
+    var sig = lead + JSON.stringify(list.map(function (c) { return [c.id, c.invoice.status, c.invoice.submitted_at]; })); if (sig === invqSig) return; invqSig = sig;
+    sec.hidden = !list.length; var jp = document.querySelector('#jump a[href="#sec-invq"]'); if (jp) { jp.hidden = !list.length; jp.textContent = '🧾 ' + (lead ? 'Approve' : 'Invoices') + ' (' + list.length + ')'; }
+    if (!list.length) return; sec.replaceChildren();
+    var h = el('div', 'cardhead'); h.appendChild(el('h2', '', lead ? 'Invoices to approve · ' + list.length : 'My invoices · ' + list.length)); sec.appendChild(h);
+    sec.appendChild(el('p', 'note', lead ? 'Reps added these invoices to their cases. Open one to check the photo and details, then approve it (the case becomes Invoiced at that amount) or send it back with a note.' : 'Waiting for the COO, or sent back for a fix. Open the case to see the note and resend.'));
+    var g = el('div'); g.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,17rem),1fr));gap:8px';
+    list.forEach(function (c) {
+      var inv = c.invoice, d = el('div'); d.style.cssText = 'border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:4px';
+      var t = el('div', 'strong', (lead ? c.rep + ' · ' : '') + 'Invoice ' + inv.number); d.appendChild(t);
+      d.appendChild(el('div', '', money(inv.amount) + ' · ' + inv.date));
+      d.appendChild(el('div', 'note', [c.surgeon, c.facility, c.product].filter(Boolean).join(' · ') + ' · case ' + dayName(c.date)));
+      if (inv.status === 'rejected') d.appendChild(el('div', 'pill bad', 'Sent back: ' + (inv.reason || '')));
+      var row = el('div', 'tools'); row.appendChild(btn(lead ? 'Review' : 'Open case', 'small primary', function () { var lg = $('#sec-log'); if (lg && lg.classList.contains('folded')) { var fh = lg.querySelector('.fold-h'); if (fh) fh.click(); else lg.classList.remove('folded'); } T.openEditor(c.id); setTimeout(function () { var x = $('#ce-inv'); if (x) x.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 200); }));
+      (inv.files || []).slice(0, 1).forEach(function (id) { var a = el('a', 'btn small', '📄 View'); a.href = '/img/' + encodeURIComponent(id); a.target = '_blank'; a.rel = 'noopener'; row.appendChild(a); });
+      d.appendChild(row); g.appendChild(d);
+    });
+    sec.appendChild(g);
+  }
+
   /* ---------- history ---------- */
   function fmtVal(f, v) { if (v == null || v === '') return '—'; if (f === 'net_sales' || f === 'contract_price') return money(v); if (f === 'attachments') return (v.length || 0) + ' photo' + (v.length === 1 ? '' : 's'); if (typeof v === 'boolean') return v ? 'yes' : 'no'; if (/date$|^expiry$|^date$/.test(f)) return dayName(v); var s = String(v); return s.length > 60 ? s.slice(0, 60) + '…' : s; }
   function showHistory() {
@@ -323,7 +411,7 @@
     $('#ed-delete').disabled = !!lock;
     var sales = $('#ce-sales'), p = contractPrice(c.product, c.facility);
     sales.dataset.auto = p != null && c.net_sales != null && Math.abs(c.net_sales - p * (c.units || 0)) < 0.5 ? String(c.net_sales) : (c.net_sales == null ? '' : '__');
-    drawAtt(); priceHint(); drawPrefHint(); drawChecks(c, c.id);
+    drawAtt(); invSig = ''; drawInv(); priceHint(); drawPrefHint(); drawChecks(c, c.id);
     addMic($('#ce-notes'));
   }
   function closeEditor() { blockMsg = ''; closeScanner(); }
@@ -1089,7 +1177,8 @@
   function render(M, ctx) {
     if (!S.db) return; X.ctx = ctx;
     var ec = curCase(); if (ec && attSig !== ec.id + ':' + (ec.attachments || []).join(',')) drawAtt();
-    drawBilling(ctx); drawUpcoming(ctx); drawVCal(ctx); drawVisits(ctx); drawDir(ctx); drawPrefs(ctx); drawCreds(ctx); drawNotify(); geoTick();
+    if (ec && !document.querySelector('#ce-inv .x-form')) drawInv();
+    drawInvQueue(); drawBilling(ctx); drawUpcoming(ctx); drawVCal(ctx); drawVisits(ctx); drawDir(ctx); drawPrefs(ctx); drawCreds(ctx); drawNotify(); geoTick();
     var anyComm = S.quotas.some(function (q) { return q.role !== 'Team' && q.comm_rate; });
     $('#btn-statement').hidden = !ctx.loaded || !anyComm;
   }

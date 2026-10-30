@@ -147,13 +147,13 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .jump a[hidden]{display:none}
 section[id^="sec-"]{scroll-margin-top:62px}
 </style>
-<link rel="stylesheet" href="/theme-360.css?v=19"><style id="upload-look">/* the dashboard keeps the original tracker's look (accent-topped tiles, big numbers, sentence-case card titles) */
+<link rel="stylesheet" href="/theme-360.css?v=20"><style id="upload-look">/* the dashboard keeps the original tracker's look (accent-topped tiles, big numbers, sentence-case card titles) */
 #main .tile{border-top:3px solid var(--accent);border-radius:var(--r);padding:20px;gap:6px}
 #main .tile .num{font-size:2rem;letter-spacing:-.02em;line-height:1.1}
 #main .tile .lab{font-size:.75rem;letter-spacing:.05em}
 #main .card{padding:20px}
 #main .card h2{font-size:1.0625rem;font-weight:600;letter-spacing:0;text-transform:none}
-@media (max-width:640px){#main .tile{padding:12px 12px 10px;gap:3px}#main .tile .num{font-size:1.35rem}}</style><script src="/collapse.js?v=10" defer></script>
+@media (max-width:640px){#main .tile{padding:12px 12px 10px;gap:3px}#main .tile .num{font-size:1.35rem}}</style><script src="/collapse.js?v=11" defer></script>
 </head><body class="side-layout">
 <div class="wrap" id="root">
   <header class="head" style="position:relative">
@@ -190,7 +190,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
 
   <div id="main">
     <nav class="jump" id="jump" aria-label="Jump to section">
-      <a href="#refresh" class="jr" aria-label="Refresh" title="Refresh">⟳</a><a href="#tiles">📊 Dashboard</a><a href="/products">🛍 Products</a><a href="#sec-upcoming">Upcoming</a><a href="#sec-log">Cases</a><a href="#sec-wcu">📝 WCU</a><a href="#sec-visits">Visit log</a><a href="#sec-dir">Directory</a><a href="#sec-pref">Pref cards</a><a href="#sec-score">Scorecard</a><a href="#sec-cred">Credentials</a><a href="#sec-vcal" class="jcal" aria-label="Calendar" title="Calendar">📅</a>
+      <a href="#refresh" class="jr" aria-label="Refresh" title="Refresh">⟳</a><a href="#tiles">📊 Dashboard</a><a href="/products">🛍 Products</a><a href="#sec-upcoming">Upcoming</a><a href="#sec-log">Cases</a><a href="#sec-invq" hidden>🧾 Approve</a><a href="#sec-wcu">📝 WCU</a><a href="#sec-visits">Visit log</a><a href="#sec-dir">Directory</a><a href="#sec-pref">Pref cards</a><a href="#sec-score">Scorecard</a><a href="#sec-cred">Credentials</a><a href="#sec-vcal" class="jcal" aria-label="Calendar" title="Calendar">📅</a>
     </nav>
     <div class="stack">
       <section class="tiles" id="tiles"></section>
@@ -289,6 +289,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
       </section>
 
       <section class="card" id="sec-wcu"><p class="note">Loading WCU…</p></section>
+      <section class="card" id="sec-invq" hidden data-nofold></section>
       <section class="card" id="sec-log">
         <div class="cardhead">
           <h2>Case log · <span class="mname"></span> · <span class="vname"></span></h2>
@@ -321,6 +322,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
             <label>PO / Invoice #<input class="field" id="ce-po" autocomplete="off"></label>
             <label class="full">Notes (no patient identifiers)<textarea class="field" id="ce-notes"></textarea></label>
             <div class="full x-att"><span class="x-lab">PO / sticker sheet photos</span><div class="x-thumbs" id="ce-att"></div></div>
+            <div class="full" id="ce-inv" style="border:1px solid var(--line);border-radius:12px;padding:10px 12px"></div>
             <div class="full x-checks" id="ce-checks" hidden></div>
           </div>
           <div class="edfoot">
@@ -897,6 +899,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
       var tr = el('tr', (S.canWrite ? 'click ' : '') + (c.id === S.editId ? 'on' : '')); tr.dataset.caseId = c.id; if (S.canWrite) tr.tabIndex = 0;
       var note = c.notes || '';
       [dayName(c.date), c.rep || 'No rep yet', c.surgeon, c.facility, c.product, count(c.units), money(c.net_sales), c.surgeon_type, c.status, note.length > 40 ? note.slice(0, 40) + '…' : note].forEach(function (t, i) { tr.appendChild(el('td', i === 1 ? 'col-rep' : i === 5 || i === 6 ? 'r' : '', t || '—')); });
+      if (c.invoice) { var ip = { pending: ['warn', '🧾 Invoice awaiting approval'], approved: ['ok', '🧾 Invoice approved'], rejected: ['bad', '🧾 Invoice sent back'] }[c.invoice.status]; if (ip) { var st = tr.children[8]; st.appendChild(document.createElement('br')); st.appendChild(el('span', 'pill ' + ip[0], ip[1])); } }
       body.appendChild(tr);
     });
     var e = $('#log-empty'); e.hidden = rows.length > 0;
@@ -1128,13 +1131,13 @@ section[id^="sec-"]{scroll-margin-top:62px}
 <script>
 (function () {
   var nav = document.getElementById('jump'); if (!nav) return;
-  function sync() { nav.querySelectorAll('a[href^="#sec"]').forEach(function (a) { var t = document.querySelector(a.getAttribute('href')); a.hidden = !t || t.hidden || !t.childElementCount; }); }
+  function sync() { nav.querySelectorAll('a[href^="#sec"]:not(.jcal)').forEach(function (a) { var t = document.querySelector(a.getAttribute('href')); a.hidden = !t || t.hidden || !t.childElementCount; }); }
   nav.addEventListener('click', function (e) { var a = e.target.closest('a'); if (a && a.getAttribute('href') === '#refresh') { e.preventDefault(); a.textContent = '…'; location.reload(); return; } if (!a || a.getAttribute('href').charAt(0) !== '#') return; var t = document.querySelector(a.getAttribute('href')); if (t) { e.preventDefault(); t.scrollIntoView({ behavior: 'smooth', block: 'start' }); } });
   sync(); setInterval(sync, 2000);
   var rb = document.getElementById('btn-refresh'); if (rb) rb.addEventListener('click', function () { rb.disabled = true; rb.textContent = '⟳ Refreshing…'; location.reload(); });
   // reps: the original tracker's view first (quota tiles → pace to quota + pace alerts → estimated commissions → SIM Lab →
   // target surgeon conversion → surgeon activity → case log), then the field tools added since (calendar, upcoming, visits, cards, directory…)
-  var REP_ORDER = ['tiles', 'sec-score', 'sec-comm', 'sec-sim', 'sec-notes', 'sec-mix', 'sec-conv', 'sec-surgeons', 'sec-log', 'sec-wcu', 'sec-vcal', 'sec-upcoming', 'sec-visits', 'sec-pref', 'sec-dir', 'sec-billing', 'sec-cred', 'sec-notify'];
+  var REP_ORDER = ['tiles', 'sec-score', 'sec-comm', 'sec-sim', 'sec-notes', 'sec-mix', 'sec-conv', 'sec-surgeons', 'sec-invq', 'sec-log', 'sec-wcu', 'sec-vcal', 'sec-upcoming', 'sec-visits', 'sec-pref', 'sec-dir', 'sec-billing', 'sec-cred', 'sec-notify'];
   var REP_OPEN = ['sec-comm', 'sec-sim', 'sec-conv', 'sec-surgeons', 'sec-log', 'sec-wcu']; // shown open, like the original
   fetch('/api/me', { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (me) {
     if (me && me.name) {
@@ -1187,6 +1190,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
     var a = e.target.closest('a[href="#sec-vcal"]'); if (!a) return;
     e.preventDefault(); e.stopPropagation(); var c = cal(); showCal(!c || c.hidden);
   }, true);
+  document.addEventListener('click', function (e) { var a = e.target.closest('#jump a[href^="#"]'); if (a && !a.classList.contains('jcal') && a.getAttribute('href') !== '#refresh') { var c = cal(); if (c && !c.hidden) showCal(false); } }); // another pill closes the calendar
   if (location.hash === '#sec-vcal') setTimeout(function () { showCal(true); }, 600);
   window.addEventListener('hashchange', function () { if (location.hash === '#sec-vcal') showCal(true); });
 })();

@@ -240,3 +240,4 @@ input[type=date], input[type=time], input[type=datetime-local], input[type=month
 input[type=date]::-webkit-date-and-time-value, input[type=time]::-webkit-date-and-time-value, input[type=datetime-local]::-webkit-date-and-time-value, input[type=month]::-webkit-date-and-time-value { text-align: left; margin: 0; }
 input, select, textarea { max-width: 100%; box-sizing: border-box; }
 label, .field, .f { min-width: 0; }
+.jump a.on { background: var(--accent); border-color: var(--accent); color: #fff; } /* the picked pill */

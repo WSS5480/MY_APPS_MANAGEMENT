@@ -208,12 +208,27 @@ function session(req) {
 const repAcct = rep => Object.values(mgrs()).find(a => a.kind === 'rep' && a.rep === rep && a.totp_on && a.active !== false);
 function acctSession(rec) { return rec.kind === 'rep' ? { role: 'rep', rep: rec.rep, acct: rec.id, v: rec.v } : { role: 'owner', mgr: rec.id, v: rec.v }; }
 const acctOf = s => mgrs()[s.mgr || s.acct];
+/* ---------------- login activity (admin): every sign-in, plus when each person was last using the app ---------------- */
+const seenBy = new Map(); let seenDirty = false;
+const loginKey = (o) => o.role === 'rep' ? 'rep:' + o.rep : o.mgr ? 'mgr:' + o.mgr : o.hubId ? 'hub:' + o.hubId : 'coo';
+function logLogin(o, dev) {
+  try {
+    const log = docs.get('_log/logins') || { events: [], seen: {} };
+    const how = o.hub ? 'Store login' : o.acct ? 'Email + 2-step' : o.mgr ? 'Manager login' : 'PIN';
+    log.events.unshift({ at: new Date().toISOString(), key: loginKey(o), who: whoName(o), role: o.role === 'rep' ? 'Rep' : o.mgr || o.hubStaff ? 'Manager' : 'Admin', dev, how });
+    log.events = log.events.slice(0, 3000); log.seen = Object.assign({}, log.seen, { [loginKey(o)]: new Date().toISOString() });
+    put('_log/logins', log).catch(() => {});
+  } catch (e) {}
+}
+function markSeen(s) { if (!s) return; const k = loginKey(s), now = Date.now(), t = seenBy.get(k); if (!t || now - t > 60e3) { seenBy.set(k, now); seenDirty = true; } }
+setInterval(() => { if (!seenDirty) return; seenDirty = false; const log = docs.get('_log/logins') || { events: [], seen: {} }; const seen = Object.assign({}, log.seen); for (const [k, t] of seenBy) seen[k] = new Date(Math.max(t, Date.parse(seen[k] || 0) || 0)).toISOString(); put('_log/logins', Object.assign({}, log, { seen })).catch(() => {}); }, 5 * 60e3).unref();
 function setSession(res, obj, dev) {
   dev = dev === 'phone' ? 'phone' : 'computer';
   const days = dev === 'phone' ? 30 : 1, sid = crypto.randomBytes(9).toString('base64url');
   for (const [id, t] of lastActive) if (Date.now() - t > 2 * 864e5) lastActive.delete(id);
   for (const [ip, t] of tries) if (Date.now() - t.at > 60 * 60e3) tries.delete(ip);
   lastActive.set(sid, Date.now());
+  logLogin(obj, dev);
   res.setHeader('Set-Cookie', `sct_session=${encodeURIComponent(sign(Object.assign({}, obj, { sid, dev, exp: Date.now() + days * 864e5 })))}; Path=/; HttpOnly; ${COOKIE_ATTRS()}; Max-Age=${days * 86400}`);
 }
 const uidOf = s => s.role === 'owner' ? (s.mgr ? 'mgr-' + s.mgr : 'owner') : 'rep-' + slug(s.rep);
@@ -303,7 +318,7 @@ app.get('/media/:id', async (req, res) => {
     res.setHeader('Content-Length', buf.length); res.end(buf);
   } catch (e) { res.status(500).end(); }
 });
-app.get(['/logo.png', '/logo-dark.png', '/collapse.js', '/d3.min.js', '/shim.js', '/plus.js', '/plus.css', '/addr.js', '/wcu.js', '/import.js', '/visitcal.js', '/idle.js', '/zoom.js', '/spin.js', '/install.js', '/ptr.js', '/update.js', '/webauthn.js', '/qrious.min.js', '/app.css', '/theme-360.css', '/icon-admin-192.png', '/icon-admin-512.png', '/icon-admin-maskable-512.png', '/apple-touch-icon-admin.png', '/sw.js', '/favicon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'], (req, res) => { if (req.path === '/sw.js') res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, req.path)); });
+app.get(['/logo.png', '/logo-dark.png', '/collapse.js', '/d3.min.js', '/shim.js', '/plus.js', '/plus.css', '/addr.js', '/wcu.js', '/import.js', '/logins.js', '/visitcal.js', '/idle.js', '/zoom.js', '/spin.js', '/install.js', '/ptr.js', '/update.js', '/webauthn.js', '/qrious.min.js', '/app.css', '/theme-360.css', '/icon-admin-192.png', '/icon-admin-512.png', '/icon-admin-maskable-512.png', '/apple-touch-icon-admin.png', '/sw.js', '/favicon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'], (req, res) => { if (req.path === '/sw.js') res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, req.path)); });
 app.get('/manifest.webmanifest', (req, res) => { res.type('application/manifest+json'); res.sendFile(path.join(pub, 'manifest.webmanifest')); });
 app.get('/admin.webmanifest', (req, res) => { res.type('application/manifest+json'); res.sendFile(path.join(pub, 'admin.webmanifest')); });
 
@@ -533,7 +548,7 @@ const needApi = role => (req, res, next) => {
   if (role === 'owner' && s.role !== 'owner') return res.status(403).json({ error: 'Admin only.' });
   if (role === 'super' && !isSuper(s)) return res.status(403).json({ error: 'Only the account owner can manage managers.' });
   if (req.method !== 'GET' && s.sid) lastActive.set(s.sid, Date.now());
-  req.s = s; next();
+  markSeen(s); req.s = s; next();
 };
 
 // can this person use the peptide store? (reps: their Team logins row; store managers: theirs; the COO PIN: yes, as the store's admin)
@@ -567,6 +582,11 @@ app.post('/api/doc', needApi(), async (req, res) => {
           if (pv && pv.check) { next.check = pv.check; next.check_attempts = pv.check_attempts; ['date', 'time', 'duration', 'facility', 'target_id'].forEach(f => { if (pv[f] !== undefined) next[f] = pv[f]; }); }
           if (pv && pv.status === 'planned' && next.status === 'cancelled' && s.role !== 'owner' && visitWindow(pv).start <= Date.now()) return res.status(409).json({ code: 'failed_precondition', error: 'This visit has already started, so it cannot be cancelled. Check in, or ask the COO.' });
         } else if (pv && pv.check && s.role !== 'owner') return res.status(403).json({ code: 'permission_denied', error: 'A visit with a check-in record cannot be deleted.' });
+      }
+      if (col === 'cases' && next) { // the invoice only changes through submit / review; reps reach Invoiced or Paid only once the COO approves the invoice
+        if (prev && prev.invoice) next.invoice = prev.invoice; else delete next.invoice;
+        const ok = next.invoice && next.invoice.status === 'approved';
+        if (s.role !== 'owner' && ['Invoiced', 'Paid'].includes(next.status) && !ok && (!prev || prev.status !== next.status)) return res.status(409).json({ code: 'failed_precondition', error: 'Add the invoice to this case. It moves to Invoiced once the COO approves it.' });
       }
       if (col === 'cases') {
         const lock = closedMonth(prev && prev.date) || closedMonth(next && next.date);
@@ -713,6 +733,19 @@ app.delete('/api/admin/import-cases/:batch', needApi('owner'), async (req, res) 
   const log = docs.get('config/imports') || { batches: [] }; log.batches = log.batches.map((b) => (b.id === id ? Object.assign({}, b, { undone: new Date().toISOString(), removed: n }) : b)); await put('config/imports', log);
   res.json({ ok: true, removed: n });
 });
+app.get('/api/admin/logins', needApi('owner'), (req, res) => {
+  const log = docs.get('_log/logins') || { events: [], seen: {} }, now = Date.now(), seen = Object.assign({}, log.seen);
+  for (const [k, t] of seenBy) seen[k] = new Date(Math.max(t, Date.parse(seen[k] || 0) || 0)).toISOString();
+  const people = {};
+  const add = (key, who, role) => people[key] || (people[key] = { key, who, role, last_login: null, last_seen: seen[key] || null, d7: 0, d30: 0, phone: 0, computer: 0, events: [] });
+  quotaRows().filter((r) => r.role !== 'Team' && (pins().reps[r.rep] || {}).active !== false).forEach((r) => add('rep:' + r.rep, r.rep, 'Rep'));
+  for (const e of log.events) {
+    const p = add(e.key, e.who, e.role), age = now - Date.parse(e.at);
+    if (!p.last_login) p.last_login = e.at; if (age <= 7 * 864e5) p.d7++; if (age <= 30 * 864e5) { p.d30++; p[e.dev === 'phone' ? 'phone' : 'computer']++; }
+    if (p.events.length < 25) p.events.push({ at: e.at, dev: e.dev, how: e.how });
+  }
+  res.json({ people: Object.values(people), since: log.events.length ? log.events[log.events.length - 1].at : null });
+});
 app.get('/api/admin/backup', needApi('owner'), (req, res) => {
   const out = {}; for (const [k, d] of docs) if (!k.startsWith('_auth/') && !k.startsWith('_seed/') && !k.startsWith('_push/')) out[k] = d;
   res.setHeader('Content-Disposition', `attachment; filename="360-medical-tracker-backup-${new Date().toISOString().slice(0, 10)}.json"`);
@@ -749,8 +782,8 @@ function productFrom(b, prev) {
   });
 }
 app.post('/api/admin/images', needApi('owner'), async (req, res) => {
-  const m = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body.data || ''));
-  if (!m) return res.status(400).json({ error: 'That file is not a JPG, PNG or WebP image.' });
+  const m = /^data:(image\/(?:jpeg|png|webp)|application\/pdf);base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body.data || ''));
+  if (!m) return res.status(400).json({ error: 'That file is not a photo (JPG, PNG, WebP) or a PDF.' });
   if (m[2].length > 4.2e6) return res.status(400).json({ error: 'Photo is too large.' });
   const id = 'img' + crypto.randomBytes(9).toString('hex');
   await put('_img/' + id, { type: m[1], b64: m[2] });
@@ -862,6 +895,50 @@ app.delete('/api/upload/:id', needApi(), async (req, res) => {
   if (!d || !/^att/.test(req.params.id)) return res.json({ ok: true });
   if (req.s.role !== 'owner' && d.rep !== req.s.rep) return res.status(403).json({ error: 'Not yours' });
   await del(k); res.json({ ok: true });
+});
+
+/* ---------------- case invoices: the rep attaches the invoice (photo or PDF) with its details; it waits for the COO ---------------- */
+const invPublic = (c, id) => ({ id, rep: c.rep, date: c.date, surgeon: c.surgeon || '', facility: c.facility || '', product: c.product || '', status: c.status, net_sales: c.net_sales, invoice: c.invoice });
+app.post('/api/cases/:id/invoice', needApi(), async (req, res) => {
+  const k = 'cases/' + req.params.id, c = docs.get(k); if (!c) return res.status(404).json({ error: 'Case not found.' });
+  if (req.s.role !== 'owner' && c.rep !== req.s.rep) return res.status(403).json({ error: 'Not your case.' });
+  if (closedMonth(c.date)) return res.status(423).json({ error: monthLabel(closedMonth(c.date)) + ' is closed. Ask the COO to reopen it.' });
+  if (c.invoice && c.invoice.status === 'approved' && req.s.role !== 'owner') return res.status(409).json({ error: 'This invoice is already approved. Ask the COO to change it.' });
+  const b = req.body || {}, amount = Number(String(b.amount ?? '').replace(/[$,\s]/g, ''));
+  const files = (Array.isArray(b.files) ? b.files : []).map(String).filter((id) => /^att[0-9a-f]+$/.test(id) && docs.has('_img/' + id)).slice(0, 10);
+  const why = [];
+  if (!String(b.number || '').trim()) why.push('the invoice number');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(b.date || ''))) why.push('the invoice date');
+  if (!isFinite(amount) || amount <= 0) why.push('the invoice amount');
+  if (!files.length) why.push('a photo or PDF of the invoice');
+  if (why.length) return res.status(400).json({ error: 'Add ' + why.join(', ') + '.' });
+  const owner = req.s.role === 'owner', now = new Date().toISOString(), prev = c;
+  const inv = { number: String(b.number).trim().slice(0, 60), date: String(b.date), amount: Math.round(amount * 100) / 100, po: String(b.po || '').trim().slice(0, 60),
+    bill_to: String(b.bill_to || '').trim().slice(0, 160), terms: String(b.terms || '').trim().slice(0, 40), notes: String(b.notes || '').trim().slice(0, 1000), files,
+    status: owner ? 'approved' : 'pending', submitted_at: now, submitted_by: whoName(req.s), history: ((c.invoice && c.invoice.history) || []).concat([{ at: now, by: whoName(req.s), what: owner ? 'Added and approved' : (c.invoice ? 'Sent again for approval' : 'Sent for approval') }]).slice(-20) };
+  if (owner) Object.assign(inv, { reviewed_at: now, reviewed_by: whoName(req.s) });
+  const next = Object.assign({}, c, { invoice: inv, updated_at: now }, owner ? { net_sales: inv.amount, po: inv.po || c.po, invoice_no: inv.number, status: c.status === 'Paid' ? 'Paid' : 'Invoiced' } : {});
+  await put(k, next); await audit(req.params.id, req.s, 'update', prev, next).catch(() => {});
+  if (!owner) notifyOwner('Invoice to approve · ' + c.rep, `${c.rep} added invoice ${inv.number} for ${fmt$(inv.amount)}${c.surgeon ? ' (' + c.surgeon + ')' : ''}.`).catch(() => {});
+  res.json({ ok: true, case: invPublic(next, req.params.id) });
+});
+app.post('/api/cases/:id/invoice/review', needApi('owner'), async (req, res) => {
+  const k = 'cases/' + req.params.id, c = docs.get(k); if (!c || !c.invoice) return res.status(404).json({ error: 'No invoice on this case.' });
+  const approve = req.body?.approve === true, reason = String(req.body?.reason || '').trim().slice(0, 500), now = new Date().toISOString();
+  if (!approve && !reason) return res.status(400).json({ error: 'Say what needs fixing so the rep can resend it.' });
+  if (closedMonth(c.date)) return res.status(423).json({ error: monthLabel(closedMonth(c.date)) + ' is closed. Reopen it first.' });
+  const inv = Object.assign({}, c.invoice, { status: approve ? 'approved' : 'rejected', reviewed_at: now, reviewed_by: whoName(req.s), reason: approve ? '' : reason,
+    history: (c.invoice.history || []).concat([{ at: now, by: whoName(req.s), what: approve ? 'Approved' : 'Sent back: ' + reason }]).slice(-20) });
+  const next = Object.assign({}, c, { invoice: inv, updated_at: now }, approve ? { net_sales: inv.amount, po: inv.po || c.po, invoice_no: inv.number, status: c.status === 'Paid' ? 'Paid' : 'Invoiced' } : {});
+  await put(k, next); await audit(req.params.id, req.s, 'update', c, next).catch(() => {});
+  notifyRep(c.rep, approve ? 'Invoice approved' : 'Invoice needs a fix', approve ? `Invoice ${inv.number} (${fmt$(inv.amount)}) is approved; the case is now Invoiced.` : `Invoice ${inv.number}: ${reason}`).catch(() => {});
+  res.json({ ok: true, case: invPublic(next, req.params.id) });
+});
+app.get('/api/invoices', needApi(), (req, res) => { // pending first; reps get their own
+  const out = [];
+  for (const [k, d] of docs) if (k.startsWith('cases/') && d && d.invoice && (req.s.role === 'owner' || d.rep === req.s.rep)) out.push(invPublic(d, k.slice(6)));
+  out.sort((a, b) => (a.invoice.status === 'pending' ? 0 : 1) - (b.invoice.status === 'pending' ? 0 : 1) || String(b.invoice.submitted_at).localeCompare(String(a.invoice.submitted_at)));
+  res.json({ invoices: out.slice(0, 300), pending: out.filter((x) => x.invoice.status === 'pending').length });
 });
 
 /* ---------------- calendar feed (subscribe from a phone calendar) ---------------- */

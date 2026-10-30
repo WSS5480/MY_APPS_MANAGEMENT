@@ -53,6 +53,19 @@
     var hash = a.getAttribute('href'); if (hash === '#' || /^#(hub-|refresh)/.test(hash)) return;
     openTarget(hash); setTimeout(function () { openTarget(hash); }, 80); // after any render the click triggers
   });
+  // the pill bar works like tabs: the pill you pick lights up and its card opens; picking another closes the last one and opens the next
+  function fold(card) {
+    if (!card || card.classList.contains('folded') || !card.hasAttribute('data-fold')) return;
+    card.classList.add('folded'); var h = card.querySelector('.fold-h'); if (h) { h.setAttribute('aria-expanded', 'false'); try { localStorage.setItem(key(card, h), '1'); } catch (x) {} }
+  }
+  var pillLast = null;
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest('.jump a[href^="#"]'); if (!a) return;
+    var hash = a.getAttribute('href'); if (hash === '#' || /^#(hub-|refresh)/.test(hash)) return;
+    var bar = a.closest('.jump'); [].forEach.call(bar.querySelectorAll('a.on'), function (x) { if (x !== a) x.classList.remove('on'); }); a.classList.add('on');
+    if (pillLast && pillLast !== hash) { var prev = document.getElementById(pillLast.slice(1)); if (prev) { var pc = prev.closest(SEL + '[data-fold]') || (prev.matches(SEL) ? prev : null); fold(pc); [].slice.call(prev.querySelectorAll(SEL + '[data-fold]')).forEach(fold); } }
+    pillLast = hash;
+  });
   window.addEventListener('hashchange', function () { openTarget(location.hash); });
   if (location.hash) setTimeout(function () { openTarget(location.hash); }, 400);
   var t = null;

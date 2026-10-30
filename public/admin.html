@@ -63,7 +63,7 @@ dialog::backdrop{background:rgba(3,18,31,.6)}
 header.head.has-who{padding-top:58px}
 @media (max-width:700px){.who-badge{top:12px;right:12px;max-width:calc(100% - 24px)}}
 </style>
-<link rel="stylesheet" href="/theme-360.css?v=19"><script src="/collapse.js?v=10" defer></script>
+<link rel="stylesheet" href="/theme-360.css?v=20"><script src="/collapse.js?v=11" defer></script>
 <style>.repgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,11rem),1fr));gap:10px 14px;align-items:start;border:1px solid var(--line,#dde3ec);border-radius:12px;padding:12px}.repgrid .f{display:flex;flex-direction:column;gap:4px;margin:0;min-width:0}.repgrid .f>b{font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}.repgrid .field{width:100%}.repgrid .f>input[type=checkbox],.repgrid .f>.pill,.repgrid .f>.note{align-self:flex-start}</style>
 </head><body class="side-layout">
 <div class="wrap">
@@ -72,7 +72,7 @@ header.head.has-who{padding-top:58px}
     <div class="brand"><small class="appname">Case tracker admin</small><div class="ver" id="ver"></div><div class="appswitch" id="appswitch" hidden><a class="on">Case tracker</a><a id="sw-store" href="#">Peptide store ↗</a></div><div class="appswitch views" id="views" style="margin-top:.35rem"><a class="on">Admin</a><a id="v-store" href="#" hidden>Store</a><a id="v-rep" href="#" hidden>Rep</a><a href="/">Tracker</a></div></div>
     <div class="who-badge" id="who-badge" hidden title=""><span class="wb-ic" id="wb-ic" aria-hidden="true"></span><span><b id="wb-name"></b><small id="wb-role"></small></span></div>
     <div class="headtxt"><h1>Admin</h1><span class="conf">360 MEDICAL - SURGICAL CASE TRACKER</span><p class="sub">Reps, PINs, quotas and commission plans. Changes here show in the tracker within seconds.</p></div>
-    <div class="tools"><button class="btn" id="btn-refresh" type="button" onclick="this.disabled=true;this.textContent='⟳ Refreshing…';location.reload()">⟳ Refresh</button><a class="btn" href="/">Open tracker</a><a class="btn" href="#sec-wcu">📝 WCU</a><a class="btn" href="#sec-import">⬆ Import history</a><a class="btn" href="#managers">Managers</a><a class="btn" href="#visits">Visits</a><a class="btn" href="#surgeons">Surgeons</a><a class="btn" href="#facilities">Facilities</a><a class="btn" href="/products">Products</a><a class="btn" href="#mail-card">Approval emails</a><a class="btn" href="/admin/download">Admin app</a><hr class="navline both-apps" hidden><a class="btn both-apps" hidden data-go="/admin#staff" data-hub="staff">Team logins</a><a class="btn both-apps" hidden data-go="/admin#setup" data-hub="setup">Email &amp; approvals</a><a class="btn both-apps" hidden data-local="geo-card" href="#hub-geo">Geofencing</a><a class="btn both-apps" hidden data-go="/admin#apps" data-hub="apps">Apps &amp; downloads</a><a class="btn both-apps" hidden data-go="/admin#howto" data-hub="howto">How to</a><a class="btn both-apps" hidden data-go="/admin#account" data-hub="account">My account</a><button class="btn" id="logout" type="button">Log out</button></div>
+    <div class="tools"><button class="btn" id="btn-refresh" type="button" onclick="this.disabled=true;this.textContent='⟳ Refreshing…';location.reload()">⟳ Refresh</button><a class="btn" href="/">Open tracker</a><a class="btn" href="#sec-wcu">📝 WCU</a><a class="btn" href="#sec-logins">🔐 Login activity</a><a class="btn" href="#sec-import">⬆ Import history</a><a class="btn" href="#managers">Managers</a><a class="btn" href="#visits">Visits</a><a class="btn" href="#surgeons">Surgeons</a><a class="btn" href="#facilities">Facilities</a><a class="btn" href="/products">Products</a><a class="btn" href="#mail-card">Approval emails</a><a class="btn" href="/admin/download">Admin app</a><hr class="navline both-apps" hidden><a class="btn both-apps" hidden data-go="/admin#staff" data-hub="staff">Team logins</a><a class="btn both-apps" hidden data-go="/admin#setup" data-hub="setup">Email &amp; approvals</a><a class="btn both-apps" hidden data-local="geo-card" href="#hub-geo">Geofencing</a><a class="btn both-apps" hidden data-go="/admin#apps" data-hub="apps">Apps &amp; downloads</a><a class="btn both-apps" hidden data-go="/admin#howto" data-hub="howto">How to</a><a class="btn both-apps" hidden data-go="/admin#account" data-hub="account">My account</a><button class="btn" id="logout" type="button">Log out</button></div>
   </header>
   <div id="hubpane" hidden><iframe id="hubframe" title="Shared admin page"></iframe></div>
 
@@ -308,6 +308,8 @@ header.head.has-who{padding-top:58px}
       <div class="scroll"><table class="stats" id="stats"><thead><tr><th>Rep</th><th>Cases</th><th>Targets</th><th>SIM events</th><th>Last case</th></tr></thead><tbody></tbody></table></div>
     </section>
 
+    <section class="card" id="sec-logins"></section>
+
     <section class="card" id="sec-import"></section>
 
     <section class="card" id="pin-card">
@@ -374,6 +376,7 @@ header.head.has-who{padding-top:58px}
 <script src="/wcu.js?v=5"></script>
 <script src="/addr.js"></script>
 <script src="/import.js?v=1"></script>
+<script src="/logins.js?v=1"></script>
 <script>
 (function () {
   'use strict';
