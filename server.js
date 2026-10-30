@@ -1030,8 +1030,7 @@ function wcuHtml(r, base) {
   return `<div style="font:14px/1.45 Arial,sans-serif;color:#111;max-width:760px">
   <h2 style="margin:0 0 2px;font:800 20px Arial,sans-serif">WCU · Weekly Clinical Update · ${e(r.rep)}</h2><div style="color:#555">Week of ${wkLabel}${r.sent_at ? ` · sent ${new Date(r.sent_at).toLocaleString('en-US', { timeZone: 'America/Chicago', weekday: 'short', hour: 'numeric', minute: '2-digit' })}${r.late ? ' <b style="color:#b42318">(late)</b>' : ''}` : ''}</div>
   ${h('Top Wins for the Week')}${li(r.wins)}
-  ${h(`Cases This Week: ${r.cases_count}`)}<table style="width:100%;border-collapse:collapse;margin-top:6px"><tr>${(r.days || []).map((d) => `<th style="text-align:left;font:600 12px Arial;color:#444;border-bottom:1px solid #ccc;padding:4px">${e(d.day)} ${e(d.date.slice(5).replace('-', '/'))}</th>`).join('')}</tr>
-    <tr>${(r.days || []).map((d) => `<td style="vertical-align:top;padding:4px;border-right:1px solid #eee;font-size:13px">${d.cases.length ? d.cases.map((c) => `<div>${e(c)}</div>`).join('') : '<span style="color:#999">—</span>'}</td>`).join('')}</tr></table>
+  ${h(`Cases This Week: ${r.cases_count}`)}
   ${h(`Projected Cases Next Week: ${r.projected}`)}
   ${h('Pod Surgeon Targets')}<table style="width:100%;border-collapse:collapse;margin-top:6px"><tr>${['Surgeon Name', 'Hospital', 'Specialty', 'Product/Products', 'Next Step'].map((x) => `<th style="text-align:left;font:600 12px Arial;color:#444;border-bottom:1px solid #ccc;padding:4px">${x}</th>`).join('')}</tr>
     ${(r.pod || []).map((p) => `<tr>${[p.surgeon, p.hospital, p.specialty, p.products, p.next].map((x) => `<td style="padding:4px;border-bottom:1px solid #eee;vertical-align:top">${e(x)}</td>`).join('')}</tr>`).join('') || '<tr><td colspan="5" style="color:#999;padding:4px">—</td></tr>'}</table>
