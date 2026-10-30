@@ -30,14 +30,16 @@
     b.innerHTML = html;
     var go = b.querySelector('[data-wcugo]'); if (go) go.onclick = function () { openSection(); };
   }
+  // the late / due alerts are gone (owner request): the Leaderboard (leader.js) sits up top instead; WCU status still shows inside the WCU page
   function repBanner(st) {
-    if (st.sent) return banner(null);
+    return banner(null);
     var due = new Date(st.due), now = new Date(), isThu = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', weekday: 'short' }).format(now) === 'Thu';
     if (now > due) return banner('<span>⚠️ LATE: your WCU was due Thursday at 5:00 PM.</span><button class="btn small primary" type="button" data-wcugo>Review &amp; submit now</button>', 'err');
     if (isThu) return banner('<span>📝 WCU is due today by 5:00 PM.</span><button class="btn small primary" type="button" data-wcugo>Review &amp; submit</button>', 'warn');
     banner(null);
   }
   function cooBanner(list) {
+    return banner(null);
     var due = new Date(list.due), now = new Date(), isThu = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', weekday: 'short' }).format(now) === 'Thu';
     var missing = list.reps.filter(function (r) { return !r.sent; }).map(function (r) { return r.rep; });
     if (!missing.length) return banner(null);

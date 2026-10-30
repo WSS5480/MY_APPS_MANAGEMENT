@@ -21,6 +21,7 @@
       row('🩺', 'New surgeons', sur, function (x) { return esc(x.name) + (x.facility ? ' · ' + esc(x.facility) : '') + (x.by ? ' · ' + esc(x.by) : ''); }, '#pg-surgeons', 'Review') + '</div></div>';
   }
   var SORT = 'mtd';
+  var EX = null;
   function drawDash(j) {
     var t = j.totals, gm = t.costed_sales ? (t.costed_sales - t.cost) / t.costed_sales : null;
     var tile = function (lab, big, sub, extra) { return '<div style="border:1px solid var(--line,#dde3ec);border-top:3px solid var(--accent,#1d6fd8);border-radius:12px;padding:14px 16px;min-width:0"><div class="lab" style="font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">' + lab + '</div><div style="font-size:1.8rem;font-weight:700;line-height:1.15">' + big + '</div><div class="note">' + sub + '</div>' + (extra || '') + '</div>'; };
@@ -28,16 +29,13 @@
     var reps = j.reps.slice().sort(function (a, b) { return SORT === 'name' ? a.rep.localeCompare(b.rep) : SORT === 'pct' ? (pct(b.quota_actual, b.target) || -1) - (pct(a.quota_actual, a.target) || -1) : SORT === 'active' ? String(b.last_active || '').localeCompare(String(a.last_active || '')) : (b[SORT] || 0) - (a[SORT] || 0); });
     var wcuPill = { sent: '<span class="pill ok">WCU sent</span>', late: '<span class="pill warn">WCU late</span>', missing: '<span class="pill bad">WCU missing</span>', due: '<span class="pill mute">WCU due Thu</span>' };
     dash.innerHTML = '<div class="cardhead"><h2>Dashboard · ' + esc(mName) + '</h2><div class="tools"><span class="note">Business day ' + j.biz.elapsed + ' of ' + j.biz.total + '</span><button class="btn small" type="button" id="dsh-ref">⟳</button></div></div>' +
-      approvalsHtml(j.approvals || {}) +
-      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr));gap:10px">' +
+      approvalsHtml(j.approvals || {}) + (EX && window.ExecHTML ? window.ExecHTML(EX) : '') +
+      '<h3 style="margin:6px 0 8px">This week and margin</h3><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,14rem),1fr));gap:10px">' +
         tile('Sales · week to date', $$(t.wtd), t.wtd_target ? pct(t.wtd, t.wtd_target) + '% of ' + $$(t.wtd_target) + ' week target' : t.cases_wtd + ' cases', bar(t.wtd, t.wtd_target)) +
-        tile('Sales · month to date', $$(t.mtd), t.target ? pct(t.mtd, t.target) + '% of ' + $$(t.target) + ' target · on pace for ' + $$(t.pace) : t.cases_mtd + ' cases', bar(t.mtd, t.target, t.pace)) +
-        (function () { var pr = j.biz.elapsed ? Math.round(t.mtd / j.biz.elapsed * j.biz.total) : 0; return tile('Month-end projection', $$(pr), t.target ? (pr >= t.target ? 'Above target by ' + $$(pr - t.target) : 'Short of target by ' + $$(t.target - pr)) : 'At the current daily pace'); })() +
         tile('Margin on sales · MTD', gm == null ? '—' : Math.round(gm * 1000) / 10 + '%', gm == null ? 'Add product costs below the products list' : $$(t.costed_sales - t.cost) + ' on ' + $$(t.costed_sales) + ' costed sales' + (t.uncosted ? ' · ' + t.uncosted + ' case' + (t.uncosted === 1 ? '' : 's') + ' without a cost' : '')) +
-        tile('Cases', t.cases_mtd, t.cases_wtd + ' this week') +
         tile('Visits this week', t.visits_wtd, 'completed field visits') +
       '</div>' +
-      '<div class="tools" style="margin:16px 0 6px;justify-content:space-between;flex-wrap:wrap"><h3 style="margin:0">Sales reps</h3><select class="field" id="dsh-sort" style="width:auto"><option value="mtd">Sort: sales MTD</option><option value="wtd">Sort: sales WTD</option><option value="pct">Sort: % to target</option><option value="active">Sort: last active</option><option value="name">Sort: name</option></select></div>' +
+      '<div class="tools" style="margin:16px 0 6px;justify-content:space-between;flex-wrap:wrap"><h3 style="margin:0">Rep activity</h3><select class="field" id="dsh-sort" style="width:auto"><option value="mtd">Sort: sales MTD</option><option value="wtd">Sort: sales WTD</option><option value="pct">Sort: % to target</option><option value="active">Sort: last active</option><option value="name">Sort: name</option></select></div>' +
       '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,19rem),1fr));gap:10px">' + reps.map(function (r) {
         var p = pct(r.quota_actual, r.target), behind = r.pace && r.quota_actual < r.pace * 0.9, m = r.costed_sales ? Math.round((r.costed_sales - r.cost) / r.costed_sales * 1000) / 10 : null;
         var stale = !r.last_active || Date.now() - Date.parse(r.last_active) > 3 * 864e5;
@@ -50,10 +48,10 @@
       }).join('') + '</div>' +
       '<details style="margin-top:14px"' + (j.feed.length ? ' open' : '') + '><summary><b>Recent activity</b></summary><div style="display:grid;gap:4px;margin-top:6px">' + (j.feed.length ? j.feed.map(function (f) { return '<div class="note"><b style="color:var(--fg)">' + esc(f.rep) + '</b> · ' + esc(f.what) + ' · ' + esc(ago(f.at)) + '</div>'; }).join('') : '<p class="note">Nothing yet.</p>') + '</div></details>' +
       '<p class="note" style="margin-top:10px">Sales = net sales on completed (and later) cases. Week target = the month target spread over business days. The black tick on a bar is where the month should be today; red = more than 10% behind. Margin uses the product costs on the Products &amp; prices page.</p>';
-    document.getElementById('dsh-ref').onclick = loadDash;
+    document.getElementById('dsh-ref').onclick = loadDash; if (window.ExecAnimate) window.ExecAnimate(dash);
     var ss = document.getElementById('dsh-sort'); ss.value = SORT; ss.onchange = function () { SORT = ss.value; drawDash(j); };
   }
-  function loadDash() { if (!dash) return; call('/api/admin/dashboard').then(drawDash, function () { dash.innerHTML = '<p class="note">Could not load the dashboard.</p>'; }); }
+  function loadDash() { if (!dash) return; Promise.all([call('/api/admin/dashboard'), call('/api/admin/exec').catch(function () { return null; })]).then(function (r) { EX = r[1]; drawDash(r[0]); }, function () { dash.innerHTML = '<p class="note">Could not load the dashboard.</p>'; }); }
   if (dash) { dash.innerHTML = '<p class="note">Loading dashboard…</p>'; loadDash(); setInterval(function () { if (!document.hidden && !dash.classList.contains('pg-off')) loadDash(); }, 120000); }
 
   /* product costs (for margin) */

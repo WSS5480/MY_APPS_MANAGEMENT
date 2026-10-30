@@ -318,7 +318,7 @@ app.get('/media/:id', async (req, res) => {
     res.setHeader('Content-Length', buf.length); res.end(buf);
   } catch (e) { res.status(500).end(); }
 });
-app.get(['/logo.png', '/logo-dark.png', '/collapse.js', '/d3.min.js', '/shim.js', '/plus.js', '/plus.css', '/addr.js', '/wcu.js', '/import.js', '/logins.js', '/admin-pages.js', '/admin-dash.js', '/visitcal.js', '/idle.js', '/zoom.js', '/spin.js', '/install.js', '/ptr.js', '/update.js', '/webauthn.js', '/qrious.min.js', '/app.css', '/theme-360.css', '/icon-admin-192.png', '/icon-admin-512.png', '/icon-admin-maskable-512.png', '/apple-touch-icon-admin.png', '/sw.js', '/favicon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'], (req, res) => { if (req.path === '/sw.js') res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, req.path)); });
+app.get(['/logo.png', '/logo-dark.png', '/collapse.js', '/d3.min.js', '/shim.js', '/plus.js', '/plus.css', '/addr.js', '/wcu.js', '/leader.js', '/import.js', '/logins.js', '/admin-pages.js', '/admin-dash.js', '/exec.js', '/visitcal.js', '/idle.js', '/zoom.js', '/spin.js', '/install.js', '/ptr.js', '/update.js', '/webauthn.js', '/qrious.min.js', '/app.css', '/theme-360.css', '/icon-admin-192.png', '/icon-admin-512.png', '/icon-admin-maskable-512.png', '/apple-touch-icon-admin.png', '/sw.js', '/favicon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'], (req, res) => { if (req.path === '/sw.js') res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, req.path)); });
 app.get('/manifest.webmanifest', (req, res) => { res.type('application/manifest+json'); res.sendFile(path.join(pub, 'manifest.webmanifest')); });
 app.get('/admin.webmanifest', (req, res) => { res.type('application/manifest+json'); res.sendFile(path.join(pub, 'admin.webmanifest')); });
 
@@ -812,6 +812,74 @@ app.get('/api/admin/dashboard', needApi('owner'), (req, res) => {
     totals: { wtd: T('wtd'), mtd: Math.round(allMtd.reduce((t, c) => t + (Number(c.net_sales) || 0), 0)), target: coTarget, wtd_target: coTarget ? Math.round(coTarget * wkDays / days.length) : 0, pace: coTarget ? Math.round(coTarget * elapsed / days.length) : 0, projected: T('projected'), cases_mtd: allMtd.length, cases_wtd: T('cases_wtd'),
       cost: T('cost'), costed_sales: T('costed_sales'), uncosted: T('uncosted'), visits_wtd: T('visits_wtd') },
     pending_invoices: pendingInv, approvals, feed: feed.slice(0, 20) });
+});
+// Executive sales summary (admin Dashboard, live): company KPIs, rep ranking and performance cards, team total, product mix from invoices,
+// what needs attention, and compensation estimates. Same figures as the one-page Team View PDF.
+app.get('/api/admin/exec', needApi('owner'), (req, res) => {
+  const today = chiDate(), ym = today.slice(0, 7), [Y, M] = ym.split('-').map(Number), q0 = Math.floor((M - 1) / 3) * 3 + 1, qn = Math.ceil(M / 3);
+  const qMonths = [0, 1, 2].map((i) => Y + '-' + String(q0 + i).padStart(2, '0')), qStart = qMonths[0] + '-01';
+  const cases = allCases(), done = cases.filter((c) => isDone(c.status) && c.date <= today), pp = pins().reps;
+  const days = bizDays(ym), elapsed = days.filter((d) => d <= today).length, left = days.length - elapsed;
+  const sum = (l) => l.reduce((t, c) => t + (Number(c.net_sales) || 0), 0);
+  const sKey = (v) => lcs(v).replace(/^dr\.?\s*/, '').replace(/[^a-z]/g, '');
+  const mon = done.filter((c) => c.date.slice(0, 7) === ym), qtr = done.filter((c) => c.date >= qStart && qMonths.includes(c.date.slice(0, 7)));
+  const isNew = (c) => c.surgeon_type === 'New';
+  const newWon = (list) => new Set(list.filter((c) => isNew(c) && c.surgeon).map((c) => c.rep + '|' + sKey(c.surgeon))).size;
+  const targets = [...docs].filter(([k, d]) => k.startsWith('targets/') && d && d.rep && d.surgeon).map(([, d]) => d);
+  const tWon = (t) => done.some((c) => c.rep === t.rep && sKey(c.surgeon) === sKey(t.surgeon));
+  const rowsQ = quotaRows(), reps0 = rowsQ.filter((r) => r.role !== 'Team' && (pp[r.rep] || {}).active !== false);
+  const teams = rowsQ.filter((r) => r.role === 'Team' && r.metric !== 'Cases' && r.quota), teamTerr = new Set(teams.map((r) => lcs(r.territory)));
+  const dollarReps = reps0.filter((r) => r.metric !== 'Cases' && !teamTerr.has(lcs(r.territory)));
+  const coTarget = teams.reduce((t, r) => t + (rowTarget(r, ym, cases) || 0), 0) + dollarReps.reduce((t, r) => t + (rowTarget(r, ym, cases) || 0), 0);
+  const coBase = teams.reduce((t, r) => t + (Number(r.quota) || 0), 0) + dollarReps.reduce((t, r) => t + (Number(r.quota) || 0), 0);
+  const top = (list, f) => { const m = {}; list.forEach((c) => { const k = f(c); if (k) m[k] = (m[k] || 0) + 1; }); const e = Object.entries(m).sort((a, b) => b[1] - a[1])[0]; return e ? { name: e[0], n: e[1] } : null; };
+  const runRate = (a) => (elapsed ? Math.round(a / elapsed * days.length) : 0);
+  const reps = reps0.map((r) => {
+    const mine = mon.filter((c) => c.rep === r.rep), mineQ = qtr.filter((c) => c.rep === r.rep), cnt = r.metric === 'Cases';
+    const actual = rowActual(r, ym, cases), target = rowTarget(r, ym, cases);
+    let qtd = 0; qMonths.filter((k) => k <= ym).forEach((k) => { qtd += rowActual(r, k, cases); });
+    const tg = targets.filter((t) => t.rep === r.rep), c = surgicalComm(r, ym, cases), pay = Number(r.pay_amount) || Number(r.draw) || 0;
+    return { rep: r.rep, role: r.role || '', territory: r.territory || '', metric: cnt ? 'Cases' : 'Sales', counts: r.counts || 'All', actual: Math.round(actual), target: target || null,
+      pct: target ? Math.round(actual / target * 1000) / 10 : null, run_rate: runRate(actual), needed_day: target ? Math.max(0, Math.round((target - actual) / Math.max(1, left))) : null,
+      behind: !!target && runRate(actual) < target, cases: mine.length, sales: Math.round(sum(mine)), new_cases: mine.filter(isNew).length, new_surgeons_q: newWon(mineQ), qtd: Math.round(qtd),
+      targets: tg.length, targets_won: tg.filter(tWon).length, top_surgeon: top(mine, (x) => x.surgeon), top_product: top(mine, (x) => x.product), carry: !!r.carry,
+      comm: { commission: c.commission, guaranteed: pay || null, est_pay: pay || c.rate ? pay + c.commission : null, rate: c.rate } };
+  }).sort((a, b) => (b.pct == null ? -1 : b.pct) - (a.pct == null ? -1 : a.pct) || b.sales - a.sales);
+  reps.forEach((r, i) => { r.rank = i + 1; });
+  const teamCards = teams.map((r) => { const a = rowActual(r, ym, cases), t = rowTarget(r, ym, cases); return { name: r.rep || r.territory, territory: r.territory, actual: Math.round(a), target: t, pct: t ? Math.round(a / t * 1000) / 10 : null }; });
+  const mtd = Math.round(sum(mon)), qtdAll = Math.round(sum(qtr));
+  // product mix: approved invoices on this month's cases (the amount on the invoice, the product on the case)
+  const inv = cases.filter((c) => c.date.slice(0, 7) === ym && c.invoice && c.invoice.status === 'approved'), mix = {};
+  inv.forEach((c) => { const k = c.product || 'Other'; mix[k] = mix[k] || { product: k, amount: 0, n: 0 }; mix[k].amount += Number(c.invoice.amount) || 0; mix[k].n++; });
+  // what needs attention
+  const att = [], mName = new Date(ym + '-15T12:00:00Z').toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' }), nextName = new Date(Date.UTC(Y, M, 15)).toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' });
+  reps.filter((r) => r.metric === 'Sales' && r.target && r.run_rate < r.target).sort((a, b) => (b.target - b.run_rate) - (a.target - a.run_rate)).forEach((r) => att.push({ tone: 'warn', text: `At today's run rate ${r.rep} finishes ${mName} ${fmt$(r.target - r.run_rate)} short.` + (r.carry && M % 3 ? ` That shortfall carries into ${nextName} on top of the quota.` : '') }));
+  reps.filter((r) => r.metric === 'Cases' && r.target && r.run_rate < r.target).forEach((r) => att.push({ tone: 'warn', text: `At today's run rate ${r.rep} finishes ${mName} at ${r.run_rate} of ${r.target} cases.` }));
+  reps.filter((r) => !r.cases).forEach((r) => att.push({ tone: 'warn', text: `${r.rep} has not logged any completed cases this month.` }));
+  const since = (n) => { const d = new Date(today + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() - n); return d.toISOString().slice(0, 10); };
+  const bySur = {}; done.filter((c) => c.surgeon && c.date >= since(90)).forEach((c) => { const k = sKey(c.surgeon); (bySur[k] = bySur[k] || []).push(c); });
+  Object.values(bySur).filter((l) => l.length >= 2).map((l) => l.sort((a, b) => b.date.localeCompare(a.date))[0]).filter((c) => c.date < since(21)).slice(0, 4)
+    .forEach((c) => att.push({ tone: 'warn', text: `${c.surgeon} has gone quiet: no case since ${new Date(c.date + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })} (last covered by ${c.rep}).` }));
+  reps.filter((r) => r.targets - r.targets_won > 0).forEach((r) => att.push({ tone: 'info', text: `${r.rep} has ${r.targets - r.targets_won} target surgeon${r.targets - r.targets_won === 1 ? '' : 's'} without a first case.` }));
+  res.json({ today, month: ym, quarter: 'Q' + qn + ' ' + Y, biz: { elapsed, total: days.length, left },
+    company: { mtd, target: coTarget, pct: coTarget ? Math.round(mtd / coTarget * 1000) / 10 : null, run_rate: runRate(mtd), to_go: Math.max(0, coTarget - mtd), behind: !!coTarget && runRate(mtd) < coTarget,
+      qtd: qtdAll, q_target: coBase * 3, new_surgeons_q: newWon(qtr), targets: targets.length, targets_won: targets.filter(tWon).length,
+      cases: mon.length, surgeons: new Set(mon.map((c) => sKey(c.surgeon)).filter(Boolean)).size, new_cases: mon.filter(isNew).length, new_share: mtd ? Math.round(sum(mon.filter(isNew)) / mtd * 100) : 0,
+      needed_day: coTarget ? Math.max(0, Math.round((coTarget - mtd) / Math.max(1, left))) : null },
+    reps, teams: teamCards, mix: Object.values(mix).sort((a, b) => b.amount - a.amount).map((m) => Object.assign(m, { amount: Math.round(m.amount) })),
+    mix_missing: mon.filter((c) => !(c.invoice && c.invoice.status === 'approved')).length, attention: att.slice(0, 10) });
+});
+// Leaderboard (every signed-in rep and the COO): reps ranked by % to their own quota this month, with month-to-date sales
+app.get('/api/leaderboard', needApi(), (req, res) => {
+  const today = chiDate(), ym = today.slice(0, 7), cases = allCases(), days = bizDays(ym), elapsed = days.filter((d) => d <= today).length, pp = pins().reps;
+  const reps = quotaRows().filter((r) => r.role !== 'Team' && (pp[r.rep] || {}).active !== false).map((r) => {
+    const mtd = cases.filter((c) => c.rep === r.rep && isDone(c.status) && c.date.slice(0, 7) === ym && c.date <= today);
+    const target = rowTarget(r, ym, cases), actual = rowActual(r, ym, cases);
+    return { rep: r.rep, metric: r.metric === 'Cases' ? 'Cases' : 'Sales', sales: Math.round(mtd.reduce((t, c) => t + (Number(c.net_sales) || 0), 0)), cases: mtd.length,
+      actual: Math.round(actual), target: target || null, pct: target ? Math.round(actual / target * 1000) / 10 : null };
+  }).sort((a, b) => (b.pct == null ? -1 : b.pct) - (a.pct == null ? -1 : a.pct) || b.sales - a.sales);
+  reps.forEach((r, i) => { r.rank = i + 1; });
+  res.json({ month: ym, pace: days.length ? Math.round(elapsed / days.length * 1000) / 10 : 0, biz: { elapsed, total: days.length }, me: req.s.rep || null, reps });
 });
 app.get('/api/admin/backup', needApi('owner'), (req, res) => {
   const out = {}; for (const [k, d] of docs) if (!k.startsWith('_auth/') && !k.startsWith('_seed/') && !k.startsWith('_push/')) out[k] = d;
