@@ -147,7 +147,13 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .jump a[hidden]{display:none}
 section[id^="sec-"]{scroll-margin-top:62px}
 </style>
-<link rel="stylesheet" href="/theme-360.css?v=19"><script src="/collapse.js?v=10" defer></script>
+<link rel="stylesheet" href="/theme-360.css?v=19"><style id="upload-look">/* the dashboard keeps the original tracker's look (accent-topped tiles, big numbers, sentence-case card titles) */
+#main .tile{border-top:3px solid var(--accent);border-radius:var(--r);padding:20px;gap:6px}
+#main .tile .num{font-size:2rem;letter-spacing:-.02em;line-height:1.1}
+#main .tile .lab{font-size:.75rem;letter-spacing:.05em}
+#main .card{padding:20px}
+#main .card h2{font-size:1.0625rem;font-weight:600;letter-spacing:0;text-transform:none}
+@media (max-width:640px){#main .tile{padding:12px 12px 10px;gap:3px}#main .tile .num{font-size:1.35rem}}</style><script src="/collapse.js?v=10" defer></script>
 </head><body class="side-layout">
 <div class="wrap" id="root">
   <header class="head" style="position:relative">
@@ -1068,6 +1074,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
     S.downloads.save({ filename: '360-medical-cases-' + S.month + '.csv', data: csv }).catch(function () {});
   });
   var rz; window.addEventListener('resize', function () { clearTimeout(rz); rz = setTimeout(render, 150); });
+  if (window.ResizeObserver && $('#pace')) { var pw = -1; new ResizeObserver(function (e) { var w = Math.round(e[0].contentRect.width); if (pw >= 0 && w && Math.abs(w - pw) > 20) { clearTimeout(rz); rz = setTimeout(render, 150); } pw = w; }).observe($('#pace')); } // a folded card opening (phones) gives the chart its width
 
   /* ---------- Data ---------- */
   function subscribeNotes() {
