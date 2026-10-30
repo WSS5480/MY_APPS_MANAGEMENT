@@ -53,7 +53,7 @@
   function readForm() {
     var sec = $('#sec-wcu'), g = function (s) { var n = sec.querySelector(s); return n ? n.value : ''; };
     return {
-      week: WEEK, wins: g('#wcu-wins').split('\n'), projected: g('#wcu-proj'), notes: g('#wcu-notes'),
+      week: WEEK, win_ids: (R && R.win_ids) || [], wins: g('#wcu-wins').split('\n'), projected: g('#wcu-proj'), notes: g('#wcu-notes'),
       pod: [].slice.call(sec.querySelectorAll('#wcu-pod tbody tr')).map(function (tr) { var v = function (k) { return tr.querySelector('[data-p="' + k + '"]').value; }; return { surgeon: v('surgeon'), hospital: v('hospital'), specialty: v('specialty'), products: v('products'), next: v('next') }; }),
       plan: DAYS.map(function (d) { return { day: d, items: g('[data-plan="' + d + '"]').split('\n') }; })
     };
@@ -68,9 +68,9 @@
   function drawRep(j) {
     R = j.report; var st = j.state, sec = $('#sec-wcu'); repBanner(WEEK === mondayOf(chiToday()) ? st : { sent: true });
     sec.innerHTML = '<div class="cardhead"><h2>WCU <small class="note">Weekly Clinical Update</small></h2><div class="tools"><select class="field" id="wcu-week" style="width:auto">' + weekOptions() + '</select>' + statusPill(st) + '</div></div>' +
-      '<p class="note">Built from your week in the tracker: cases from your case log, wins from completed cases and visit notes, targets from your pathway, next week from your planned visits and scheduled cases. Review it, edit anything, then submit. Due every <b>Thursday by 5:00 PM</b>; the COO sees it here in the app.</p>' +
+      '<p class="note">Built from your week in the tracker: cases from your case log, wins from the visits you flag <b>⭐ Win</b> in the Visit log, targets from your pathway, next week from your planned visits and scheduled cases. Review it, edit anything, then submit. Due every <b>Thursday by 5:00 PM</b>; the COO sees it here in the app.</p>' +
       '<div class="tools" style="margin:6px 0 12px"><button class="btn small" type="button" id="wcu-rebuild">↻ Rebuild from my activity</button><a class="btn small" id="wcu-print" target="_blank" rel="noopener" href="/api/wcu/view?week=' + WEEK + '">Print / PDF</a><span class="note" id="wcu-saved">' + (j.saved ? 'Draft saved' : 'Not saved yet') + '</span></div>' +
-      '<label class="f"><b>Top wins for the week</b> <span class="note">· one per line</span><textarea class="field" id="wcu-wins" rows="6">' + esc(lines(R.wins)) + '</textarea></label>' +
+      '<label class="f"><b>Top wins for the week</b> <span class="note">· one per line · flag a visit ⭐ Win to add it here</span><textarea class="field" id="wcu-wins" rows="6">' + esc(lines(R.wins)) + '</textarea></label>' +
       '<h3 style="margin:16px 0 6px">Cases this week: ' + R.cases_count + ' <span class="note">· from your case log</span></h3><div class="scroll"><table><thead><tr>' + (R.days || []).map(function (d) { return '<th>' + esc(d.day) + ' ' + esc(d.date.slice(5).replace('-', '/')) + '</th>'; }).join('') + '</tr></thead><tbody><tr>' +
         (R.days || []).map(function (d) { return '<td style="vertical-align:top">' + (d.cases.length ? d.cases.map(function (c) { return '<div>' + esc(c) + '</div>'; }).join('') : '<span class="note">—</span>') + '</td>'; }).join('') + '</tr></tbody></table></div>' +
       '<label class="f" style="max-width:14rem;margin-top:12px"><b>Projected cases next week</b><input class="field" id="wcu-proj" type="number" min="0" value="' + esc(R.projected) + '"></label>' +

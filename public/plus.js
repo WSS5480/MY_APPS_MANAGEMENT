@@ -503,6 +503,7 @@
       opt(lab('Type', el('select', 'field')), VISIT_TYPES).id = 'xv-type';
       lab('Pathway step after this', el('select', 'field')).id = 'xv-step';
       var n = lab('What happened', el('textarea', 'field'), 'full'); n.id = 'xv-notes'; n.placeholder = 'Who you met, what they said, objections, commitments. No patient identifiers.';
+      var wt = winToggle(false); wt.box.id = 'xv-win'; wt.label.classList.add('full'); f.appendChild(wt.label);
       var ns = lab('Next step', el('input', 'field')); ns.id = 'xv-next'; ns.placeholder = 'e.g. Bring samples, schedule 360 Experience';
       var nd = lab('Next step date', el('input', 'field')); nd.type = 'date'; nd.id = 'xv-ndate';
       var b = btn('Log visit', 'primary', logVisit); b.id = 'xv-btn'; f.appendChild(b);
@@ -529,8 +530,14 @@
       var meta = [ctx.viewRep ? '' : v.rep, v.next_step || v.next_date ? 'Next: ' + [v.next_step, v.next_date ? dayName(v.next_date) : ''].filter(Boolean).join(' by ') : ''].filter(Boolean).join(' · ');
       if (meta) l.appendChild(el('div', 'meta', meta));
       li.appendChild(l);
+      var acts = el('div'); acts.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;align-items:center';
+      if (v.status !== 'planned' && v.status !== 'cancelled') {
+        var wb = btn(v.win ? '★ Win' : '☆ Win', 'small' + (v.win ? ' primary' : '')); wb.title = v.win ? 'In your WCU Top wins · tap to remove' : 'Flag as a win for your WCU';
+        wb.addEventListener('click', function () { v.win = !v.win; save('visits', v.id, 'update', { win: v.win, updated_at: new Date().toISOString() }); T.render(); });
+        acts.appendChild(wb);
+      }
       var rm = btn('Remove', 'small danger'); rm.addEventListener('click', function () { armed(rm, 'Confirm', function () { X.visits = X.visits.filter(function (x) { return x.id !== v.id; }); save('visits', v.id, 'delete'); T.render(); }); });
-      li.appendChild(rm); ul.appendChild(li);
+      acts.appendChild(rm); li.appendChild(acts); ul.appendChild(li);
     });
     list.appendChild(ul);
   }
@@ -563,6 +570,9 @@
     var t = S.targets.find(function (x) { return x.id === $('#xv-target').value; }), s = $('#xv-step');
     opt(s, T.STEPS.map(function (lab, i) { return [String(i), lab]; }), String(t ? t.step || 0 : 0));
   }
+  function winToggle(checked) { // ⭐ Win: flagged visits fill the Top wins of the rep's WCU
+    var l = el('label', 'chk x-win'), c = el('input'); c.type = 'checkbox'; c.checked = !!checked; l.appendChild(c); l.appendChild(document.createTextNode(' ⭐ Win — add to my WCU')); l.title = 'Flagged visits fill the Top wins section of your Weekly Clinical Update'; return { label: l, box: c };
+  }
   function logVisit() {
     var t = resolveTarget($('#xv-target').value, X.ctx), msg = $('#xv-msg');
     if (!t) return;
@@ -570,11 +580,11 @@
     if (!date) { $('#xv-date').focus(); return; }
     if (phiHit(notes)) { msg.className = 'msg err'; msg.textContent = 'Those notes look like they include a patient identifier (DOB, MRN). Remove it before saving.'; msg.hidden = false; return; }
     var stepTo = Number($('#xv-step').value), id = S.db.collection('visits').doc().id;
-    var body = { rep: t.rep, target_id: t.id, surgeon: t.surgeon, facility: t.facility || '', date: date, type: $('#xv-type').value, notes: notes, next_step: $('#xv-next').value.trim(), next_date: $('#xv-ndate').value || '', step_from: t.step || 0, step_to: stepTo, created_at: new Date().toISOString() };
+    var body = { rep: t.rep, target_id: t.id, surgeon: t.surgeon, facility: t.facility || '', date: date, type: $('#xv-type').value, notes: notes, next_step: $('#xv-next').value.trim(), next_date: $('#xv-ndate').value || '', step_from: t.step || 0, step_to: stepTo, win: $('#xv-win').checked, created_at: new Date().toISOString() };
     X.visits = X.visits.concat([Object.assign({ id: id }, body)]);
     save('visits', id, 'set', body);
     if (stepTo !== (t.step || 0)) { t.step = stepTo; t.step_changed_at = TODAY; save('targets', t.id, 'update', { step: stepTo, step_changed_at: TODAY, updated_at: new Date().toISOString() }); }
-    $('#xv-notes').value = ''; $('#xv-next').value = ''; $('#xv-ndate').value = '';
+    $('#xv-notes').value = ''; $('#xv-next').value = ''; $('#xv-ndate').value = ''; $('#xv-win').checked = false;
     msg.className = 'msg ok'; msg.textContent = 'Visit logged for ' + t.surgeon + '.'; msg.hidden = false; setTimeout(function () { msg.hidden = true; }, 3000);
     T.render();
   }
@@ -912,9 +922,10 @@
     var sp = opt(lab('Pathway step after this', el('select', 'field')), T.STEPS.map(function (l, i) { return [String(i), l]; }), String(t ? t.step || 0 : 0));
     var ns = lab('Next step', el('input', 'field')); ns.value = v.next_step || '';
     var nd = lab('Next step date', el('input', 'field')); nd.type = 'date'; nd.value = v.next_date || '';
+    var wt = winToggle(v.win); f.appendChild(wt.label);
     f.appendChild(btn('Save visit', 'primary', function () {
       if (phiHit(n.value)) { alert('Those notes look like they include a patient identifier. Remove it first.'); return; }
-      var step = Number(sp.value), upd = { status: 'done', notes: n.value.trim(), next_step: ns.value.trim(), next_date: nd.value || '', step_from: t ? t.step || 0 : 0, step_to: step, updated_at: new Date().toISOString() };
+      var step = Number(sp.value), upd = { status: 'done', notes: n.value.trim(), next_step: ns.value.trim(), next_date: nd.value || '', step_from: t ? t.step || 0 : 0, step_to: step, win: wt.box.checked, updated_at: new Date().toISOString() };
       Object.assign(v, upd); save('visits', v.id, 'update', upd);
       if (t && step !== (t.step || 0)) { t.step = step; t.step_changed_at = TODAY; save('targets', t.id, 'update', { step: step, step_changed_at: TODAY, updated_at: new Date().toISOString() }); }
       close(); T.render();

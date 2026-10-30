@@ -811,10 +811,10 @@ function wcuBuild(rep, wk) {
   const week = cases.filter((c) => live(c) && c.date >= wk && c.date <= end).sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')));
   const caseLine = (c) => [c.surgeon || 'Surgeon TBD', [c.product, c.units ? '×' + c.units : ''].filter(Boolean).join(' '), c.facility ? '@ ' + c.facility : ''].filter(Boolean).join(' · ');
   const days = DAYN.map((name, i) => ({ day: name, date: wAdd(wk, i), cases: week.filter((c) => c.date === wAdd(wk, i)).map(caseLine) }));
-  const wins = [];
-  week.filter(done).forEach((c) => wins.push(`On ${niceDay(c.date)}, I had a case with ${c.surgeon || 'a surgeon'}${c.product ? ` using ${c.product}${c.units ? ` (${c.units})` : ''}` : ''}${c.facility ? ` at ${c.facility}` : ''}.`));
-  visits.filter((v) => v.date >= wk && v.date <= end && v.status !== 'cancelled' && (v.notes || (v.step_to > (v.step_from || 0)))).sort((a, b) => a.date.localeCompare(b.date)).forEach((v) =>
-    wins.push(`On ${niceDay(v.date)}, I met with ${v.surgeon || 'a surgeon'}${v.facility ? ` at ${v.facility}` : ''}${v.notes ? `: ${v.notes}` : ''}${v.step_to > (v.step_from || 0) ? ` (moved to ${WCU_STEPS[v.step_to] || 'step ' + v.step_to})` : ''}.`));
+  // Top wins: the visits the rep flagged as a win (⭐ on the visit), in date order
+  const winVisits = visits.filter((v) => v.win === true && v.date >= wk && v.date <= end && v.status !== 'cancelled').sort((a, b) => a.date.localeCompare(b.date));
+  const wins = winVisits.map((v) => `On ${niceDay(v.date)}, I met with ${v.surgeon || 'a surgeon'}${v.facility ? ` at ${v.facility}` : ''}${v.notes ? `: ${v.notes}` : ''}${v.step_to > (v.step_from || 0) ? ` (moved to ${WCU_STEPS[v.step_to] || 'step ' + v.step_to})` : ''}.`);
+  const win_ids = winVisits.map((v) => v.id);
   const nextCases = cases.filter((c) => live(c) && c.date >= nextWk && c.date <= nextEnd);
   const dir = all.filter(([k]) => k.startsWith('surgeons/')).map(([, d]) => d);
   const spec = (n) => { const k = lcs(n).replace(/^dr\.?\s*/, ''); const d = dir.find((x) => lcs(x.name).replace(/^dr\.?\s*/, '') === k); return d ? d.specialty || '' : ''; };
@@ -828,7 +828,7 @@ function wcuBuild(rep, wk) {
     visits.filter((v) => v.next_date === d && v.next_step).forEach((v) => items.push(`Follow up with ${v.surgeon || 'surgeon'}: ${v.next_step}`));
     nextCases.filter((c) => c.date === d).forEach((c) => items.push(`Support case: ${caseLine(c)}`));
     return { day: name, date: d, items }; });
-  return { rep, week: wk, status: 'draft', wins, cases_count: week.length, days, projected: nextCases.length, pod, plan, notes: '', built_at: new Date().toISOString() };
+  return { rep, week: wk, status: 'draft', wins, win_ids, cases_count: week.length, days, projected: nextCases.length, pod, plan, notes: '', built_at: new Date().toISOString() };
 }
 const wcuState = (doc, wk) => { const due = wcuDueAt(wk), sent = doc && doc.status === 'sent';
   return { due: due.toISOString(), sent: !!sent, sent_at: sent ? doc.sent_at : null, late: sent ? !!doc.late : Date.now() > due.getTime() }; };
@@ -842,14 +842,20 @@ const wcuRepOf = (req) => (req.s.role === 'rep' ? req.s.rep : String(req.query.r
 app.get('/api/wcu', needApi(), (req, res) => {
   const rep = wcuRepOf(req); if (!rep) return res.status(400).json({ error: 'Which rep?' });
   const wk = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.week || '')) ? mondayOf(req.query.week) : mondayOf(chiDate());
-  const saved = docs.get(wcuKey(rep, wk));
-  res.json({ report: saved || wcuBuild(rep, wk), saved: !!saved, fresh: wcuBuild(rep, wk), state: wcuState(saved, wk), week: wk, rep });
+  const saved = docs.get(wcuKey(rep, wk)), fresh = wcuBuild(rep, wk);
+  let report = saved || fresh;
+  if (saved && saved.status !== 'sent') { // a draft picks up visits flagged as wins since it was saved
+    const had = new Set(saved.win_ids || []), add = fresh.win_ids.map((id, i) => [id, fresh.wins[i]]).filter(([id]) => !had.has(id));
+    if (add.length) report = Object.assign({}, saved, { wins: (saved.wins || []).concat(add.map((x) => x[1])), win_ids: [...had, ...add.map((x) => x[0])] });
+  }
+  res.json({ report, saved: !!saved, fresh, state: wcuState(saved, wk), week: wk, rep });
 });
 app.put('/api/wcu', needApi(), async (req, res) => {
   if (req.s.role !== 'rep') return res.status(403).json({ error: 'Reps write their own weekly update.' });
   const rep = req.s.rep, wk = mondayOf(/^\d{4}-\d{2}-\d{2}$/.test(String(req.body?.week || '')) ? req.body.week : chiDate()), k = wcuKey(rep, wk);
   const prev = docs.get(k) || wcuBuild(rep, wk), fresh = wcuBuild(rep, wk);
   const doc = wcuClean(req.body || {}, Object.assign({}, prev, { days: fresh.days, cases_count: fresh.cases_count, plan: prev.plan || fresh.plan }));
+  doc.win_ids = [...new Set([...(prev.win_ids || []), ...(Array.isArray(req.body?.win_ids) ? req.body.win_ids.map(String).slice(0, 200) : [])])];
   if (prev.status === 'sent') { doc.status = 'sent'; doc.edited_after_send = true; }
   await put(k, doc); res.json({ ok: true, report: doc, state: wcuState(doc, wk) });
 });
