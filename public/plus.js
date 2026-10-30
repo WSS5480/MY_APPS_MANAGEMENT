@@ -798,7 +798,7 @@
     if (!X.built.vcal) {
       X.built.vcal = true; sec.replaceChildren();
       sec.appendChild(el('h2', '', 'Target visit calendar'));
-      sec.appendChild(el('p', 'note', 'Plan visits with your target surgeons. At the visit, open it and tap Check in: your phone shares its location once, at that moment, to confirm you are at the facility during the visit time. Green = verified, red = not verified or missed.'));
+      sec.appendChild(el('p', 'note', 'Tap a day to see its visits; open a visit and tap Check in when you arrive (your phone shares its location once to confirm you are there). Green = verified, red = not verified or missed.'));
       var f = el('div', 'x-form'); f.id = 'xvc-form';
       var lab = function (t, node, cls) { var l = el('label', cls || '', t); l.appendChild(node); f.appendChild(l); return node; };
       lab('Target surgeon', el('select', 'field')).id = 'xvc-target';
@@ -813,9 +813,13 @@
       opt(lab('Type', el('select', 'field')), VISIT_TYPES).id = 'xvc-type';
       var pu = lab('Purpose', el('input', 'field'), 'full'); pu.id = 'xvc-purpose'; pu.placeholder = 'e.g. Observe a colorectal case, drop off samples';
       var b = btn('Plan visit', 'primary', planVisit); b.id = 'xvc-btn'; f.appendChild(b);
-      sec.appendChild(f);
+      // calendar first; the planning form sits under it and starts folded on phones
+      var root = el('div'); sec.appendChild(root);
+      var phone = window.innerWidth < 640;
+      var tg = btn(phone ? '+ Plan a visit' : '− Plan a visit', phone ? 'primary' : '', function () { f.hidden = !f.hidden; tg.textContent = (f.hidden ? '+ ' : '− ') + 'Plan a visit'; tg.classList.toggle('primary', f.hidden); if (!f.hidden) { f.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } });
+      tg.id = 'xvc-toggle'; tg.style.marginTop = '14px'; sec.appendChild(tg);
+      f.hidden = phone; f.style.marginTop = '10px'; sec.appendChild(f);
       var m = el('div', 'msg'); m.id = 'xvc-msg'; m.hidden = true; sec.appendChild(m);
-      var root = el('div'); root.style.marginTop = '14px'; sec.appendChild(root);
       vcal = window.VisitCal.mount(root, { repFilter: T.isLead(), showRep: T.isLead(), getData: function () { return { visits: X.visits.filter(inView), reps: T.repNames(), settings: X.settings }; }, actions: visitActions });
       $('#xvc-target').addEventListener('change', function () { var f = selFacility($('#xvc-target').value); if (f) $('#xvc-fac').value = f; facState(); });
     }

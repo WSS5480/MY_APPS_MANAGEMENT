@@ -29,7 +29,11 @@
     '.vc-status{border-radius:8px;padding:10px 12px;font-weight:600;font-size:.875rem}' +
     '.vc-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}' +
     '.vc-box textarea,.vc-box input,.vc-box select{font:inherit}' +
-    '@media (max-width:640px){.vc-day{min-height:3.6rem}.vc-chip{font-size:0;padding:0;height:7px;border-radius:4px}.vc-more{font-size:.625rem}}';
+    '@media (max-width:640px){.vc-day{min-height:3.6rem}.vc-chip{font-size:0;padding:0;height:7px;border-radius:4px}.vc-more{font-size:.625rem}}' +
+    /* compact month (phones): day numbers + dots, tap a day to see it below */
+    '.vc-grid.compact .vc-day{min-height:3.2rem;padding:6px 2px 4px;align-items:center;cursor:pointer;-webkit-tap-highlight-color:transparent}.vc-grid.compact .vc-num{font-size:.95rem;font-weight:600;line-height:1}' +
+    '.vc-grid.compact .vc-day.sel{background:var(--accent-bg,#e8f0ff);box-shadow:inset 0 0 0 2px var(--accent)}.vc-dots{display:flex;gap:3px;min-height:7px;flex-wrap:wrap;justify-content:center}.vc-dots i{width:7px;height:7px;border-radius:50%;display:inline-block}' +
+    '.vc-dayhead{display:flex;justify-content:space-between;align-items:baseline;margin:12px 0 4px;font-weight:700}.vc-dayhead small{color:var(--muted);font-weight:500}';
   var injected = false;
   function inject() { if (injected) return; injected = true; var st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st); }
   var el = function (t, c, x) { var n = document.createElement(t); if (c) n.className = c; if (x != null) n.textContent = x; return n; };
@@ -59,16 +63,18 @@
 
   function mount(root, opts) {
     inject();
-    var today = new Date(), view = opts.view || (window.innerWidth < 640 ? 'agenda' : 'month');
+    var today = new Date(), view = opts.view || 'month', compact = window.innerWidth < 640; // phones: a real month grid, tap a day for its visits
     var ym = today.getFullYear() + '-' + pad(today.getMonth() + 1), repSel = '';
+    var selDay = today.getFullYear() + '-' + pad(today.getMonth() + 1) + '-' + pad(today.getDate());
+    window.addEventListener('resize', function () { var c = window.innerWidth < 640; if (c !== compact) { compact = c; render(); } });
     var modal = el('div', 'vc-modal'); modal.hidden = true; var box = el('div', 'vc-box'); modal.appendChild(box); document.body.appendChild(modal);
     modal.addEventListener('click', function (e) { if (e.target === modal) modal.hidden = true; });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') modal.hidden = true; });
     var head = el('div', 'vc-bar'), nav = el('div', 'vc-nav'), title = el('span', 'vc-title'), right = el('div', 'vc-nav');
     var mk = function (t, fn, cls) { var b = el('button', 'btn small ' + (cls || ''), t); b.type = 'button'; b.addEventListener('click', fn); return b; };
-    var shift = function (n) { var p = ym.split('-').map(Number), d = new Date(p[0], p[1] - 1 + n, 1); ym = d.getFullYear() + '-' + pad(d.getMonth() + 1); render(); };
+    var shift = function (n) { var p = ym.split('-').map(Number), d = new Date(p[0], p[1] - 1 + n, 1); ym = d.getFullYear() + '-' + pad(d.getMonth() + 1); selDay = ym + '-01'; render(); };
     nav.appendChild(mk('‹', function () { shift(-1); })); nav.appendChild(title); nav.appendChild(mk('›', function () { shift(1); }));
-    nav.appendChild(mk('Today', function () { ym = today.getFullYear() + '-' + pad(today.getMonth() + 1); render(); }));
+    nav.appendChild(mk('Today', function () { ym = today.getFullYear() + '-' + pad(today.getMonth() + 1); selDay = ym + '-' + pad(today.getDate()); render(); }));
     var vm = mk('Month', function () { view = 'month'; render(); }), va = mk('Agenda', function () { view = 'agenda'; render(); });
     var rs = null;
     if (opts.repFilter) { rs = el('select', 'field'); rs.style.width = 'auto'; rs.setAttribute('aria-label', 'Rep'); rs.addEventListener('change', function () { repSel = rs.value; render(); }); right.appendChild(rs); }
@@ -91,8 +97,17 @@
       if (rs && rs !== document.activeElement) { var k = rs.value; rs.replaceChildren.apply(rs, [new Option('All reps', '')].concat(d.reps.map(function (r) { return new Option(r, r); }))); rs.value = d.reps.indexOf(k) >= 0 ? k : ''; repSel = rs.value; }
       var all = visible(d), inMonth = all.filter(function (v) { return v.date.slice(0, 7) === ym; }).sort(function (a, b) { return (a.date + (a.time || '')) < (b.date + (b.time || '')) ? -1 : 1; });
       body.replaceChildren();
+      var agendaRow = function (v) {
+        var st = state(v, d.settings), row = el('div', 'vc-arow'); row.tabIndex = 0;
+        var dot = el('span', 'vc-dot'); dot.style.background = COLOR[st]; row.appendChild(dot);
+        var t = el('div'); t.appendChild(el('div', 'vc-t', (v.time ? clock(v.time) + ' · ' : '') + (v.surgeon || 'Visit') + (v.facility ? ' @ ' + v.facility : '')));
+        t.appendChild(el('div', 'vc-m', [opts.showRep ? v.rep : '', v.type, v.assigned_by === 'COO' ? 'assigned by COO' : '', v.purpose].filter(Boolean).join(' · '))); row.appendChild(t);
+        row.appendChild(el('span', 'vc-s st-' + st, LABEL[st]));
+        row.addEventListener('click', function () { open(v); }); row.addEventListener('keydown', function (e) { if (e.key === 'Enter') open(v); });
+        return row;
+      };
       if (view === 'month') {
-        var g = el('div', 'vc-grid');
+        var g = el('div', 'vc-grid' + (compact ? ' compact' : ''));
         ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach(function (w) { g.appendChild(el('div', 'vc-dow', w)); });
         var first = new Date(p[0], p[1] - 1, 1), start = new Date(first); start.setDate(1 - first.getDay());
         var todayIso = today.getFullYear() + '-' + pad(today.getMonth() + 1) + '-' + pad(today.getDate());
@@ -100,26 +115,31 @@
           var dt = new Date(start); dt.setDate(start.getDate() + i);
           var iso = dt.getFullYear() + '-' + pad(dt.getMonth() + 1) + '-' + pad(dt.getDate());
           if (i >= 35 && dt.getMonth() !== p[1] - 1) break;
-          var cell = el('div', 'vc-day' + (dt.getMonth() !== p[1] - 1 ? ' out' : '') + (iso === todayIso ? ' today' : ''));
+          var cell = el('div', 'vc-day' + (dt.getMonth() !== p[1] - 1 ? ' out' : '') + (iso === todayIso ? ' today' : '') + (compact && iso === selDay ? ' sel' : ''));
           cell.appendChild(el('span', 'vc-num', String(dt.getDate())));
           var day = all.filter(function (v) { return v.date === iso; }).sort(function (a, b) { return (a.time || '') < (b.time || '') ? -1 : 1; });
+          if (compact) {
+            var dots = el('div', 'vc-dots'); day.slice(0, 4).forEach(function (v) { var i = el('i'); i.style.background = COLOR[state(v, d.settings)]; dots.appendChild(i); }); cell.appendChild(dots);
+            cell.setAttribute('role', 'button'); cell.setAttribute('aria-label', dayLabel(iso) + (day.length ? ', ' + day.length + ' visit' + (day.length === 1 ? '' : 's') : ''));
+            (function (isoDay) { cell.addEventListener('click', function () { selDay = isoDay; if (isoDay.slice(0, 7) !== ym) ym = isoDay.slice(0, 7); render(); }); })(iso);
+            g.appendChild(cell); continue;
+          }
           day.slice(0, 3).forEach(function (v) { var c = el('button', 'vc-chip st-' + state(v, d.settings), chipText(v)); c.type = 'button'; c.title = chipText(v) + ' · ' + LABEL[state(v, d.settings)]; c.addEventListener('click', function () { open(v); }); cell.appendChild(c); });
           if (day.length > 3) { var mo = el('button', 'vc-more', '+' + (day.length - 3) + ' more'); mo.type = 'button'; (function (isoDay) { mo.addEventListener('click', function () { view = 'agenda'; ym = isoDay.slice(0, 7); render(); }); })(iso); cell.appendChild(mo); }
           g.appendChild(cell);
         }
         body.appendChild(g);
+        if (compact) { // the tapped day's visits, right under the grid
+          var dayV = all.filter(function (v) { return v.date === selDay; }).sort(function (a, b) { return (a.time || '') < (b.time || '') ? -1 : 1; });
+          var dh = el('div', 'vc-dayhead'); dh.appendChild(el('span', '', dayLabel(selDay))); dh.appendChild(el('small', '', dayV.length ? dayV.length + ' visit' + (dayV.length === 1 ? '' : 's') : 'Nothing planned')); body.appendChild(dh);
+          var dl = el('div', 'vc-agenda'); dayV.forEach(function (v) { dl.appendChild(agendaRow(v)); }); body.appendChild(dl);
+        }
       } else {
         var ul = el('div', 'vc-agenda'), last = null;
         if (!inMonth.length) ul.appendChild(el('div', 'empty', 'No target visits this month.'));
         inMonth.forEach(function (v) {
           if (v.date !== last) { last = v.date; ul.appendChild(el('div', 'vc-dhead', dayLabel(v.date))); }
-          var st = state(v, d.settings), row = el('div', 'vc-arow'); row.tabIndex = 0;
-          var dot = el('span', 'vc-dot'); dot.style.background = COLOR[st]; row.appendChild(dot);
-          var t = el('div'); t.appendChild(el('div', 'vc-t', (v.time ? clock(v.time) + ' · ' : '') + (v.surgeon || 'Visit') + (v.facility ? ' @ ' + v.facility : '')));
-          t.appendChild(el('div', 'vc-m', [opts.showRep ? v.rep : '', v.type, v.assigned_by === 'COO' ? 'assigned by COO' : '', v.purpose].filter(Boolean).join(' · '))); row.appendChild(t);
-          row.appendChild(el('span', 'vc-s st-' + st, LABEL[st]));
-          row.addEventListener('click', function () { open(v); }); row.addEventListener('keydown', function (e) { if (e.key === 'Enter') open(v); });
-          ul.appendChild(row);
+          ul.appendChild(agendaRow(v));
         });
         body.appendChild(ul);
       }

@@ -37,6 +37,7 @@ h1,h2,h3,p{margin:0}
 .save.saving{color:#FFD98A}.save.err{color:#FFB0A6}.save.saved{color:#8FE3C0}
 .banner{background:var(--warn-bg);color:var(--warn);border-radius:var(--r);padding:12px 16px;font-weight:500}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,19rem),1fr));gap:16px}
+@media (max-width:640px){.tiles{grid-template-columns:1fr 1fr;gap:10px}.tiles .tile{padding:12px 12px 10px;gap:3px}.tiles .tile .num{font-size:1.35rem}.tiles .tile .sub{font-size:.72rem;line-height:1.3}.tiles .tile .lab{font-size:.62rem}}
 .card,.tile{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:20px;min-width:0}
 .tile{border-top:3px solid var(--accent);display:flex;flex-direction:column;gap:6px}
 .lab{font-size:.75rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
@@ -57,6 +58,7 @@ tr.on td{background:var(--hl)}
 tr.team td{border-top:2px solid var(--line);font-weight:600}
 .tsub{display:block;font-size:.6875rem;color:var(--muted);font-weight:400;white-space:nowrap}
 .plan{margin-top:6px;font-size:.8125rem;color:var(--accent-2);font-weight:600}
+@media (max-width:640px){.plan{display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer;padding-right:1.2rem;position:relative}.plan::after{content:'▾';position:absolute;right:0;top:0;opacity:.8}.plan.open{-webkit-line-clamp:unset;display:block}.plan.open::after{content:'▴'}}
 .cstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,12rem),1fr));gap:12px;margin-bottom:14px}
 .cstat{border:1px solid var(--line);border-radius:8px;padding:12px 14px;background:var(--bg);display:flex;flex-direction:column;gap:4px}
 .cstat .num{font-size:1.5rem}
@@ -155,7 +157,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
       <h1>Surgical Case Tracker</h1>
       <span class="conf">Confidential · Internal use only</span>
       <p class="take" id="take">Loading the case log…</p>
-      <p class="plan" id="plan" hidden></p>
+      <p class="plan" id="plan" hidden title="Tap to show the full plan" onclick="this.classList.toggle('open')"></p>
     </div>
     <div class="ctl">
       <label>Month<select id="sel-month" aria-label="Month"></select></label>
@@ -1120,7 +1122,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
   sync(); setInterval(sync, 2000);
   var rb = document.getElementById('btn-refresh'); if (rb) rb.addEventListener('click', function () { rb.disabled = true; rb.textContent = '⟳ Refreshing…'; location.reload(); });
   // reps in the field: calendar, upcoming and case log first; COO/managers keep the numbers-first order
-  var REP_ORDER = ['tiles', 'sec-vcal', 'sec-upcoming', 'sec-log', 'sec-score', 'sec-comm', 'sec-billing', 'sec-visits', 'sec-pref', 'sec-dir', 'sec-surgeons', 'sec-conv', 'sec-mix', 'sec-sim', 'sec-notes', 'sec-cred', 'sec-notify'];
+  var REP_ORDER = ['sec-vcal', 'sec-upcoming', 'sec-log', 'sec-visits', 'tiles', 'sec-score', 'sec-comm', 'sec-billing', 'sec-pref', 'sec-dir', 'sec-surgeons', 'sec-conv', 'sec-mix', 'sec-sim', 'sec-notes', 'sec-cred', 'sec-notify']; // calendar first: what's today, then what to log, then the numbers
   fetch('/api/me', { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (me) {
     if (me && me.name) {
       document.getElementById('wb-name').textContent = me.name; document.getElementById('wb-ic').textContent = String(me.name).trim().charAt(0).toUpperCase();
@@ -1149,6 +1151,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
     var foot = tail.filter(function (k) { return k.tagName === 'FOOTER'; });
     REP_ORDER.forEach(function (id) { (groups[id] || []).forEach(function (k) { if (k.tagName !== 'FOOTER') stack.appendChild(k); }); });
     foot.forEach(function (k) { stack.appendChild(k); });
+    var vc = document.getElementById('sec-vcal'); if (vc) { vc.setAttribute('data-nofold', ''); vc.classList.remove('folded'); vc.removeAttribute('data-fold'); var vh = vc.querySelector('.fold-h'); if (vh) vh.setAttribute('aria-expanded', 'true'); } // the calendar is the rep's front page: always open
     var links = { 'sec-vcal': 1, '/products': 1.5, 'sec-upcoming': 2, 'sec-log': 3, 'sec-score': 4, 'sec-visits': 5, 'sec-pref': 6, 'sec-dir': 7, 'sec-cred': 8 };
     Array.from(nav.children).sort(function (x, y) { var w = function (el) { var h = el.getAttribute('href'); if (h === '#refresh') return 0; return links[h.charAt(0) === '#' ? h.slice(1) : h] || 99; }; return w(x) - w(y); }).forEach(function (a) { nav.appendChild(a); });
   }).catch(function () {});
