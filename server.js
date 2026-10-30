@@ -303,7 +303,7 @@ app.get('/media/:id', async (req, res) => {
     res.setHeader('Content-Length', buf.length); res.end(buf);
   } catch (e) { res.status(500).end(); }
 });
-app.get(['/logo.png', '/logo-dark.png', '/collapse.js', '/d3.min.js', '/shim.js', '/plus.js', '/plus.css', '/addr.js', '/wcu.js', '/visitcal.js', '/idle.js', '/zoom.js', '/spin.js', '/install.js', '/ptr.js', '/update.js', '/webauthn.js', '/qrious.min.js', '/app.css', '/theme-360.css', '/icon-admin-192.png', '/icon-admin-512.png', '/icon-admin-maskable-512.png', '/apple-touch-icon-admin.png', '/sw.js', '/favicon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'], (req, res) => { if (req.path === '/sw.js') res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, req.path)); });
+app.get(['/logo.png', '/logo-dark.png', '/collapse.js', '/d3.min.js', '/shim.js', '/plus.js', '/plus.css', '/addr.js', '/wcu.js', '/import.js', '/visitcal.js', '/idle.js', '/zoom.js', '/spin.js', '/install.js', '/ptr.js', '/update.js', '/webauthn.js', '/qrious.min.js', '/app.css', '/theme-360.css', '/icon-admin-192.png', '/icon-admin-512.png', '/icon-admin-maskable-512.png', '/apple-touch-icon-admin.png', '/sw.js', '/favicon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'], (req, res) => { if (req.path === '/sw.js') res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, req.path)); });
 app.get('/manifest.webmanifest', (req, res) => { res.type('application/manifest+json'); res.sendFile(path.join(pub, 'manifest.webmanifest')); });
 app.get('/admin.webmanifest', (req, res) => { res.type('application/manifest+json'); res.sendFile(path.join(pub, 'admin.webmanifest')); });
 
@@ -657,6 +657,61 @@ app.post('/api/admin/admin-pin', needApi('super'), async (req, res) => {
   await put('_auth/admin', Object.assign({}, docs.get('_auth/admin') || {}, { pin, v }));
   if (!req.s.mgr) setSession(res, { role: 'owner', v }, req.s.dev);
   res.json({ ok: true });
+});
+/* ---------------- historical case import (COO) ----------------
+   Rows come from a spreadsheet the admin page has already parsed and mapped to our fields. A dry run reports what would happen;
+   the real run writes the cases (closed months included — this is the COO loading history) and tags them with a batch id so the
+   whole batch can be undone. Duplicates (same date, rep, surgeon, product and amount) are skipped. */
+const IMP_STATUS = { scheduled: 'Scheduled', completed: 'Completed', complete: 'Completed', done: 'Completed', 'po received': 'PO received', po: 'PO received', invoiced: 'Invoiced', billed: 'Invoiced', paid: 'Paid', closed: 'Paid', cancelled: 'Cancelled', canceled: 'Cancelled' };
+function impDate(v) {
+  const t = String(v == null ? '' : v).trim(); if (!t) return null;
+  if (/^\d{4}-\d{1,2}-\d{1,2}/.test(t)) { const [y, m, d] = t.slice(0, 10).split('-').map(Number); return okDate(y, m, d); }
+  let m = t.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/); if (m) { let y = +m[3]; if (y < 100) y += 2000; return okDate(y, +m[1], +m[2]); }
+  if (/^\d{5}(\.\d+)?$/.test(t)) { const d = new Date(Date.UTC(1899, 11, 30) + Math.floor(+t) * 864e5); return d.toISOString().slice(0, 10); } // Excel serial day
+  const d = new Date(t); return isNaN(d) ? null : d.toISOString().slice(0, 10);
+  function okDate(y, mo, da) { const d = new Date(Date.UTC(y, mo - 1, da)); return d.getUTCFullYear() === y && d.getUTCMonth() === mo - 1 && y > 1990 && y < 2100 ? d.toISOString().slice(0, 10) : null; }
+}
+const impMoney = (v) => { const t = String(v == null ? '' : v).replace(/[$,\s]/g, ''); if (t === '') return null; const neg = /^\(.*\)$/.test(t); const n = Number(t.replace(/[()]/g, '')); return isFinite(n) ? Math.round((neg ? -n : n) * 100) / 100 : NaN; };
+const impKey = (c) => [c.date, lcs(c.rep), lcs(c.surgeon), lcs(c.product), Math.round((Number(c.net_sales) || 0) * 100)].join('|');
+app.post('/api/admin/import-cases', needApi('owner'), async (req, res) => {
+  const rows = Array.isArray(req.body?.rows) ? req.body.rows.slice(0, 20000) : [], dry = req.body?.dry !== false;
+  const roster = quotaRows().filter((r) => r.role !== 'Team').map((r) => r.rep), aliases = req.body?.repMap && typeof req.body.repMap === 'object' ? req.body.repMap : {};
+  const findRep = (n) => { const t = String(n || '').trim(); if (!t) return ''; if (aliases[t]) return String(aliases[t]); const l = t.toLowerCase();
+    return roster.find((r) => r.toLowerCase() === l) || roster.find((r) => r.toLowerCase().split(/\s+/)[0] === l.split(/\s+/)[0] && (l.split(/\s+/).length === 1 || r.toLowerCase().split(/\s+/).slice(-1)[0] === l.split(/\s+/).slice(-1)[0])) || t; };
+  const seen = new Set(); for (const [k, d] of docs) if (k.startsWith('cases/') && d && d.date) seen.add(impKey(d));
+  const batch = 'imp-' + new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '') + '-' + crypto.randomBytes(2).toString('hex');
+  const out = { ok: 0, dup: 0, bad: 0, errors: [], unknownReps: {}, months: {}, sales: 0, sample: [] }, good = [];
+  rows.forEach((r, i) => {
+    const line = i + 2, why = [];
+    const date = impDate(r.date); if (!date) why.push('date "' + String(r.date || '').slice(0, 20) + '" not understood');
+    const rep = findRep(r.rep); if (!rep) why.push('no rep');
+    const ns = impMoney(r.net_sales); if (Number.isNaN(ns)) why.push('amount "' + String(r.net_sales).slice(0, 20) + '" not a number');
+    const units = r.units === undefined || r.units === null || String(r.units).trim() === '' ? 1 : Number(String(r.units).replace(/,/g, ''));
+    if (!isFinite(units) || units < 0) why.push('units not a number');
+    if (why.length) { out.bad++; if (out.errors.length < 50) out.errors.push({ line, why: why.join('; ') }); return; }
+    const stRaw = String(r.status || '').trim().toLowerCase(), status = IMP_STATUS[stRaw] || (stRaw ? String(r.status).trim().slice(0, 30) : 'Completed');
+    const ty = String(r.surgeon_type || '').trim().toLowerCase(), surgeon_type = /^l|^e/.test(ty) ? 'Legacy' : 'New';
+    const c = { date, rep, surgeon: String(r.surgeon || '').trim().slice(0, 120), facility: String(r.facility || '').trim().slice(0, 160), service_line: String(r.service_line || '').trim().slice(0, 60),
+      product: String(r.product || '').trim().slice(0, 160), units: units || 1, net_sales: ns, surgeon_type, status, po: String(r.po || '').trim().slice(0, 60), lot: String(r.lot || '').trim().slice(0, 60),
+      notes: String(r.notes || '').trim().slice(0, 1000), time: '', created_by: uidOf(req.s), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), imported: batch };
+    const k = impKey(c); if (seen.has(k)) { out.dup++; return; } seen.add(k);
+    if (!roster.includes(rep)) out.unknownReps[rep] = (out.unknownReps[rep] || 0) + 1;
+    out.ok++; out.sales += Number(ns) || 0; out.months[date.slice(0, 7)] = (out.months[date.slice(0, 7)] || 0) + 1; if (out.sample.length < 8) out.sample.push(c); good.push(c);
+  });
+  out.sales = Math.round(out.sales * 100) / 100;
+  if (dry) return res.json(Object.assign({ dry: true }, out));
+  for (const c of good) await put('cases/' + crypto.randomBytes(10).toString('hex'), c);
+  const log = docs.get('config/imports') || { batches: [] };
+  log.batches.unshift({ id: batch, at: new Date().toISOString(), by: whoName(req.s), cases: good.length, sales: out.sales, first: Object.keys(out.months).sort()[0] || '', last: Object.keys(out.months).sort().pop() || '', file: String(req.body?.file || '').slice(0, 120) });
+  log.batches = log.batches.slice(0, 50); await put('config/imports', log);
+  res.json(Object.assign({ dry: false, batch }, out));
+});
+app.get('/api/admin/import-cases', needApi('owner'), (req, res) => res.json({ batches: (docs.get('config/imports') || { batches: [] }).batches, roster: quotaRows().filter((r) => r.role !== 'Team').map((r) => r.rep) }));
+app.delete('/api/admin/import-cases/:batch', needApi('owner'), async (req, res) => {
+  const id = String(req.params.batch); let n = 0;
+  for (const [k, d] of [...docs]) if (k.startsWith('cases/') && d && d.imported === id) { await del(k); n++; }
+  const log = docs.get('config/imports') || { batches: [] }; log.batches = log.batches.map((b) => (b.id === id ? Object.assign({}, b, { undone: new Date().toISOString(), removed: n }) : b)); await put('config/imports', log);
+  res.json({ ok: true, removed: n });
 });
 app.get('/api/admin/backup', needApi('owner'), (req, res) => {
   const out = {}; for (const [k, d] of docs) if (!k.startsWith('_auth/') && !k.startsWith('_seed/') && !k.startsWith('_push/')) out[k] = d;
