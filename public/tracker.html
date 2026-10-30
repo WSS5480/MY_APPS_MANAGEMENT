@@ -1135,10 +1135,10 @@ section[id^="sec-"]{scroll-margin-top:62px}
   function sync() { nav.querySelectorAll('a[href^="#sec"]:not(.jcal)').forEach(function (a) { var t = document.querySelector(a.getAttribute('href')); a.hidden = !t || t.hidden || !t.childElementCount; }); }
   nav.addEventListener('click', function (e) { var a = e.target.closest('a'); if (a && a.getAttribute('href') === '#refresh') { e.preventDefault(); a.textContent = '…'; location.reload(); return; } if (!a || a.getAttribute('href').charAt(0) !== '#') return; var t = document.querySelector(a.getAttribute('href')); if (!t) return; e.preventDefault();
     // after the pill bar has closed the other areas and opened this one: land exactly on it, just under the pills; a pill tapped off goes back to the top
-    var land = function (smooth) { if (!a.classList.contains('on') && !a.classList.contains('calopen')) { window.scrollTo({ top: 0, behavior: smooth ? 'smooth' : 'auto' }); return; }
-      var tgt = document.querySelector(a.getAttribute('href')); if (!tgt || tgt.hidden) return; var off = nav.getBoundingClientRect().height + 8;
-      window.scrollTo({ top: Math.max(0, tgt.getBoundingClientRect().top + window.scrollY - off), behavior: smooth ? 'smooth' : 'auto' }); };
-    setTimeout(function () { land(true); }, 40); setTimeout(function () { land(false); }, 450); setTimeout(function () { land(false); }, 900); });
+    // one clean jump after the pill bar has closed the other areas (same tap, next frame), then a quiet fix only if something below moved it
+    var where = function () { if (!a.classList.contains('on') && !a.classList.contains('calopen')) return 0; var tgt = document.querySelector(a.getAttribute('href')); if (!tgt || tgt.hidden) return null; return Math.max(0, Math.round(tgt.getBoundingClientRect().top + window.scrollY - nav.getBoundingClientRect().height - 8)); };
+    requestAnimationFrame(function () { requestAnimationFrame(function () { var y = where(); if (y !== null) window.scrollTo(0, y);
+      setTimeout(function () { var y2 = where(); if (y2 !== null && Math.abs(y2 - window.scrollY) > 12) window.scrollTo(0, y2); }, 600); }); }); });
   sync(); setInterval(sync, 2000);
   var syncT = null; new MutationObserver(function () { clearTimeout(syncT); syncT = setTimeout(sync, 60); }).observe(document.getElementById('main'), { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] }); // pills show as soon as their section fills in
   var rb = document.getElementById('btn-refresh'); if (rb) rb.addEventListener('click', function () { rb.disabled = true; rb.textContent = '⟳ Refreshing…'; location.reload(); });
