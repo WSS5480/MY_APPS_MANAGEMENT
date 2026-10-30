@@ -16,7 +16,7 @@
     if (card.dataset.foldInit) return; card.dataset.foldInit = '1';
     var saved = null; try { saved = localStorage.getItem(key(card, f.h)); } catch (e) {}
     var openDefault = false; try { openDefault = localStorage.getItem('foldDefault') === 'open'; } catch (e) {}
-    var folded = saved === null ? (pageRender && !openDefault) : saved === '1';
+    var folded = saved === null ? (pageRender && !openDefault && !card.hasAttribute('data-fold-open')) : saved === '1';
     card.classList.toggle('folded', folded);
     f.h.setAttribute('aria-expanded', folded ? 'false' : 'true');
   }

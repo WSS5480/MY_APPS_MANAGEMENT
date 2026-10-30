@@ -145,7 +145,7 @@ tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .jump a[hidden]{display:none}
 section[id^="sec-"]{scroll-margin-top:62px}
 </style>
-<link rel="stylesheet" href="/theme-360.css?v=18"><script src="/collapse.js?v=8" defer></script>
+<link rel="stylesheet" href="/theme-360.css?v=18"><script src="/collapse.js?v=9" defer></script>
 </head><body class="side-layout">
 <div class="wrap" id="root">
   <header class="head" style="position:relative">
@@ -1121,8 +1121,10 @@ section[id^="sec-"]{scroll-margin-top:62px}
   nav.addEventListener('click', function (e) { var a = e.target.closest('a'); if (a && a.getAttribute('href') === '#refresh') { e.preventDefault(); a.textContent = '…'; location.reload(); return; } if (!a || a.getAttribute('href').charAt(0) !== '#') return; var t = document.querySelector(a.getAttribute('href')); if (t) { e.preventDefault(); t.scrollIntoView({ behavior: 'smooth', block: 'start' }); } });
   sync(); setInterval(sync, 2000);
   var rb = document.getElementById('btn-refresh'); if (rb) rb.addEventListener('click', function () { rb.disabled = true; rb.textContent = '⟳ Refreshing…'; location.reload(); });
-  // reps in the field: calendar, upcoming and case log first; COO/managers keep the numbers-first order
-  var REP_ORDER = ['sec-vcal', 'sec-upcoming', 'sec-log', 'sec-visits', 'tiles', 'sec-score', 'sec-comm', 'sec-billing', 'sec-pref', 'sec-dir', 'sec-surgeons', 'sec-conv', 'sec-mix', 'sec-sim', 'sec-notes', 'sec-cred', 'sec-notify']; // calendar first: what's today, then what to log, then the numbers
+  // reps: the original tracker's view first (quota tiles → pace to quota + pace alerts → estimated commissions → SIM Lab →
+  // target surgeon conversion → surgeon activity → case log), then the field tools added since (calendar, upcoming, visits, cards, directory…)
+  var REP_ORDER = ['tiles', 'sec-score', 'sec-comm', 'sec-sim', 'sec-notes', 'sec-mix', 'sec-conv', 'sec-surgeons', 'sec-log', 'sec-vcal', 'sec-upcoming', 'sec-visits', 'sec-pref', 'sec-dir', 'sec-billing', 'sec-cred', 'sec-notify'];
+  var REP_OPEN = ['sec-comm', 'sec-sim', 'sec-conv', 'sec-surgeons', 'sec-log']; // shown open, like the original
   fetch('/api/me', { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (me) {
     if (me && me.name) {
       document.getElementById('wb-name').textContent = me.name; document.getElementById('wb-ic').textContent = String(me.name).trim().charAt(0).toUpperCase();
@@ -1152,7 +1154,11 @@ section[id^="sec-"]{scroll-margin-top:62px}
     REP_ORDER.forEach(function (id) { (groups[id] || []).forEach(function (k) { if (k.tagName !== 'FOOTER') stack.appendChild(k); }); });
     foot.forEach(function (k) { stack.appendChild(k); });
     var vc = document.getElementById('sec-vcal'); if (vc) { vc.setAttribute('data-nofold', ''); vc.classList.remove('folded'); vc.removeAttribute('data-fold'); var vh = vc.querySelector('.fold-h'); if (vh) vh.setAttribute('aria-expanded', 'true'); } // the calendar is the rep's front page: always open
-    var links = { 'sec-vcal': 1, '/products': 1.5, 'sec-upcoming': 2, 'sec-log': 3, 'sec-score': 4, 'sec-visits': 5, 'sec-pref': 6, 'sec-dir': 7, 'sec-cred': 8 };
+    // the original's sections start open (pace + alerts travel with the scorecard group)
+    var openCard = function (c) { if (!c) return; c.setAttribute('data-fold-open', ''); c.classList.remove('folded'); var h = c.querySelector('.fold-h'); if (h) h.setAttribute('aria-expanded', 'true'); };
+    REP_OPEN.forEach(function (id) { openCard(document.getElementById(id)); });
+    (groups['sec-score'] || []).forEach(function (g) { if (g.id !== 'sec-score') [].slice.call(g.matches('section.card') ? [g] : g.querySelectorAll('section.card')).forEach(openCard); });
+    var links = { 'sec-log': 3, 'sec-comm': 2, 'sec-conv': 2.5, 'sec-vcal': 4, '/products': 4.5, 'sec-upcoming': 5, 'sec-visits': 6, 'sec-pref': 7, 'sec-dir': 8, 'sec-cred': 9 };
     Array.from(nav.children).sort(function (x, y) { var w = function (el) { var h = el.getAttribute('href'); if (h === '#refresh') return 0; return links[h.charAt(0) === '#' ? h.slice(1) : h] || 99; }; return w(x) - w(y); }).forEach(function (a) { nav.appendChild(a); });
   }).catch(function () {});
 })();
