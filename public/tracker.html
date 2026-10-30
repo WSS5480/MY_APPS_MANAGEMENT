@@ -182,7 +182,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
 
   <div id="main">
     <nav class="jump" id="jump" aria-label="Jump to section">
-      <a href="#refresh" class="jr" aria-label="Refresh" title="Refresh">⟳</a><a href="#sec-vcal">📅 Calendar</a><a href="/products">🛍 Products</a><a href="#sec-upcoming">Upcoming</a><a href="#sec-log">Cases</a><a href="#sec-visits">Visit log</a><a href="#sec-dir">Directory</a><a href="#sec-pref">Pref cards</a><a href="#sec-score">Scorecard</a><a href="#sec-cred">Credentials</a>
+      <a href="#refresh" class="jr" aria-label="Refresh" title="Refresh">⟳</a><a href="#tiles">📊 Dashboard</a><a href="#sec-vcal">📅 Calendar</a><a href="/products">🛍 Products</a><a href="#sec-upcoming">Upcoming</a><a href="#sec-log">Cases</a><a href="#sec-visits">Visit log</a><a href="#sec-dir">Directory</a><a href="#sec-pref">Pref cards</a><a href="#sec-score">Scorecard</a><a href="#sec-cred">Credentials</a>
     </nav>
     <div class="stack">
       <section class="tiles" id="tiles"></section>
@@ -1158,7 +1158,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
     var openCard = function (c) { if (!c) return; c.setAttribute('data-fold-open', ''); c.classList.remove('folded'); var h = c.querySelector('.fold-h'); if (h) h.setAttribute('aria-expanded', 'true'); };
     REP_OPEN.forEach(function (id) { openCard(document.getElementById(id)); });
     (groups['sec-score'] || []).forEach(function (g) { if (g.id !== 'sec-score') [].slice.call(g.matches('section.card') ? [g] : g.querySelectorAll('section.card')).forEach(openCard); });
-    var links = { 'sec-log': 3, 'sec-comm': 2, 'sec-conv': 2.5, 'sec-vcal': 4, '/products': 4.5, 'sec-upcoming': 5, 'sec-visits': 6, 'sec-pref': 7, 'sec-dir': 8, 'sec-cred': 9 };
+    var links = { 'tiles': 1, 'sec-log': 3, 'sec-comm': 2, 'sec-conv': 2.5, 'sec-vcal': 4, '/products': 4.5, 'sec-upcoming': 5, 'sec-visits': 6, 'sec-pref': 7, 'sec-dir': 8, 'sec-cred': 9 };
     Array.from(nav.children).sort(function (x, y) { var w = function (el) { var h = el.getAttribute('href'); if (h === '#refresh') return 0; return links[h.charAt(0) === '#' ? h.slice(1) : h] || 99; }; return w(x) - w(y); }).forEach(function (a) { nav.appendChild(a); });
   }).catch(function () {});
 })();
