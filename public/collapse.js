@@ -37,6 +37,24 @@
     h.setAttribute('aria-expanded', folded ? 'false' : 'true');
     try { localStorage.setItem(key(card, h), folded ? '1' : '0'); } catch (x) {}
   });
+  // jumping to a card (the pills at the top, a #hash link, a deep link) opens it instead of landing on a folded header
+  function unfold(card) {
+    if (!card || !card.classList.contains('folded')) return;
+    card.classList.remove('folded'); var h = card.querySelector('.fold-h'); if (h) { h.setAttribute('aria-expanded', 'true'); try { localStorage.setItem(key(card, h), '0'); } catch (x) {} }
+  }
+  function openTarget(hash) {
+    if (!hash || hash.length < 2) return; var id = hash.slice(1), target; try { target = document.getElementById(id); } catch (e) { return; }
+    if (!target) return;
+    var card = target.closest(SEL + '[data-fold]') || (target.matches(SEL) ? target : null); unfold(card);
+    [].slice.call(target.querySelectorAll(SEL + '[data-fold]')).slice(0, 1).forEach(unfold); // a group whose first card is folded
+  }
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest('a[href^="#"]'); if (!a || a.closest('.fold-h')) return;
+    var hash = a.getAttribute('href'); if (hash === '#' || /^#(hub-|refresh)/.test(hash)) return;
+    openTarget(hash); setTimeout(function () { openTarget(hash); }, 80); // after any render the click triggers
+  });
+  window.addEventListener('hashchange', function () { openTarget(location.hash); });
+  if (location.hash) setTimeout(function () { openTarget(location.hash); }, 400);
   var t = null;
   new MutationObserver(function () { clearTimeout(t); t = setTimeout(scan, 60); }).observe(document.documentElement, { childList: true, subtree: true });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', scan); else scan();
