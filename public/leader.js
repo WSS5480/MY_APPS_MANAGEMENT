@@ -57,7 +57,7 @@
       var pct = r.pct, hit = pct != null && pct >= 100, w = pct == null ? 0 : Math.min(100, pct);
       var detail = r.metric === 'Cases'
         ? '<span><b>' + r.actual + '</b> of ' + (r.target || '—') + ' cases</span><span>' + money(r.sales) + ' sales</span>'
-        : '<span><b>' + money(r.sales) + '</b>' + (r.target ? ' of ' + money(r.target) : ' · no quota set') + '</span>' + (r.target && !hit ? '<span>' + money(r.target - r.actual) + ' to go</span>' : '') + (r.cases ? '<span>' + r.cases + ' case' + (r.cases === 1 ? '' : 's') + '</span>' : '');
+        : '<span><b>' + money(r.target ? r.actual : r.sales) + '</b>' + (r.target ? ' of ' + money(r.target) : ' · no quota set') + '</span>' + (r.target && r.sales !== r.actual ? '<span>' + money(r.sales) + ' total sales</span>' : '') + (r.target && !hit ? '<span>' + money(r.target - r.actual) + ' to go</span>' : '') + (r.cases ? '<span>' + r.cases + ' case' + (r.cases === 1 ? '' : 's') + '</span>' : '');
       var medal = r.rank <= 3 && pct != null ? ' r' + r.rank : '';
       return '<div class="lb-r' + medal + (j.me && r.rep === j.me ? ' me' : '') + '">' +
         '<div class="lb-k">' + (r.rank === 1 && pct ? '👑' : r.rank) + '</div>' +
