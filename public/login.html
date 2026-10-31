@@ -104,6 +104,8 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').cat
   $('#f-mgr').addEventListener('submit', function (e) {
     e.preventDefault(); show('#err-mgr', ''); var b = $('#go-mgr'); b.disabled = true;
     post('/api/login/manager', { email: $('#email').value, password: $('#pw').value }).then(function (j) {
+      try { localStorage.setItem('sct_email', $('#email').value); } catch (x) {}
+      if (j.ok && !j.ticket) { location.href = next() === '/' && j.role === 'owner' ? '/admin' : next(); return; } // the store's Team logins email + password: signed straight in
       ticket = j.ticket; $('#f-mgr').hidden = true; $('#f-code').hidden = false; $('#code').value = ''; $('#code').focus();
       try { localStorage.setItem('sct_email', $('#email').value); } catch (x) {}
     }).catch(function (j) { show('#err-mgr', (j && j.error) || 'Could not sign in.'); }).finally(function () { b.disabled = false; });

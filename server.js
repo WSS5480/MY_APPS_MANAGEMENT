@@ -1884,9 +1884,25 @@ app.post('/api/setup/finish', async (req, res) => {
 });
 
 /* sign in: email + password, then the 6-digit code */
-app.post('/api/login/manager', (req, res) => {
+app.post('/api/login/manager', async (req, res) => {
   const t = throttled(req.ip); if (t.n >= 10) return res.status(429).json({ error: 'Too many tries. Wait 15 minutes and try again.' });
   const email = String(req.body.email || '').trim().toLowerCase(), rec = Object.values(mgrs()).find(m => m.email === email);
+  // one login for both apps: an email that isn't a tracker manager account is checked against the store's Team logins
+  if (!rec && email && hubLinked()) {
+    let r = null; try { r = await hubCall('/api/hub/check-pass', { method: 'POST', body: JSON.stringify({ email, password: String(req.body.password || '') }) }); } catch (e) { return res.status(503).json({ error: 'Could not reach the store to check your login. Try again in a moment.' }); }
+    if (r && r.ok && r.user) {
+      const u = r.user;
+      if (u.role === 'rep') {
+        const name = Object.keys(pins().reps).find(k => pins().reps[k].hub === u.id && pins().reps[k].active !== false);
+        if (!name) { t.n++; return res.status(403).json({ error: 'Your login is not set up for the case tracker yet. Ask the COO to turn on the tracker for you in Team logins.' }); }
+        tries.delete(req.ip); setSession(res, { role: 'rep', rep: name, hub: u.email, v: (pins().reps[name] || {}).v }, req.body.dev);
+        return res.json({ ok: true, role: 'rep' });
+      }
+      tries.delete(req.ip); setSession(res, { role: 'owner', hub: u.email, hubId: u.id, hubName: u.name, hubStaff: u.role !== 'owner', v: adminV() }, req.body.dev);
+      return res.json({ ok: true, role: 'owner' });
+    }
+    if (r && r.noTracker) { t.n++; return res.status(403).json({ error: 'This login does not have the case tracker turned on. Tick it under Team logins in the store admin.' }); }
+  }
   if (!rec || rec.active === false || !rec.totp_on || !checkPw(req.body.password, rec.pw)) { t.n++; return res.status(401).json({ error: 'Wrong email or password.' }); }
   res.json({ ok: true, step: 'code', ticket: sign({ t: '2fa', mgr: rec.id, v: rec.v, exp: Date.now() + 5 * 60e3 }) });
 });
