@@ -21,23 +21,16 @@ form{display:flex;flex-direction:column;gap:14px}
   <section class="card box" id="card" hidden>
     <form id="f">
       <p id="hello" style="font-weight:600"></p>
-      <span class="step">Step 1 · Choose a password</span>
+      <span class="step">Choose a password</span>
       <label class="f">Password (at least 10 characters)<input class="field" id="pw" type="password" autocomplete="new-password" minlength="10" required></label>
       <label class="f">Type it again<input class="field" id="pw2" type="password" autocomplete="new-password" minlength="10" required></label>
-      <span class="step">Step 2 · Connect your authenticator app</span>
-      <p class="note" style="margin:0">Install Google Authenticator, Microsoft Authenticator or Authy on your phone. Tap <b>+</b> and scan this code. On this phone already? Tap <b>Open in authenticator app</b>, or type the setup key by hand.</p>
-      <img class="qr" id="qr" alt="QR code for your authenticator app">
-      <a class="btn" id="otp-link" href="#">Open in authenticator app</a>
-      <div class="secret" id="secret"></div>
-      <span class="step">Step 3 · Type the 6-digit code it shows</span>
-      <label class="f">6-digit code<input class="field pin" id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required></label>
       <div class="msg err" id="err" hidden></div>
       <button class="btn primary" type="submit" id="go">Finish setup</button>
     </form>
   </section>
   <section class="card box" id="done" hidden>
     <h2>You're all set</h2>
-    <p class="note">From now on, sign in with your email, password and the 6-digit code.</p>
+    <p class="note">From now on, sign in with your email and password.</p>
     <div id="face-box" hidden>
       <p class="note"><b>On your phone?</b> Turn on Face ID (or fingerprint) and next time you sign in with just your face.</p>
       <button class="btn primary" type="button" id="face">🙂 Turn on Face ID on this device</button>
@@ -45,7 +38,7 @@ form{display:flex;flex-direction:column;gap:14px}
     </div>
     <div class="tools" style="margin-top:14px"><a class="btn primary" href="/admin" id="to-admin">Go to Admin</a><a class="btn" href="/">Open tracker</a></div>
   </section>
-  <footer class="foot box">Keep your authenticator app on a phone only you use. If you lose that phone, ask the COO for a new setup link.</footer>
+  <footer class="foot box">Forgot your password? Ask the COO for a new setup link.</footer>
 </div>
 <script src="/qrious.min.js"></script>
 <script src="/webauthn.js"></script>
@@ -61,16 +54,12 @@ form{display:flex;flex-direction:column;gap:14px}
   post('/api/setup/info', { token: token }).then(function (j) { j0 = j;
     $('#card').hidden = false;
     $('#hello').textContent = 'Hi ' + j.name + ' · ' + j.email;
-    try { new QRious({ element: $('#qr'), value: j.otpauth, size: 400, foreground: '#081F33' }); } catch (e) { $('#qr').hidden = true; }
-    $('#otp-link').href = j.otpauth;
-    $('#secret').textContent = j.secret.replace(/(.{4})/g, '$1 ').trim();
   }, function (e) { bad((e && e.error) || 'This setup link is not valid.'); });
-  $('#code').addEventListener('input', function () { this.value = this.value.replace(/\D/g, '').slice(0, 6); });
   $('#f').addEventListener('submit', function (e) {
     e.preventDefault(); var er = $('#err'); er.hidden = true;
     if ($('#pw').value !== $('#pw2').value) { er.textContent = 'The two passwords do not match.'; er.hidden = false; return; }
     var b = $('#go'); b.disabled = true;
-    post('/api/setup/finish', { token: token, password: $('#pw').value, code: $('#code').value, dev: DEV }).then(function (r) {
+    post('/api/setup/finish', { token: token, password: $('#pw').value, dev: DEV }).then(function (r) {
       if (r.kind === 'rep') $('#to-admin').hidden = true;
       history.replaceState(null, '', '/setup');
       try { localStorage.setItem('sct_tab', 'mgr'); localStorage.setItem('sct_email', j0.email); } catch (x) {}

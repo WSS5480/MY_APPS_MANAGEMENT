@@ -150,7 +150,7 @@ header.head.has-who{padding-top:58px}
 
   <section class="card" id="managers">
     <div class="cardhead"><h2>Sign-in accounts · managers &amp; reps</h2><span class="note" id="mg-who" style="margin:0"></span></div>
-    <p class="note"><b>Managers</b> can open this Admin page and the team view. <b>Sales reps</b> see only their own tracker. Each gets an email setup link, picks a password and connects an authenticator app (Google Authenticator, Microsoft Authenticator or Authy). On their phone they can then sign in with Face ID. <b>Can manage managers</b> lets them add or remove managers and change these settings.</p>
+    <p class="note"><b>Managers</b> can open this Admin page and the team view. <b>Sales reps</b> see only their own tracker. Each gets an email setup link, picks a password and signs in with email + password. On their phone they can then sign in with Face ID. <b>Can manage managers</b> lets them add or remove managers and change these settings.</p>
     <div class="scroll"><table id="mg"><thead><tr><th>Person</th><th>Role</th><th>Status</th><th>Face ID devices</th><th>Last sign-in</th><th>Can manage managers</th><th></th></tr></thead><tbody></tbody></table></div>
     <form class="form" id="mg-form" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(12rem,1fr));gap:10px;margin-top:12px;align-items:end">
       <label class="f">Name<input class="field" id="mg-name" required placeholder="First Last"></label>
@@ -1033,7 +1033,7 @@ header.head.has-who{padding-top:58px}
       $('#pin-card').hidden = !ME.super; $('#mg-form').hidden = !ME.super;
       fillRepSel();
       var b = $('#mg tbody'); b.replaceChildren();
-      if (!j.managers.length) { var tr0 = el('tr'), td0 = el('td', 'note', 'No accounts yet. Add yourself first as a Manager with your own email so you get an authenticator code and Face ID, then invite the others.'); td0.colSpan = 7; tr0.appendChild(td0); b.appendChild(tr0); }
+      if (!j.managers.length) { var tr0 = el('tr'), td0 = el('td', 'note', 'No accounts yet. Add yourself first as a Manager with your own email so you can sign in with email + password or Face ID, then invite the others.'); td0.colSpan = 7; tr0.appendChild(td0); b.appendChild(tr0); }
       j.managers.forEach(function (m) {
         var tr = el('tr'), n = el('td'); n.appendChild(el('div', 'strong', m.name + (m.id === j.me ? ' (you)' : ''))); n.appendChild(el('div', 'note', m.email)); tr.appendChild(n);
         tr.appendChild(el('td', '', m.kind === 'rep' ? 'Sales rep · ' + m.rep : 'Manager'));
@@ -1046,7 +1046,7 @@ header.head.has-who{padding-top:58px}
         var x = el('td');
         if (j.super && m.id !== j.me) {
           var mk = function (t, cls, fn) { var bb = el('button', 'btn small ' + (cls || ''), t); bb.type = 'button'; bb.addEventListener('click', fn); x.appendChild(bb); x.appendChild(document.createTextNode(' ')); return bb; };
-          mk(m.pending ? 'New setup link' : 'Reset sign-in', '', function () { if (!m.pending && !confirm('Reset ' + m.name + '\'s password, authenticator and Face ID? They get a new setup link and are signed out everywhere.')) return; api('/api/admin/managers/' + m.id + '/reset', {}).then(function (r) { showLink(m.name, m.email, r.setup_url); loadManagers(); }); });
+          mk(m.pending ? 'New setup link' : 'Reset sign-in', '', function () { if (!m.pending && !confirm('Reset ' + m.name + '\'s password and Face ID? They get a new setup link and are signed out everywhere.')) return; api('/api/admin/managers/' + m.id + '/reset', {}).then(function (r) { showLink(m.name, m.email, r.setup_url); loadManagers(); }); });
           mk(m.active ? 'Turn off' : 'Turn on', '', function () { api('/api/admin/managers/' + m.id, { active: !m.active }).then(loadManagers); });
           var dd = mk('Delete', 'danger', function () { if (!dd.dataset.armed) { dd.dataset.armed = '1'; dd.textContent = 'Confirm'; return; } fetch('/api/admin/managers/' + m.id, { method: 'DELETE' }).then(loadManagers); });
         }
@@ -1055,7 +1055,7 @@ header.head.has-who{padding-top:58px}
       var pb = $('#mg-pin'); pb.replaceChildren();
       if (j.super) {
         var wrap = el('div', 'msg ' + (j.pin_login ? 'warn' : 'ok'));
-        wrap.appendChild(document.createTextNode(j.pin_login ? 'The COO PIN sign-in is ON (a PIN alone, no second step). Once you have your own manager account, turn it off so only 2-step sign-in works. ' : 'The COO PIN sign-in is OFF. Managers sign in with email + authenticator code or Face ID. '));
+        wrap.appendChild(document.createTextNode(j.pin_login ? 'The COO PIN sign-in is ON (a PIN alone, no second step). Once you have your own manager account, turn it off so only email sign-in works. ' : 'The COO PIN sign-in is OFF. Managers sign in with email + password or Face ID. '));
         var tb = el('button', 'btn small ' + (j.pin_login ? 'primary' : ''), j.pin_login ? 'Turn off PIN sign-in' : 'Turn PIN sign-in back on'); tb.type = 'button';
         tb.addEventListener('click', function () { api('/api/admin/pin-login', { enabled: !j.pin_login }).then(function () { say('#mg-msg', 'ok', j.pin_login ? 'COO PIN sign-in turned off.' : 'COO PIN sign-in turned back on.'); loadManagers(); }, function (e) { say('#mg-msg', 'err', (e && e.error) || 'Could not change it.'); }); });
         wrap.appendChild(tb); pb.appendChild(wrap);
@@ -1070,7 +1070,7 @@ header.head.has-who{padding-top:58px}
     var code = el('div', ''); code.style.cssText = 'font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.75rem;word-break:break-all;margin:6px 0'; code.textContent = url; box.appendChild(code);
     var row = el('div', 'tools');
     var cp = el('button', 'btn small', 'Copy link'); cp.type = 'button'; cp.addEventListener('click', function () { (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(function () { cp.textContent = 'Copied'; }, function () { prompt('Copy this link:', url); }); }); row.appendChild(cp);
-    var subj = '360 Medical case tracker: set up your sign-in', body = 'Hi ' + name + ',\n\nYou now have access to the 360 Medical Surgical Case Tracker. Open this link to choose your password and connect an authenticator app (Google Authenticator, Microsoft Authenticator or Authy). On your phone you can then turn on Face ID.\n\n' + url + '\n\nThe link works once and expires in 7 days.\n';
+    var subj = '360 Medical case tracker: set up your sign-in', body = 'Hi ' + name + ',\n\nYou now have access to the 360 Medical Surgical Case Tracker. Open this link to choose your password. On your phone you can then turn on Face ID.\n\n' + url + '\n\nThe link works once and expires in 7 days.\n';
     var em = el('a', 'btn small primary', 'Email the invite'); em.href = 'mailto:' + encodeURIComponent(email) + '?subject=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(body); row.appendChild(em);
     box.appendChild(row);
   }
@@ -1085,7 +1085,7 @@ header.head.has-who{padding-top:58px}
       var box = $('#me-box'), ul = $('#me-keys'); ul.replaceChildren();
       var W = window.SimpleWebAuthnBrowser, can = W && W.browserSupportsWebAuthn() && j.available;
       if (!j.manager) { box.textContent = 'You are signed in with the COO PIN. Add yourself as a manager above with your own email to get 2-step sign-in and Face ID; then you can turn the PIN off.'; $('#me-face').hidden = true; return; }
-      box.textContent = 'You sign in with email + password + authenticator code' + (j.passkeys.length ? ', or Face ID on: ' : '. Turn on Face ID on your phone to sign in with just your face.') + (ME && ME.dev === 'computer' ? ' This computer signs out after 10 minutes without activity.' : '');
+      box.textContent = 'You sign in with email + password' + (j.passkeys.length ? ', or Face ID on: ' : '. Turn on Face ID on your phone to sign in with just your face.') + (ME && ME.dev === 'computer' ? ' This computer signs out after 10 minutes without activity.' : '');
       j.passkeys.forEach(function (p) { var li = el('li'); li.appendChild(document.createTextNode((p.label || 'Device') + ' · added ' + fmtDate(p.at) + (p.last ? ' · last used ' + fmtDate(p.last) : '') + ' ')); var rm = el('button', 'btn small danger', 'Remove'); rm.type = 'button'; rm.addEventListener('click', function () { fetch('/api/me/passkeys/' + encodeURIComponent(p.id), { method: 'DELETE' }).then(loadManagers); }); li.appendChild(rm); ul.appendChild(li); });
       $('#me-face').hidden = !can;
       if (can && ME && ME.dev === 'computer') $('#me-face').textContent = '🔑 Turn on passkey / Windows Hello on this computer';

@@ -1872,23 +1872,27 @@ app.post('/api/setup/info', async (req, res) => {
 });
 app.post('/api/setup/finish', async (req, res) => {
   const t = throttled(req.ip); if (t.n >= 10) return res.status(429).json({ error: 'Too many tries. Wait 15 minutes.' });
-  const rec = setupRec(req.body.token); if (!rec || !rec.setup_secret) return res.status(400).json({ error: 'This setup link has expired. Ask for a new one.' });
+  const rec = setupRec(req.body.token); if (!rec) return res.status(400).json({ error: 'This setup link has expired. Ask for a new one.' });
   const pw = String(req.body.password || '');
   if (pw.length < 10) return res.status(400).json({ error: 'Use a password of at least 10 characters.' });
-  const step = totpCheck(rec.setup_secret, req.body.code, null);
-  if (step == null) { t.n++; return res.status(400).json({ error: 'That code does not match. Make sure the phone clock is right and type the newest 6-digit code.' }); }
-  const m = Object.assign({}, mgrs()), r = Object.assign({}, rec, { pw: hashPw(pw), totp_secret: rec.setup_secret, totp_on: true, totp_last: step, setup_hash: null, setup_exp: null, setup_secret: null, v: rec.v + 1, active: true, last_login: new Date().toISOString() });
+  const step = null; // no authenticator app any more: the password is enough
+  const m = Object.assign({}, mgrs()), r = Object.assign({}, rec, { pw: hashPw(pw), totp_secret: null, totp_on: true, totp_last: step, setup_hash: null, setup_exp: null, setup_secret: null, v: rec.v + 1, active: true, last_login: new Date().toISOString() });
   m[r.id] = r; await saveMgrs(m);
   setSession(res, acctSession(r), req.body.dev);
   res.json({ ok: true, kind: r.kind || 'manager' });
 });
 
-/* sign in: email + password, then the 6-digit code */
+/* sign in: email + password (no 2-step code) */
 app.post('/api/login/manager', async (req, res) => {
   const t = throttled(req.ip); if (t.n >= 10) return res.status(429).json({ error: 'Too many tries. Wait 15 minutes and try again.' });
   const email = String(req.body.email || '').trim().toLowerCase(), rec = Object.values(mgrs()).find(m => m.email === email);
-  // one login for both apps: an email that isn't a tracker manager account is checked against the store's Team logins
-  if (!rec && email && hubLinked()) {
+  // no 2-step code (owner request): a tracker account with the right password signs straight in
+  if (rec && rec.active !== false && rec.pw && checkPw(req.body.password, rec.pw)) {
+    const m = Object.assign({}, mgrs()); m[rec.id] = Object.assign({}, rec, { last_login: new Date().toISOString() }); await saveMgrs(m);
+    tries.delete(req.ip); setSession(res, acctSession(rec), req.body.dev); return res.json({ ok: true, role: rec.kind === 'rep' ? 'rep' : 'owner' });
+  }
+  // one login for both apps: otherwise the email + password are checked against the store's Team logins
+  if (email && hubLinked()) {
     let r = null; try { r = await hubCall('/api/hub/check-pass', { method: 'POST', body: JSON.stringify({ email, password: String(req.body.password || '') }) }); } catch (e) { return res.status(503).json({ error: 'Could not reach the store to check your login. Try again in a moment.' }); }
     if (r && r.ok && r.user) {
       const u = r.user;
@@ -1903,8 +1907,7 @@ app.post('/api/login/manager', async (req, res) => {
     }
     if (r && r.noTracker) { t.n++; return res.status(403).json({ error: 'This login does not have the case tracker turned on. Tick it under Team logins in the store admin.' }); }
   }
-  if (!rec || rec.active === false || !rec.totp_on || !checkPw(req.body.password, rec.pw)) { t.n++; return res.status(401).json({ error: 'Wrong email or password.' }); }
-  res.json({ ok: true, step: 'code', ticket: sign({ t: '2fa', mgr: rec.id, v: rec.v, exp: Date.now() + 5 * 60e3 }) });
+  t.n++; return res.status(401).json({ error: 'Wrong email or password.' });
 });
 app.post('/api/login/code', async (req, res) => {
   const t = throttled(req.ip); if (t.n >= 10) return res.status(429).json({ error: 'Too many tries. Wait 15 minutes and try again.' });
