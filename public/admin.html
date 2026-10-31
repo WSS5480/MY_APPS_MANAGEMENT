@@ -1153,7 +1153,10 @@ fetch('/api/me', { credentials: 'same-origin' }).then(function (r) { return r.ok
     document.body.classList.remove('hub-open', 'local-open'); if (!document.body.classList.contains('embed-one')) showOnly(null);
     if (!m) { pane.hidden = true; fr.removeAttribute('src'); setOn(null); return; }
     setOn(m[1]);
-    if (m[1] === 'geo') { var c = document.getElementById('geo-card'); if (c) { showOnly(c); document.body.classList.add('local-open'); } pane.hidden = true; fr.removeAttribute('src'); window.scrollTo(0, 0); return; }
+    if (m[1] === 'geo') { var c = document.getElementById('geo-card'); pane.hidden = true; fr.removeAttribute('src');
+      if (c) { c.classList.remove('pg-off'); var gr = c.closest('.grid'); if (gr) gr.classList.remove('pg-off'); /* the card also lives on the Settings page: show it here too */
+        showOnly(c); document.body.classList.add('local-open'); if (window.innerWidth <= 760) setTimeout(function () { c.scrollIntoView({ block: 'start' }); }, 0); else window.scrollTo(0, 0); }
+      return; }
     if (!window.__hubReady) return;
     var link = document.querySelector('.both-apps[data-hub="' + m[1] + '"]'); if (!link || !link.dataset.src) return;
     if (fr.getAttribute('src') !== link.dataset.src) fr.src = link.dataset.src;

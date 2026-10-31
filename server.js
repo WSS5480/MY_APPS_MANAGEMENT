@@ -1854,8 +1854,12 @@ app.delete('/api/admin/managers/:id', needApi('super'), async (req, res) => {
 app.post('/api/admin/pin-login', needApi('super'), async (req, res) => {
   const off = req.body.enabled === false;
   if (off) {
-    if (!req.s.mgr) return res.status(400).json({ error: 'Sign in with your own manager account first, then turn off the PIN, so you are not locked out.' });
-    if (!Object.values(mgrs()).some(x => x.kind !== 'rep' && x.active !== false && x.can_manage && x.totp_on)) return res.status(400).json({ error: 'Set up at least one manager who can manage managers first.' });
+    // safe to turn off when someone can still get in: an owner in the store's Team logins with the tracker on (one login for both apps), or a tracker manager account
+    const hubOwner = hubLinked() && hubPeople.ok && hubPeople.list.some(u => u.role === 'owner' && u.active !== false && (u.apps || {}).tracker !== false);
+    if (!hubOwner) {
+      if (!req.s.mgr) return res.status(400).json({ error: 'Sign in with your own manager account first, then turn off the PIN, so you are not locked out.' });
+      if (!Object.values(mgrs()).some(x => x.kind !== 'rep' && x.active !== false && x.can_manage && x.totp_on)) return res.status(400).json({ error: 'Set up at least one manager who can manage managers first.' });
+    }
   }
   await put('_auth/admin', Object.assign({}, docs.get('_auth/admin') || { pin: ENV_ADMIN_PIN, v: adminV() }, { pin: adminPin(), v: adminV() + (off ? 1 : 0), pin_disabled: off }));
   res.json({ ok: true, pin_login: !off });
