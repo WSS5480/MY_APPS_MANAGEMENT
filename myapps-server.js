@@ -488,10 +488,10 @@ function healthPanel(health, notice) {
    already in the box (apps that read ?code=), and the copied message carries
    the code as text too, so it works even where the box is not pre-filled. */
 const TERM_CHOICES = [[7,'1 week'],[14,'2 weeks'],[30,'30 days'],[60,'60 days'],[90,'90 days'],[180,'6 months'],[365,'1 year']];
-const SIGNUP_PATH = { dealengine: '/signup', scheduler: '/signup', karaoke: '/start', bands: '/start' };
+const SIGNUP_PATH = { dealengine: '/signup', scheduler: '/signup', karaoke: '/start', bands: '/start', txcasedesk: '/' };
 /* by code prefix too, because the slug an app registered under is not always
    the one listed in DEFAULT_APPS */
-const SIGNUP_BY_PREFIX = { DEA: '/signup', SCH: '/signup', KAR: '/start', BND: '/start' };
+const SIGNUP_BY_PREFIX = { DEA: '/signup', SCH: '/signup', KAR: '/start', BND: '/start', TXC: '/' };
 const inviteLink = (app, code) => {
   const base = String((app && app.url) || '').replace(/\/+$/, '');
   if (!base) return '';
@@ -603,16 +603,17 @@ function dashboard(data, error, apps = [], tenants = [], tenantAlerts = [], kpis
     </div>` : '<div class="card"><h2>Needs you</h2><div class="sub">Nothing right now.</div></div>'}
 
     ${Object.keys(byApp).length ? Object.entries(byApp).map(([appName, list]) => `
-      <div class="card"><h2>${esc(appName)} <span class="sub">${list.length} customer${list.length === 1 ? '' : 's'}</span>${signupLink(list[0].app) ? ` <a class="sub" href="${esc(signupLink(list[0].app))}" target="_blank" rel="noopener">+ sign up ${list[0].app === 'bands' ? 'a band' : 'a bar or DJ'} ↗</a>` : ''}</h2>
+      <div class="card"><h2>${esc(appName)} <span class="sub">${list.length} customer${list.length === 1 ? '' : 's'}</span>${signupLink(list[0].app) ? ` <a class="sub" href="${esc(signupLink(list[0].app))}" target="_blank" rel="noopener">+ sign up ${(PLATFORM[list[0].app] || {}).who || (list[0].app === 'bands' ? 'a band' : 'a bar or DJ')} ↗</a>` : ''}</h2>
+        ${(PLATFORM[list[0].app] || {}).notes ? `<div class="sub" style="margin:-4px 0 8px">${esc(PLATFORM[list[0].app].notes)}</div>` : ''}
         <table class="cust">
           <tr><th>${esc(list[0].kind)}</th><th>Plan</th><th class="num">People</th>
               <th class="num">${esc(list[0].workLabel)}</th><th>Administrator</th><th>Since</th><th></th></tr>
           ${list.map(t => `<tr>
-            <td><b>${esc(t.name)}</b>${t.link ? `<div class="sub"><a href="${esc(t.link)}" target="_blank" rel="noopener">${esc(t.linkLabel || 'open host page ↗')}</a>${t.barLink ? ` · <a href="${esc(t.barLink)}" target="_blank" rel="noopener">${esc(t.barLabel || 'bar owner ↗')}</a>` : ''}${t.paidByCard ? ' · paid by card' : ''}</div>` : ''}
+            <td><b>${esc(t.name)}</b>${t.extra ? `<div class="sub">${esc(t.extra)}</div>` : ''}${t.link ? `<div class="sub"><a href="${esc(t.link)}" target="_blank" rel="noopener">${esc(t.linkLabel || 'open host page ↗')}</a>${t.barLink ? ` · <a href="${esc(t.barLink)}" target="_blank" rel="noopener">${esc(t.barLabel || 'bar owner ↗')}</a>` : ''}${t.paidByCard ? ' · paid by card' : ''}</div>` : ''}
               ${PLATFORM[t.app] ? `<form method="POST" action="/tenant/action" style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap">
                 <input type="hidden" name="slug" value="${esc(t.app)}"><input type="hidden" name="id" value="${esc(t.id)}">
-                <input name="pin" placeholder="new PIN" inputmode="numeric" style="width:76px;padding:3px;border:1px solid var(--line);border-radius:7px;font-size:12px">
-                <button name="action" value="pin" style="padding:3px 8px;font-size:12px">Reset PIN</button>
+                ${(PLATFORM[t.app] || {}).noPin ? '' : `<input name="pin" placeholder="new PIN" inputmode="numeric" style="width:76px;padding:3px;border:1px solid var(--line);border-radius:7px;font-size:12px">
+                <button name="action" value="pin" style="padding:3px 8px;font-size:12px">Reset PIN</button>`}
                 <button name="action" value="${t.disabled ? 'enable' : 'disable'}" style="padding:3px 8px;font-size:12px">${t.disabled ? 'Turn on' : 'Turn off'}</button>
               </form>` : ''}</td>
             <td>${planPill(t)}${t.expires_on ? `<div class="sub">to ${esc(String(t.expires_on).slice(0, 10))}</div>` : ''}</td>
@@ -853,6 +854,8 @@ function subsPage({ apps, subs, redemptions, users = [], minted, dbError, notice
 const PLATFORM = {
   karaoke: { env: 'KARAOKE_URL', path: '/api/platform/bars/' },
   bands:   { env: 'BANDS_URL',   path: '/api/platform/bands/' },
+  txcasedesk: { env: 'TXCASEDESK_URL', path: '/api/platform/firms/', signup: '/?signup=1', who: 'a law firm', noPin: true,
+    notes: 'Outlook connect: Azure account stevesmith.5480@outlook.com · Render workspace TX CASE DESK · GitHub WSS5480/TX-CASE-DESK · Postmark: steve.smith@buddyrents.com · CourtListener API token in Render env' },
 };
 async function platformPush(slug, id, body) {
   const p = PLATFORM[slug];
@@ -869,7 +872,7 @@ async function platformPush(slug, id, body) {
 }
 const signupLink = slug => {
   const p = PLATFORM[slug], base = p ? (process.env[p.env] || '').replace(/\/$/, '') : '';
-  return base ? base + '/start' : '';
+  return base ? base + (p.signup || '/start') : '';
 };
 
 /* -------------------------------------------------------------- server --- */
@@ -1129,7 +1132,7 @@ const server = http.createServer(async (req, res) => {
       });
       // Karaoke and Band Tips keep their own copy of each customer's plan: tell them right away
       if (PLATFORM[b.get('slug')] && row) {
-        await platformPush(b.get('slug'), String(b.get('tenant')).replace(/^(bar|band):/, ''), {
+        await platformPush(b.get('slug'), String(b.get('tenant')).replace(/^(bar|band|firm):/, ''), {
           action: 'plan', plan: row.plan, source: 'manual',
           expires_on: row.expires_on ? new Date(row.expires_on).toISOString().slice(0, 10) : null });
       }

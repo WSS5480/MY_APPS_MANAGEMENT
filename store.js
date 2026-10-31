@@ -128,11 +128,13 @@ const DEFAULT_APPS = [
   // Karaoke sign-up for bars and DJs (Stemo Enterprises). Its address comes from KARAOKE_URL.
   ['karaoke', 'KAR', 'Karaoke Sign-Up', (process.env.KARAOKE_URL || 'https://the-dive-karaoke.onrender.com').replace(/\/$/, '')],
   // Band Tips: tip jar + follow page for bands (Stemo Enterprises). Its address comes from BANDS_URL.
-  ['bands', 'BND', 'Band Tips', (process.env.BANDS_URL || 'https://band-tips.onrender.com').replace(/\/$/, '')]
+  ['bands', 'BND', 'Band Tips', (process.env.BANDS_URL || 'https://band-tips.onrender.com').replace(/\/$/, '')],
+  // TX Case Desk: pending cases + Texas case law for law firms. Its address comes from TXCASEDESK_URL.
+  ['txcasedesk', 'TXC', 'TX Case Desk', (process.env.TXCASEDESK_URL || 'https://tx-case-desk.onrender.com').replace(/\/$/, '')]
 ];
 /* Free-trial length per app. Karaoke's is 14 days; the others use TRIAL_DAYS.
    TRIAL_DAYS_<SLUG> in the environment overrides either. */
-const APP_TRIAL_DAYS = { karaoke: 14, bands: 14 };
+const APP_TRIAL_DAYS = { karaoke: 14, bands: 14, txcasedesk: 14 };
 
 async function init() {
   if (!pool) { console.log('WARNING: DATABASE_URL not set — subscriptions disabled.'); return false; }
@@ -757,6 +759,28 @@ async function tenants() {
         });
       }
     } catch (e) { problems.push('bands: ' + e.message); }
+  }
+  const txc = bySlug.txcasedesk;
+  if (txc && process.env.TXCASEDESK_URL) {
+    try {
+      const { rows: ts } = await q('SELECT secret FROM ma_apps WHERE id=$1', [txc.id]);
+      const r = await fetch(process.env.TXCASEDESK_URL.replace(/\/$/, '') + '/api/platform/firms',
+        { headers: { 'x-platform-key': ts[0].secret }, signal: AbortSignal.timeout(30000) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'HTTP ' + r.status);
+      for (const f of j.firms || []) {
+        const p = planFor(txc.id, f.key) || {};
+        out.push({
+          app: txc.slug, appName: txc.name, prefix: txc.prefix,
+          kind: 'Law firm', key: f.key, id: f.slug, name: f.name + (f.disabled ? ' — turned off' : ''),
+          created: String(f.created || '').slice(0, 10), people: f.users, work: f.cases, workLabel: 'cases',
+          adminEmail: f.email, adminName: f.admin || '', link: f.url, linkLabel: 'open app ↗',
+          extra: 'email: ' + (f.email_connected || 'no') + (f.last_login ? ' · last login ' + String(f.last_login).slice(0, 10) : ''),
+          plan: p.plan || (f.plan && f.plan.active ? 'pro' : 'free'), expires_on: isoDay(p.expires_on || (f.plan || {}).expires_on),
+          source: p.source || (f.plan || {}).source || null, note: p.note || '', disabled: !!f.disabled,
+        });
+      }
+    } catch (e) { problems.push('txcasedesk: ' + e.message); }
   }
   out.sort((a, b) => String(b.created || '').localeCompare(String(a.created || '')));
   return { tenants: out, problems };

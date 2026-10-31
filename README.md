@@ -19,3 +19,14 @@ Band Tips is its own Render service (repo `WSS5480/BAND-TIPS`), so My Apps talks
 - `SHARED_DB_APPS=bands` lets Band Tips use this service's database (schema `bands`) — it asks for the connection string at start-up with its secret (`/api/v1/shared-db`), so nothing is copied by hand.
 - Console → Customers → **Band Tips**: every band with plan, tips and $ tipped. Set plan (pushed to Band Tips right away), **Reset PIN**, **Turn off / Turn on**, open setup page / fan page.
 - **Give someone free time** → pick Band Tips → codes like `BND-30D-XXXX-XXXXXX` that bands enter on sign-up or on their setup page. "Copy message" gives a text with the sign-up link and the code.
+
+## TX Case Desk (law firms: pending cases + Texas case law)
+
+TX Case Desk runs in its own Render workspace ("TX CASE DESK", repo `WSS5480/TX-CASE-DESK`), so My Apps talks to it over HTTPS like Karaoke and Band Tips.
+
+- Registered automatically as app `txcasedesk`, code prefix **TXC**, 14-day free trial (`TRIAL_DAYS_TXCASEDESK` to change).
+- Set on this service: `TXCASEDESK_URL` (`https://tx-case-desk.onrender.com`) and `APP_SECRET_TXCASEDESK`.
+- Set on TX Case Desk: `MYAPPS_URL` (this service's address) and `MYAPPS_SECRET` (same value as `APP_SECRET_TXCASEDESK`).
+- Console → Customers → **TX Case Desk**: every law firm with plan, attorneys, cases, admin, whether email is connected, last login. Set plan (pushed right away), **Turn off / Turn on**, open app.
+- **Give someone free time** → pick TX Case Desk → codes like `TXC-30D-XXXX-XXXXXX`; firms enter them at sign-up (link pre-fills it) or under Account → Subscription.
+- Owner accounts behind it: Outlook connect = Azure app registration under **stevesmith.5480@outlook.com**; inbound email = Postmark (steve.smith@buddyrents.com); case law = CourtListener token (Render env).
