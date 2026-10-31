@@ -55,6 +55,7 @@
       // Admin is the same list, in the same order, in the case tracker and the store: Sales reps, then the shared pages (Team logins … My account)
       var adm = box.querySelector('.navgrp-items[data-grp="Admin"]');
       ['staff', 'setup', 'geo-card', 'apps', 'howto', 'account'].forEach(function (k) { var a = tools.querySelector('.both-apps[data-hub="' + k + '"], .both-apps[data-local="' + k + '"]'); if (a && adm) adm.appendChild(a); });
+      var mgr = box.querySelector('.navgrp-items[data-grp="Manager"]'), uni = tools.querySelector('.both-apps[data-hub="university"]'); if (uni && mgr) mgr.appendChild(uni); // 360 University lives in the store; it opens here like Team logins
       var hr = tools.querySelector('hr.both-apps'); if (hr) hr.remove();
       var openT = tools.querySelector('a[href="/"]'); tools.insertBefore(box, openT ? openT.nextSibling : tools.firstChild);
     }

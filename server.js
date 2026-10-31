@@ -320,7 +320,7 @@ app.get('/media/:id', async (req, res) => {
     res.setHeader('Content-Length', buf.length); res.end(buf);
   } catch (e) { res.status(500).end(); }
 });
-app.get(['/logo.png', '/logo-dark.png', '/collapse.js', '/d3.min.js', '/shim.js', '/plus.js', '/plus.css', '/addr.js', '/wcu.js', '/leader.js', '/import.js', '/logins.js', '/admin-pages.js', '/admin-dash.js', '/exec.js', '/replist.js', '/visitcal.js', '/idle.js', '/zoom.js', '/spin.js', '/install.js', '/ptr.js', '/update.js', '/webauthn.js', '/qrious.min.js', '/app.css', '/theme-360.css', '/icon-admin-192.png', '/icon-admin-512.png', '/icon-admin-maskable-512.png', '/apple-touch-icon-admin.png', '/sw.js', '/favicon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'], (req, res) => { if (req.path === '/sw.js') res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, req.path)); });
+app.get(['/logo.png', '/logo-dark.png', '/collapse.js', '/d3.min.js', '/shim.js', '/plus.js', '/plus.css', '/addr.js', '/wcu.js', '/leader.js', '/uni.js', '/import.js', '/logins.js', '/admin-pages.js', '/admin-dash.js', '/exec.js', '/replist.js', '/visitcal.js', '/idle.js', '/zoom.js', '/spin.js', '/install.js', '/ptr.js', '/update.js', '/webauthn.js', '/qrious.min.js', '/app.css', '/theme-360.css', '/icon-admin-192.png', '/icon-admin-512.png', '/icon-admin-maskable-512.png', '/apple-touch-icon-admin.png', '/sw.js', '/favicon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'], (req, res) => { if (req.path === '/sw.js') res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, req.path)); });
 app.get('/manifest.webmanifest', (req, res) => { res.type('application/manifest+json'); res.sendFile(path.join(pub, 'manifest.webmanifest')); });
 app.get('/admin.webmanifest', (req, res) => { res.type('application/manifest+json'); res.sendFile(path.join(pub, 'admin.webmanifest')); });
 
@@ -449,6 +449,8 @@ app.get('/api/hub/commissions', hubAuth, (req, res) => {
   res.json({ month: ym, quarter: 'Q' + Math.ceil(m / 3), reps, total: reps.reduce((t, r) => t + r.commission, 0), sales: reps.reduce((t, r) => t + (r.metric === 'Cases' ? 0 : r.actual), 0) });
 });
 const isDoneCase = (x) => isDone(x.status);
+// the store (hub) tells the COO's devices about something, e.g. a rep passed or got locked out of a 360 University course
+app.post('/api/hub/notify', hubAuth, (req, res) => { const b = req.body || {}; notifyOwner(String(b.title || '360 Medical').slice(0, 120), String(b.body || '').slice(0, 400), '/admin#hub-university').catch(() => {}); res.json({ ok: true }); });
 app.post('/api/hub/sync', hubAuth, async (req, res) => { await syncPeople(true).catch(() => {}); res.json({ ok: true, people: hubPeople.list.length }); });
 // the hub's Setup page: approval emails on/off for this app, a test send, and previews
 app.get('/api/hub/settings', hubAuth, async (req, res) => { await refreshHubMail(); const c = mailCfg(); res.json({ mailOn: c.on !== false, info: mail.info(c), to: c.to || '', viaHub: !!c.viaHub, publicUrl: process.env.PUBLIC_URL || '' }); });
@@ -556,6 +558,13 @@ const needApi = role => (req, res, next) => {
 
 // can this person use the peptide store? (reps: their Team logins row; store managers: theirs; the COO PIN: yes, as the store's admin)
 const storeOk = (s) => { if (!hubLinked()) return false; if (s.role === 'rep') { const u = hubPerson(s.rep); return !!(u && u.apps && u.apps.store !== false); } if (s.hubStaff || s.hub) { const u = hubPeople.list.find(x => x.id === s.hubId); return !u || !u.apps || u.apps.store !== false; } return !s.mgr; };
+// a rep's 360 University progress (courses live in the store); shown as a card on their tracker dashboard
+app.get('/api/uni/mine', needApi(), async (req, res) => {
+  if (req.s.role !== 'rep' || !hubLinked()) return res.json({ ok: false });
+  const email = req.s.hub || (pins().reps[req.s.rep] || {}).email || '';
+  if (!email) return res.json({ ok: false });
+  try { const j = await hubCall('/api/hub/uni?email=' + encodeURIComponent(email)); res.json(Object.assign({ ok: true }, j)); } catch (e) { res.json({ ok: false }); }
+});
 app.get('/api/me', needApi(), (req, res) => res.json({ hub: hubLinked() && storeOk(req.s) ? HUB_URL : '', hubStaff: !!req.s.hubStaff, viaHub: !!req.s.hub, role: req.s.role, rep: req.s.rep || null, uid: uidOf(req.s), db: dbMode, name: whoName(req.s), manager: !!req.s.mgr, account: !!(req.s.mgr || req.s.acct), super: isSuper(req.s), dev: req.s.dev || 'computer', idle_min: req.s.dev === 'computer' ? IDLE_MS / 60e3 : null }));
 app.post('/api/activity', needApi(), (req, res) => res.json({ ok: true }));
 app.get('/api/sync', needApi(), (req, res) => {
@@ -1427,8 +1436,8 @@ const lcs = v => String(v || '').trim().toLowerCase();
 function facilityFor(name) { const n = lcs(name); if (!n) return null; for (const [k, d] of docs) if (k.startsWith('facilities/') && (lcs(d.name) === n || (d.aliases || []).some(a => lcs(a) === n))) return Object.assign({ id: k.slice(11) }, d); return null; }
 function metersBetween(a, b, c, d) { const R = 6371000, r = x => x * Math.PI / 180, dl = r(c - a), dg = r(d - b); const h = Math.sin(dl / 2) ** 2 + Math.cos(r(a)) * Math.cos(r(c)) * Math.sin(dg / 2) ** 2; return Math.round(2 * R * Math.asin(Math.sqrt(h))); }
 const fmtClock = ms => new Date(ms).toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit' });
-async function notifyOwner(title, body) {
-  for (const [k, d] of [...docs]) if (k.startsWith('_push/') && d.role === 'owner' && subValid(d)) await sendTo(d, { title, body, url: '/admin#visits' });
+async function notifyOwner(title, body, url) {
+  for (const [k, d] of [...docs]) if (k.startsWith('_push/') && d.role === 'owner' && subValid(d)) await sendTo(d, { title, body, url: url || '/admin#visits' });
 }
 async function notifyRep(rep, title, body) {
   for (const [k, d] of [...docs]) if (k.startsWith('_push/') && d.role === 'rep' && d.rep === rep) await sendTo(d, { title, body, url: '/' });
