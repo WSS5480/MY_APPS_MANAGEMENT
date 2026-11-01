@@ -1526,7 +1526,7 @@ app.post('/api/cron/sweep', (req, res) => {
 async function geocode(q) {
   const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 8000);
   try {
-    const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=' + encodeURIComponent(q), { signal: ctl.signal, headers: { 'User-Agent': '360-Medical-Case-Tracker/1.0 (' + (process.env.PUBLIC_URL || 'https://three60-medical-surgical-case-tracker.onrender.com') + ')', 'Accept-Language': 'en' } });
+    const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=' + encodeURIComponent(q), { signal: ctl.signal, headers: { 'User-Agent': '360-Medical-Case-Tracker/1.0 (' + (process.env.PUBLIC_URL || 'https://three60-medical-case-tracker.onrender.com') + ')', 'Accept-Language': 'en' } });
     const j = await r.json(); if (!Array.isArray(j) || !j[0]) return null;
     return { lat: Math.round(Number(j[0].lat) * 1e6) / 1e6, lng: Math.round(Number(j[0].lon) * 1e6) / 1e6, label: j[0].display_name };
   } catch (e) { return null; } finally { clearTimeout(t); }
@@ -1559,7 +1559,7 @@ async function photonSuggest(q, bias, signal) {
 }
 async function nominatimSuggest(q, bias, signal) {
   const box = bias ? `&viewbox=${bias.lng - 1.5},${bias.lat + 1.2},${bias.lng + 1.5},${bias.lat - 1.2}&bounded=0` : '';
-  const r = await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=8&countrycodes=us&dedupe=1' + box + '&q=' + encodeURIComponent(q), { signal, headers: { 'User-Agent': '360-Medical-Case-Tracker/1.0 (' + (process.env.PUBLIC_URL || 'https://three60-medical-surgical-case-tracker.onrender.com') + ')', 'Accept-Language': 'en' } });
+  const r = await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=8&countrycodes=us&dedupe=1' + box + '&q=' + encodeURIComponent(q), { signal, headers: { 'User-Agent': '360-Medical-Case-Tracker/1.0 (' + (process.env.PUBLIC_URL || 'https://three60-medical-case-tracker.onrender.com') + ')', 'Accept-Language': 'en' } });
   const j = await r.json(); const out = [];
   for (const it of (Array.isArray(j) ? j : [])) {
     const a = it.address || {}; const street = [a.house_number, a.road].filter(Boolean).join(' ') || (a.amenity || a.building || a.shop || a.office || '');
