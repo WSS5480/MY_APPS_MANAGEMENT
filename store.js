@@ -775,7 +775,8 @@ async function tenants() {
           kind: 'Law firm', key: f.key, id: f.slug, name: f.name + (f.disabled ? ' — turned off' : ''),
           created: String(f.created || '').slice(0, 10), people: f.users, work: f.cases, workLabel: 'cases',
           adminEmail: f.email, adminName: f.admin || '', link: f.url, linkLabel: 'open app ↗',
-          extra: 'email: ' + (f.email_connected || 'no') + (f.last_login ? ' · last login ' + String(f.last_login).slice(0, 10) : ''),
+          extra: (f.setup_help ? '⚑ MICROSOFT SETUP HELP REQUESTED ' + String(f.setup_help.at).slice(0, 10) + ' — ' + (f.setup_help.note || '') + ' · ' : '') +
+            'email: ' + (f.email_connected || 'no') + (f.microsoft ? ' · Microsoft: ' + f.microsoft : '') + (f.last_login ? ' · last login ' + String(f.last_login).slice(0, 10) : ''),
           plan: p.plan || (f.plan && f.plan.active ? 'pro' : 'free'), expires_on: isoDay(p.expires_on || (f.plan || {}).expires_on),
           source: p.source || (f.plan || {}).source || null, note: p.note || '', disabled: !!f.disabled,
         });
