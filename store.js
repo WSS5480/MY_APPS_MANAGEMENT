@@ -119,6 +119,13 @@ CREATE TABLE IF NOT EXISTS ma_password_resets (
   requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS ma_resets_email_idx ON ma_password_resets (email);
+
+-- Small owner settings (Peptide Dose Guide: Cash App tag, price, reminder text)
+CREATE TABLE IF NOT EXISTS ma_settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL DEFAULT '',
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 `;
 
 const DEFAULT_APPS = [
@@ -130,11 +137,13 @@ const DEFAULT_APPS = [
   // Band Tips: tip jar + follow page for bands (Stemo Enterprises). Its address comes from BANDS_URL.
   ['bands', 'BND', 'Band Tips', (process.env.BANDS_URL || 'https://band-tips.onrender.com').replace(/\/$/, '')],
   // TX Case Desk: pending cases + Texas case law for law firms. Its address comes from TXCASEDESK_URL.
-  ['txcasedesk', 'TXC', 'TX Case Desk', (process.env.TXCASEDESK_URL || 'https://tx-case-desk.onrender.com').replace(/\/$/, '')]
+  ['txcasedesk', 'TXC', 'TX Case Desk', (process.env.TXCASEDESK_URL || 'https://tx-case-desk.onrender.com').replace(/\/$/, '')],
+  // Peptide Dose Guide sync + subscription ($5/month by Cash App, 30 days free). Its address comes from DOSE_URL.
+  ['dose', 'DOS', 'Peptide Dose Guide', (process.env.DOSE_URL || 'https://dose-guide-sync.onrender.com').replace(/\/$/, '')]
 ];
 /* Free-trial length per app. Karaoke's is 14 days; the others use TRIAL_DAYS.
    TRIAL_DAYS_<SLUG> in the environment overrides either. */
-const APP_TRIAL_DAYS = { karaoke: 14, bands: 14, txcasedesk: 14 };
+const APP_TRIAL_DAYS = { karaoke: 14, bands: 14, txcasedesk: 14, dose: 30 };
 
 async function init() {
   if (!pool) { console.log('WARNING: DATABASE_URL not set — subscriptions disabled.'); return false; }
@@ -783,6 +792,27 @@ async function tenants() {
       }
     } catch (e) { problems.push('txcasedesk: ' + e.message); }
   }
+  const dos = bySlug.dose;
+  if (dos && process.env.DOSE_URL) {
+    try {
+      const { rows: ds } = await q('SELECT secret FROM ma_apps WHERE id=$1', [dos.id]);
+      const r = await fetch(process.env.DOSE_URL.replace(/\/$/, '') + '/api/platform/members',
+        { headers: { 'x-platform-key': ds[0].secret }, signal: AbortSignal.timeout(70000) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'HTTP ' + r.status);
+      for (const m of j.members || []) {
+        const p = planFor(dos.id, m.key) || {};
+        out.push({
+          app: dos.slug, appName: dos.name, prefix: dos.prefix,
+          kind: 'Subscriber', key: m.key, id: m.id, name: m.name + (m.disabled ? ' — turned off' : ''),
+          created: String(m.created || '').slice(0, 10), people: m.vials, work: m.doses, workLabel: 'doses',
+          adminEmail: m.whatsapp ? 'WhatsApp +' + m.whatsapp : '', adminName: '', whatsapp: m.whatsapp || '',
+          plan: p.plan || 'free', expires_on: isoDay(p.expires_on),
+          source: p.source || null, note: p.note || '', disabled: !!m.disabled,
+        });
+      }
+    } catch (e) { problems.push('dose: ' + e.message); }
+  }
   out.sort((a, b) => String(b.created || '').localeCompare(String(a.created || '')));
   return { tenants: out, problems };
 }
@@ -1128,7 +1158,80 @@ async function redeemForTenant({ slug, secret, tenant, tenantName, code }) {
            days_left: daysLeft(expiresOn), added_to_existing: !!added, app: app.slug };
 }
 
+/* ------------------------------------------------ Peptide Dose Guide pay --- */
+/* $5 a month, paid to the owner's Cash App. Nothing is charged automatically:
+   the owner marks a payment received and the subscriber gets 30 more days
+   (added to whatever they have left). The Dose Guide asks for these details so
+   it can show the reminder and the Cash App link. */
+const DOSE_DEFAULTS = {
+  dose_cashtag: '', dose_price: '5',
+  dose_message: "Hi {name}, this is Steve with the Peptide Dose Guide. Your {price}/month is due {when}. Please send it on Cash App: {link} . Thank you!"
+};
+async function getSettings(keys) {
+  const { rows } = await q('SELECT key, value FROM ma_settings WHERE key = ANY($1)', [keys]);
+  const out = {};
+  for (const k of keys) out[k] = (rows.find(r => r.key === k) || {}).value;
+  return out;
+}
+async function doseSettings() {
+  const got = await getSettings(Object.keys(DOSE_DEFAULTS));
+  const out = {};
+  for (const k of Object.keys(DOSE_DEFAULTS)) out[k] = got[k] != null && got[k] !== '' ? got[k] : DOSE_DEFAULTS[k];
+  out.dose_cashtag = String(got.dose_cashtag || '');
+  return out;
+}
+const cleanTag = v => String(v || '').trim().replace(/^https?:\/\/cash\.app\//i, '').replace(/^\$?/, '').replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 40);
+async function saveDoseSettings({ cashtag, price, message }) {
+  const tag = cleanTag(cashtag);
+  const pr = String(Math.max(1, Math.min(500, Number(price) || 5)));
+  const msg = String(message || '').trim().slice(0, 600) || DOSE_DEFAULTS.dose_message;
+  for (const [k, v] of [['dose_cashtag', tag], ['dose_price', pr], ['dose_message', msg]]) {
+    await q(`INSERT INTO ma_settings (key, value) VALUES ($1,$2)
+             ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()`, [k, v]);
+  }
+}
+const cashLink = (tag, price) => tag ? `https://cash.app/$${tag}/${price}` : '';
+/* What the Dose Guide's server asks for (slug + secret). */
+async function payInfo({ slug, secret }) {
+  const { app, error } = await appFromCredentials(slug, secret);
+  if (error) return error;
+  const s = await doseSettings();
+  return { ok: true, price: s.dose_price, cashtag: s.dose_cashtag, link: cashLink(s.dose_cashtag, s.dose_price) };
+}
+/* Payment received: 30 more days, counted from whichever is later, today or the current end. */
+async function markPaid({ slug, tenantKey, tenantName, days }) {
+  const { rows: a } = await q('SELECT id FROM ma_apps WHERE slug=$1', [slug]);
+  if (!a.length) throw new Error('No such app: ' + slug);
+  const add = Math.max(1, Number(days) || 30);
+  const { rows: cur } = await q('SELECT expires_on, plan FROM ma_tenant_plans WHERE app_id=$1 AND tenant_key=$2', [a[0].id, tenantKey]);
+  const today = new Date(new Date().toDateString());
+  let base = today;
+  if (cur[0] && cur[0].plan === 'pro' && cur[0].expires_on && new Date(cur[0].expires_on) > today) base = new Date(cur[0].expires_on);
+  base.setDate(base.getDate() + add);
+  const expires = base.toISOString().slice(0, 10);
+  await q(`INSERT INTO ma_tenant_plans (app_id, tenant_key, tenant_name, plan, source, expires_on, note)
+           VALUES ($1,$2,$3,'pro','cashapp',$4,'paid by Cash App')
+           ON CONFLICT (app_id, tenant_key) DO UPDATE
+             SET plan='pro', source='cashapp', expires_on=EXCLUDED.expires_on, note='paid by Cash App',
+                 tenant_name=COALESCE(EXCLUDED.tenant_name, ma_tenant_plans.tenant_name), updated_at=NOW()`,
+    [a[0].id, tenantKey, tenantName || null, expires]);
+  return expires;
+}
+/* The wording for a reminder: fills {name} {price} {when} {link}. */
+function doseReminderText(settings, member) {
+  const price = '$' + settings.dose_price;
+  const on = member.expires_on ? String(member.expires_on).slice(0, 10) : '';
+  const today = new Date().toISOString().slice(0, 10);
+  let when = 'now';
+  if (on) when = on < today ? 'now (it ended ' + on + ')' : on === today ? 'today' : 'by ' + on;
+  const link = cashLink(settings.dose_cashtag, settings.dose_price) || '(Cash App tag not set yet)';
+  return String(settings.dose_message)
+    .replace(/\{name\}/g, String(member.name || '').replace(/ — turned off$/, ''))
+    .replace(/\{price\}/g, price).replace(/\{when\}/g, when).replace(/\{link\}/g, link);
+}
+
 module.exports = {
+  doseSettings, saveDoseSettings, payInfo, markPaid, doseReminderText, cashLink,
   tenantPaid, sharedDb,
   init, q, pool, listApps, issue, listSubscriptions, listRedemptions,
   redeem, status, revokeCode, setPlan, applyStripe, mintCode, parseCode, sign,

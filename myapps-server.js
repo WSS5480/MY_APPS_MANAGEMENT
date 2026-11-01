@@ -644,6 +644,8 @@ function dashboard(data, error, apps = [], tenants = [], tenantAlerts = [], kpis
          ${tenantProblems.length ? `<div class="al warn" style="margin-top:10px">Could not read:
            ${tenantProblems.map(esc).join('; ')}</div>` : ''}</div>`}
 
+    ${dosePanel(tenants, apps)}
+
     <div class="card">
       <h2>Give someone free time</h2>
       <div class="sub" style="margin-bottom:10px">Generates signed codes. They are not stored, so copy
@@ -696,6 +698,49 @@ function dashboard(data, error, apps = [], tenants = [], tenantAlerts = [], kpis
   </div>`);
 }
 
+
+/* ------------------------------------------------ Peptide Dose Guide pay --- */
+let DOSE_SET = null;
+function dosePanel(tenants, apps) {
+  if (!DOSE_SET || !apps.some(a => a.slug === 'dose')) return '';
+  const today = new Date().toISOString().slice(0, 10);
+  const in5 = new Date(Date.now() + 5 * 864e5).toISOString().slice(0, 10);
+  const members = tenants.filter(t => t.app === 'dose' && !t.disabled);
+  const due = members.filter(t => t.expires_on && String(t.expires_on).slice(0, 10) <= in5 && (t.source === 'trial' || t.source === 'cashapp' || t.plan !== 'pro'))
+    .sort((a, b) => String(a.expires_on).localeCompare(String(b.expires_on)));
+  const field = 'padding:8px;border:1px solid var(--line);border-radius:8px;font-size:14px;width:100%';
+  const linkNow = store.cashLink(DOSE_SET.dose_cashtag, DOSE_SET.dose_price);
+  const row = t => {
+    const on = String(t.expires_on).slice(0, 10);
+    const state = on < today ? `<span class="pill bad">ended ${esc(on)}</span>` : on === today ? '<span class="pill warn">due today</span>' : `<span class="pill warn">due ${esc(on)}</span>`;
+    const text = store.doseReminderText(DOSE_SET, t);
+    const num = String(t.whatsapp || '').replace(/\D/g, '');
+    const wa = num ? 'https://wa.me/' + num + '?text=' + encodeURIComponent(text) : '';
+    return `<tr><td><b>${esc(String(t.name).replace(/ — turned off$/, ''))}</b><div class="sub">${t.source === 'trial' ? 'free trial' : 'paid by Cash App'}</div></td>
+      <td>${state}</td>
+      <td>${wa ? `<a href="${esc(wa)}" target="_blank" rel="noopener" style="display:inline-block;padding:6px 11px;background:#25D366;color:#fff;border-radius:8px;text-decoration:none;font-size:13px;font-weight:600">WhatsApp reminder</a>` : '<span class="sub">no WhatsApp number</span>'}</td>
+      <td><form method="POST" action="/dose/paid" style="display:inline"><input type="hidden" name="tenant" value="${esc(t.key)}"><input type="hidden" name="name" value="${esc(String(t.name).replace(/ — turned off$/, ''))}">
+        <button style="padding:6px 11px;font-size:13px">Mark paid +30 days</button></form></td></tr>`;
+  };
+  return `<div class="card" id="dose-pay"><h2>Dose Guide payments <span class="sub">$${esc(DOSE_SET.dose_price)}/month · Cash App</span></h2>
+    ${DOSE_SET.dose_cashtag ? `<div class="sub" style="margin-bottom:8px">Their pay link: <a href="${esc(linkNow)}" target="_blank" rel="noopener">${esc(linkNow)}</a></div>`
+      : '<div class="al warn" style="margin-bottom:8px"><b>Add your Cash App tag below.</b> Subscribers cannot be shown where to pay until you do.</div>'}
+    <form method="POST" action="/dose/settings" autocomplete="off">
+      <div class="grid">
+        <div><label class="sub">Your Cash App tag (with or without $)</label><input name="cashtag" value="${esc(DOSE_SET.dose_cashtag)}" placeholder="$yourtag" style="${field}"></div>
+        <div><label class="sub">Price per month ($)</label><input name="price" value="${esc(DOSE_SET.dose_price)}" inputmode="decimal" style="${field}"></div>
+      </div>
+      <label class="sub" style="display:block;margin-top:8px">WhatsApp reminder text &mdash; {name} {price} {when} {link} fill in on their own</label>
+      <textarea name="message" rows="3" style="${field};font-family:inherit">${esc(DOSE_SET.dose_message)}</textarea>
+      <button style="margin-top:8px">Save</button>
+    </form>
+    <h3 style="margin:16px 0 6px;font-size:15px">Due now <span class="sub">trial or payment ending within 5 days, or already ended</span></h3>
+    ${due.length ? `<table class="cust"><tr><th>Subscriber</th><th>Status</th><th>Remind</th><th>Paid?</th></tr>${due.map(row).join('')}</table>
+      <div class="sub" style="margin-top:6px">Tap WhatsApp reminder: your WhatsApp opens with the message and Cash App link already typed. Press send. When the money shows in Cash App, tap Mark paid.</div>`
+      : '<div class="sub">Nobody is due right now.</div>'}
+    <div class="sub" style="margin-top:8px">Subscribers also see a banner inside the Dose Guide automatically as their date gets close.</div>
+  </div>`;
+}
 
 /* ------------------------------------------------------ subscriptions --- */
 
@@ -854,6 +899,8 @@ function subsPage({ apps, subs, redemptions, users = [], minted, dbError, notice
 const PLATFORM = {
   karaoke: { env: 'KARAOKE_URL', path: '/api/platform/bars/' },
   bands:   { env: 'BANDS_URL',   path: '/api/platform/bands/' },
+  dose:    { env: 'DOSE_URL',    path: '/api/platform/members/', signup: '/', who: 'a subscriber', noPin: true,
+    notes: '$5/month by Cash App · 30 days free · set your Cash App tag and reminder text in the Dose Guide payments box below' },
   txcasedesk: { env: 'TXCASEDESK_URL', path: '/api/platform/firms/', signup: '/?signup=1', who: 'a law firm', noPin: true,
     notes: 'Outlook connect: one TX Case Desk Microsoft app (moving to a business account + publisher verification); firms may use their own keys — setup help is a one-time fee, requests show as ⚑ on the firm card · Render workspace TX CASE DESK · GitHub WSS5480/TX-CASE-DESK · Postmark: steve.smith@buddyrents.com · CourtListener API token in Render env' },
 };
@@ -910,6 +957,7 @@ const server = http.createServer(async (req, res) => {
   const AUTH = {
     '/api/v1/auth/register': store.register,
     '/api/v1/plan': store.tenantPlan,
+    '/api/v1/pay-info': store.payInfo,
     '/api/v1/trial': store.startTrial,
     '/api/v1/redeem-tenant': store.redeemForTenant,
     '/api/v1/tenant-paid': store.tenantPaid,
@@ -1123,6 +1171,19 @@ const server = http.createServer(async (req, res) => {
   }
 
   /* Setting a customer's plan by hand, from the row on the console. */
+  if (url.pathname === '/dose/settings' && req.method === 'POST') {
+    const b = new URLSearchParams(await readBody(req));
+    try { await store.saveDoseSettings({ cashtag: b.get('cashtag'), price: b.get('price'), message: b.get('message') }); }
+    catch (e) { console.error('dose settings:', e.message); }
+    return send(res, 302, '', { Location: '/#dose-pay' });
+  }
+  if (url.pathname === '/dose/paid' && req.method === 'POST') {
+    const b = new URLSearchParams(await readBody(req));
+    try { await store.markPaid({ slug: 'dose', tenantKey: b.get('tenant'), tenantName: b.get('name') }); }
+    catch (e) { console.error('dose paid:', e.message); }
+    return send(res, 302, '', { Location: '/#dose-pay' });
+  }
+
   if (url.pathname === '/tenant/plan' && req.method === 'POST') {
     const b = new URLSearchParams(await readBody(req));
     try {
@@ -1132,7 +1193,7 @@ const server = http.createServer(async (req, res) => {
       });
       // Karaoke and Band Tips keep their own copy of each customer's plan: tell them right away
       if (PLATFORM[b.get('slug')] && row) {
-        await platformPush(b.get('slug'), String(b.get('tenant')).replace(/^(bar|band|firm):/, ''), {
+        await platformPush(b.get('slug'), String(b.get('tenant')).replace(/^(bar|band|firm|dose):/, ''), {
           action: 'plan', plan: row.plan, source: 'manual',
           expires_on: row.expires_on ? new Date(row.expires_on).toISOString().slice(0, 10) : null });
       }
@@ -1234,6 +1295,7 @@ async function renderConsole(res, minted, notice) {
 
   /* Each of these is wrapped on its own so one broken panel cannot take the
      whole console down with it — the same rule the tenant list follows. */
+  try { DOSE_SET = await store.doseSettings(); } catch (e) { DOSE_SET = null; }
   let support = null;
   try { support = await store.supportInbox(); }
   catch (e) { console.error('support inbox failed:', e.message); }
