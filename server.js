@@ -274,6 +274,7 @@ function clean(d) {
 const app = express();
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '5mb' }));
+require('./server/migrate')(app, () => pool); // moving workspaces: data copy + forwarding (off unless MIGRATE_SECRET / REDIRECT_TO are set)
 app.use((req, res, next) => { const hub = String(process.env.HUB_URL || '').replace(/\/$/, ''); if (hub && process.env.HUB_SECRET) res.setHeader('Content-Security-Policy', `frame-ancestors 'self' ${hub}`); else res.setHeader('X-Frame-Options', 'SAMEORIGIN'); res.setHeader('Referrer-Policy', 'same-origin'); res.setHeader('X-Robots-Tag', 'noindex'); next(); });
 
 const pub = path.join(__dirname, 'public');
