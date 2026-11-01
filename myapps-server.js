@@ -855,7 +855,7 @@ const PLATFORM = {
   karaoke: { env: 'KARAOKE_URL', path: '/api/platform/bars/' },
   bands:   { env: 'BANDS_URL',   path: '/api/platform/bands/' },
   txcasedesk: { env: 'TXCASEDESK_URL', path: '/api/platform/firms/', signup: '/?signup=1', who: 'a law firm', noPin: true,
-    notes: 'Outlook connect: each firm uses its own Azure keys (setup help = one-time fee; requests show as ⚑ on the firm card) · Render workspace TX CASE DESK · GitHub WSS5480/TX-CASE-DESK · Postmark: steve.smith@buddyrents.com · CourtListener API token in Render env' },
+    notes: 'Outlook connect: one TX Case Desk Microsoft app (moving to a business account + publisher verification); firms may use their own keys — setup help is a one-time fee, requests show as ⚑ on the firm card · Render workspace TX CASE DESK · GitHub WSS5480/TX-CASE-DESK · Postmark: steve.smith@buddyrents.com · CourtListener API token in Render env' },
 };
 async function platformPush(slug, id, body) {
   const p = PLATFORM[slug];
