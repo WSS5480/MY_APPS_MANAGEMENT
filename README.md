@@ -30,3 +30,14 @@ TX Case Desk runs in its own Render workspace ("TX CASE DESK", repo `WSS5480/TX-
 - Console → Customers → **TX Case Desk**: every law firm with plan, attorneys, cases, admin, whether email is connected, last login. Set plan (pushed right away), **Turn off / Turn on**, open app.
 - **Give someone free time** → pick TX Case Desk → codes like `TXC-30D-XXXX-XXXXXX`; firms enter them at sign-up (link pre-fills it) or under Account → Subscription.
 - Owner accounts behind it: Outlook connect = Azure app registration under **stevesmith.5480@outlook.com**; inbound email = Postmark (steve.smith@buddyrents.com); case law = CourtListener token (Render env).
+
+## Peptide Dose Guide ($5/month by Cash App, 30 days free)
+
+The Dose Guide's login + vial sync runs as its own service (`dose-guide-sync`, repo `WSS5480/PEPTIDE-DOSE-TRACKER`, folder `sync/`) with its own database (`dose-guide-db`).
+
+- Registered automatically as app `dose`, code prefix **DOS**, 30-day free trial (`TRIAL_DAYS_DOSE` to change).
+- Set on this service: `DOSE_URL` (`https://dose-guide-sync.onrender.com`) and `APP_SECRET_DOSE`.
+- Set on Dose Guide sync: `MYAPPS_URL` (this service's address) and `MYAPPS_SECRET` (same value as `APP_SECRET_DOSE`), plus its own `DATABASE_URL`.
+- Console → **Dose Guide payments**: type your Cash App tag, the price and the reminder wording. **Due now** lists subscribers whose trial or paid month ends within 5 days (or already ended). **WhatsApp reminder** opens WhatsApp with the message and your Cash App link already typed; press send. When the money arrives, **Mark paid +30 days**.
+- Subscribers also see a banner inside the Dose Guide on their own as the date gets close. 3 days after the date passes, syncing pauses (their vials stay on their device); Mark paid turns it back on.
+- Customers table: **Turn off / Turn on** blocks a login.
