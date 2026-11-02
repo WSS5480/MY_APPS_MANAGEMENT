@@ -85,7 +85,9 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').cat
   $('#tab-rep').addEventListener('click', function () { tab('rep'); }); $('#tab-mgr').addEventListener('click', function () { tab('mgr'); });
   var who = $('#who');
   (function(){ var e = new URLSearchParams(location.search).get('err'); if (e === 'sso') show('#err-rep', 'That sign-in link from the store has expired — go back to the store and tap Case tracker again.'); if (e === 'noaccess') show('#err-rep', "Your login doesn't have the Case tracker box ticked in the store's Team logins yet. Ask an admin."); })();
+  who.appendChild(new Option('Loading names…', '')); // the store may be waking up: this can take up to a minute
   fetch('/api/login-options').then(function (r) { return r.json(); }).then(function (j) {
+    who.innerHTML = '';
     if (j.hub) { var n = document.createElement('p'); n.className = 'note'; n.style.textAlign = 'center'; n.innerHTML = 'One login for both apps: your name + the PIN set in the peptide store works here, or <a href="' + j.hub + '/admin">sign in at the peptide store</a> and switch over.'; var f = document.querySelector('form'); if (f) f.parentNode.insertBefore(n, f); }
     who.appendChild(new Option('Choose your name', ''));
     (j.reps || []).forEach(function (r) { who.appendChild(new Option(r, r)); });

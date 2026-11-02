@@ -342,20 +342,31 @@ function hubVerify(token) {
   try { const o = JSON.parse(Buffer.from(m[1], 'base64url').toString()); return o.exp && o.exp > Date.now() ? o : null; } catch (e) { return null; }
 }
 const hubAuth = (req, res, next) => { const t = /^Hub (.+)$/.exec(req.headers.authorization || ''); if (!HUB_SECRET || !t || !(hubVerify(t[1]) || {}).svc) return res.status(401).json({ error: 'Hub signature missing or wrong' }); next(); };
+// opts.wait (ms): the store's free server sleeps when idle and answers "waking up" (429/502/503, or Render's loading page)
+// for up to about a minute; sign-ins pass a wait so they hold on until it's up instead of failing as "Wrong PIN".
 async function hubCall(pathname, opts = {}) {
   if (!hubLinked()) throw new Error('not linked');
-  const r = await fetch(HUB_URL + pathname, Object.assign({ headers: Object.assign({ Authorization: 'Hub ' + hubSign({ svc: true, exp: Date.now() + 120000 }), 'Content-Type': 'application/json' }, opts.headers || {}), signal: AbortSignal.timeout(10000) }, opts));
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error || ('hub answered ' + r.status));
-  return j;
+  const { wait = 0, ...o } = opts, until = Date.now() + wait;
+  for (;;) {
+    let r, j, waking = false;
+    try {
+      r = await fetch(HUB_URL + pathname, Object.assign({}, o, { headers: Object.assign({ Authorization: 'Hub ' + hubSign({ svc: true, exp: Date.now() + 120000 }), 'Content-Type': 'application/json' }, o.headers || {}), signal: AbortSignal.timeout(15000) }));
+      waking = [429, 502, 503, 504].includes(r.status) || !/json/i.test(r.headers.get('content-type') || '');
+      if (!waking) j = await r.json().catch(() => ({}));
+    } catch (e) { waking = true; if (Date.now() >= until) throw e; }
+    if (waking) { if (Date.now() + 3000 < until) { await new Promise(ok => setTimeout(ok, 3000)); continue; } throw new Error('hub answered ' + (r ? r.status : 'nothing') + ' (store waking up)'); }
+    if (!r.ok) throw new Error(j.error || ('hub answered ' + r.status));
+    return j;
+  }
 }
+const HUB_WAIT = 75000; // how long a sign-in waits for a sleeping store
 // people from the store: cached a minute; reps get a plan row + a PIN record here so the rest of the app treats them as its own
 let hubPeople = { at: 0, list: [], ok: false };
-async function syncPeople(force) {
+async function syncPeople(force, wait) {
   if (!hubLinked()) return hubPeople.list;
-  if (!force && Date.now() - hubPeople.at < 60000) return hubPeople.list;
+  if (!force && Date.now() - hubPeople.at < 60000 && (hubPeople.ok || !wait)) return hubPeople.list;
   let people;
-  try { people = (await hubCall('/api/hub/people')).people || []; } catch (e) { console.error('Hub people sync: ' + e.message); hubPeople.at = Date.now() - 30000; hubPeople.ok = false; return hubPeople.list; } // retry in 30 s, don't hang every login meanwhile
+  try { const j = await hubCall('/api/hub/people', { wait: wait || 0 }); if (!Array.isArray(j.people)) throw new Error('no people list'); people = j.people; } catch (e) { console.error('Hub people sync: ' + e.message); hubPeople.at = Date.now() - 30000; hubPeople.ok = false; return hubPeople.list; } // retry in 30 s, don't hang every login meanwhile
   hubPeople = { at: Date.now(), list: people, ok: true };
   const p = pins(), rows = quotaRows().slice(); let pinsChanged = false, rowsChanged = false;
   for (const u of people.filter(x => x.role === 'rep')) {
@@ -515,14 +526,14 @@ app.post('/api/hub/rep-remove', hubAuth, async (req, res) => {
   res.json({ ok: true });
 });
 app.get('/api/login-options', async (req, res) => {
-  await syncPeople().catch(() => {});
+  await syncPeople(false, hubPeople.ok ? 0 : HUB_WAIT).catch(() => {});
   const p = pins().reps;
   // admins and managers from the store (Team logins) sign in here by name + their PIN too
   const admins = hubLinked() ? hubPeople.list.filter(u => u.role !== 'rep' && u.active !== false && u.apps && u.apps.tracker).map((u, i, all) => ({ id: u.id, name: all.some(o => o !== u && String(o.name).trim().toLowerCase() === String(u.name).trim().toLowerCase()) ? `${u.name} (${u.email})` : u.name, role: u.role === 'owner' ? 'Admin' : 'Manager' })) : [];
   res.json({ reps: quotaRows().filter(r => r.role !== 'Team' && p[r.rep] && p[r.rep].active !== false && !repAcct(r.rep)).map(r => r.rep), admins, pin_login: !pinOff(), managers: Object.values(mgrs()).some(m => m.active !== false && m.totp_on), hub: hubLinked() ? HUB_URL : '' });
 });
 app.post('/api/login', async (req, res) => {
-  await syncPeople().catch(() => {});
+  await syncPeople(false, hubPeople.ok ? 0 : HUB_WAIT).catch(() => {});
   const t = throttled(req.ip);
   if (t.n >= 10) return res.status(429).json({ error: 'Too many tries. Wait 15 minutes and try again.' });
   const who = String(req.body.who || ''), pin = String(req.body.pin || '').trim();
@@ -533,15 +544,15 @@ app.post('/api/login', async (req, res) => {
     // an admin / manager from the store, by their store PIN
     const id = Number(who.slice(4)), u = hubPeople.list.find(x => x.id === id && x.role !== 'rep' && x.active !== false);
     if (u && pin && hubLinked()) {
-      try { const r = await hubCall('/api/hub/check-pin', { method: 'POST', body: JSON.stringify({ id, pin }) }); if (r.ok) { tries.delete(req.ip); setSession(res, { role: 'owner', hub: u.email, hubId: u.id, hubName: u.name, hubStaff: u.role !== 'owner', v: adminV() }, req.body.dev); return res.json({ ok: true, role: 'owner' }); } } catch (e) {}
-    }
+      try { const r = await hubCall('/api/hub/check-pin', { method: 'POST', body: JSON.stringify({ id, pin }), wait: HUB_WAIT }); if (r.ok) { tries.delete(req.ip); setSession(res, { role: 'owner', hub: u.email, hubId: u.id, hubName: u.name, hubStaff: u.role !== 'owner', v: adminV() }, req.body.dev); return res.json({ ok: true, role: 'owner' }); } } catch (e) { return res.status(503).json({ error: "Couldn't reach the store to check your PIN (it may still be waking up). Try again in a minute." }); }
+    } else if (!u && pin && hubLinked() && !hubPeople.ok) return res.status(503).json({ error: "Couldn't reach the store to check your PIN (it may still be waking up). Try again in a minute." });
   } else {
     const p = pins().reps[who];
     if (repAcct(who)) return res.status(403).json({ error: who + ' signs in with email now. Use the Email sign-in tab.' });
     if (p && p.active !== false && pin && p.pin && pin === String(p.pin) && quotaRows().some(r => r.rep === who)) { tries.delete(req.ip); setSession(res, { role: 'rep', rep: who, v: p.v }, req.body.dev); return res.json({ ok: true, role: 'rep' }); }
     // the one PIN from the store: checked there
     if (p && p.active !== false && p.hub && pin && hubLinked()) {
-      try { const r = await hubCall('/api/hub/check-pin', { method: 'POST', body: JSON.stringify({ id: p.hub, pin }) }); if (r.ok) { tries.delete(req.ip); setSession(res, { role: 'rep', rep: who, hub: r.user && r.user.email, v: p.v }, req.body.dev); return res.json({ ok: true, role: 'rep' }); } } catch (e) {}
+      try { const r = await hubCall('/api/hub/check-pin', { method: 'POST', body: JSON.stringify({ id: p.hub, pin }), wait: HUB_WAIT }); if (r.ok) { tries.delete(req.ip); setSession(res, { role: 'rep', rep: who, hub: r.user && r.user.email, v: p.v }, req.body.dev); return res.json({ ok: true, role: 'rep' }); } } catch (e) { return res.status(503).json({ error: "Couldn't reach the store to check your PIN (it may still be waking up). Try again in a minute." }); }
     }
   }
   t.n++;
@@ -1907,7 +1918,7 @@ app.post('/api/login/manager', async (req, res) => {
   }
   // one login for both apps: otherwise the email + password are checked against the store's Team logins
   if (email && hubLinked()) {
-    let r = null; try { r = await hubCall('/api/hub/check-pass', { method: 'POST', body: JSON.stringify({ email, password: String(req.body.password || '') }) }); } catch (e) { return res.status(503).json({ error: 'Could not reach the store to check your login. Try again in a moment.' }); }
+    let r = null; try { r = await hubCall('/api/hub/check-pass', { method: 'POST', body: JSON.stringify({ email, password: String(req.body.password || '') }), wait: HUB_WAIT }); } catch (e) { return res.status(503).json({ error: 'Could not reach the store to check your login. Try again in a moment.' }); }
     if (r && r.ok && r.user) {
       const u = r.user;
       if (u.role === 'rep') {
