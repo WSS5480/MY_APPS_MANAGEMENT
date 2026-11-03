@@ -529,7 +529,7 @@ app.get('/api/login-options', async (req, res) => {
   await syncPeople(false, hubPeople.ok ? 0 : HUB_WAIT).catch(() => {});
   const p = pins().reps;
   // admins and managers from the store (Team logins) sign in here by name + their PIN too
-  const admins = hubLinked() ? hubPeople.list.filter(u => u.role !== 'rep' && u.active !== false && u.apps && u.apps.tracker).map((u, i, all) => ({ id: u.id, name: all.some(o => o !== u && String(o.name).trim().toLowerCase() === String(u.name).trim().toLowerCase()) ? `${u.name} (${u.email})` : u.name, role: u.role === 'owner' ? 'Admin' : 'Manager' })) : [];
+  const admins = hubLinked() ? hubPeople.list.filter(u => u.role !== 'rep' && u.active !== false && u.apps && u.apps.tracker && u.pin_set !== false).map((u, i, all) => ({ id: u.id, name: all.some(o => o !== u && String(o.name).trim().toLowerCase() === String(u.name).trim().toLowerCase()) ? `${u.name} (${u.email})` : u.name, role: u.role === 'owner' ? 'Admin' : 'Manager' })) : [];
   res.json({ reps: quotaRows().filter(r => r.role !== 'Team' && p[r.rep] && p[r.rep].active !== false && !repAcct(r.rep)).map(r => r.rep), admins, pin_login: !pinOff(), managers: Object.values(mgrs()).some(m => m.active !== false && m.totp_on), hub: hubLinked() ? HUB_URL : '' });
 });
 app.post('/api/login', async (req, res) => {
