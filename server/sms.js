@@ -1,4 +1,4 @@
-/* Text messages (SMS) for the Surgical Case Tracker, sent through Twilio.
+/* Text messages (SMS) for the 360 Medical Portal, sent through Twilio.
    Settings come from Admin → Text alerts (doc config/sms); TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM
    (a phone number) or TWILIO_MESSAGING_SERVICE_SID on the host are the fallback. send() never throws.
    Numbers are kept in E.164 (+1XXXXXXXXXX). */

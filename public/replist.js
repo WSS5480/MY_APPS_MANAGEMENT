@@ -1,4 +1,4 @@
-/* Admin → Sales reps (case tracker): every rep with this month's results, plan, commission and activity.
+/* Admin → Sales reps (portal): every rep with this month's results, plan, commission and activity.
    Each rep is a folding card (wraps on phones, no sideways table). Plans and access are edited in Team logins when the store hub is linked. */
 (function () {
   'use strict';
@@ -64,13 +64,13 @@
         '<div class="rl-grp"><h4>Pay &amp; commission</h4><div class="rl-g">' + g('Commission rate', ratePct) + g('Commission floor', r.comm_floor ? $$(r.comm_floor) : '—') + g(pay || 'Guaranteed pay', payAmt ? $$(payAmt) + ' / month' : '—') +
           g('Commission · ' + esc(mName), x ? $$((x.comm || {}).commission) : '—') + g('Est. pay · ' + esc(mName), x && x.comm && x.comm.est_pay != null ? $$(x.comm.est_pay) : '—') + '</div></div>' +
         '<div class="rl-grp"><h4>Activity · all time</h4><div class="rl-g">' + g('Cases logged', c.cases || 0) + g('Last case', c.last ? new Date(c.last + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : '—') + g('Visits', c.visits || 0) + g('Target surgeons', c.targets || 0) + g('Pref cards', c.prefcards || 0) + g('Credentials', c.credentials || 0) + '</div></div>' +
-        '<div class="rl-grp"><h4>Access</h4><div class="rl-g">' + g('Tracker access', off ? 'Off' : 'On') + g('PIN', r.pin ? 'Set' : 'Not set') + g('Signs in through', r.hub ? 'Team logins (one login, both apps)' : 'Tracker PIN') + '</div></div>' +
+        '<div class="rl-grp"><h4>Access</h4><div class="rl-g">' + g('Portal access', off ? 'Off' : 'On') + g('PIN', r.pin ? 'Set' : 'Not set') + g('Signs in through', r.hub ? 'Team logins (one login, both apps)' : 'Portal PIN') + '</div></div>' +
         '<div class="rl-acts"><button class="btn small primary" type="button" data-tl>Edit plan &amp; access in Team logins</button></div>' +
         '</div></details>';
     };
     var teams = (ex.teams || []);
     box.innerHTML = '<div class="cardhead"><h2>Sales reps</h2><div class="tools"><button class="btn primary small" type="button" data-tl>+ Add or edit reps in Team logins</button></div></div>' +
-      '<p class="note">Every case-tracker rep with ' + esc(mName) + '\'s results, plan, commission and activity. Tap a rep to open the details. Reps, PINs, access and plans are changed in Team logins: one roster for the store and the tracker.</p>' +
+      '<p class="note">Every portal rep with ' + esc(mName) + '\'s results, plan, commission and activity. Tap a rep to open the details. Reps, PINs, access and plans are changed in Team logins: one roster for the store and the portal.</p>' +
       '<div class="rl-tools"><select class="field" id="rl-f"><option value="active">Active reps</option><option value="off">Access off</option><option value="all">All reps</option></select>' +
       '<select class="field" id="rl-s"><option value="rank">Sort: rank (% to quota)</option><option value="sales">Sort: net sales</option><option value="cases">Sort: cases</option><option value="comm">Sort: commission</option><option value="name">Sort: name A–Z</option></select>' +
       '<button class="btn small" type="button" id="rl-x">' + (list.length && list.every(function (o) { return OPEN[o.row.rep]; }) ? 'Collapse all' : 'Expand all') + '</button><button class="btn small" type="button" id="rl-r">⟳</button></div>' +

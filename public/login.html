@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Sign in · 360 MEDICAL - SURGICAL CASE TRACKER</title>
+<title>Sign in · 360 MEDICAL PORTAL</title>
 <link rel="manifest" href="/manifest.webmanifest"><link rel="icon" href="/favicon.png"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="theme-color" content="#0f1b33"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="360 Cases">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap">
@@ -23,7 +23,7 @@ form{display:flex;flex-direction:column;gap:14px}
 <div class="wrap">
   <header class="head">
     <img class="logo" src="/logo.png" alt="360 Medical">
-    <div class="headtxt"><h1>Surgical Case Tracker</h1><span class="conf">Confidential · Internal use only</span></div>
+    <div class="headtxt"><h1>360 Medical Portal</h1><span class="conf">Confidential · Internal use only</span></div>
   </header>
   <div class="msg warn box" id="idle" hidden>You were signed out after 10 minutes without activity on this computer.</div>
   <div class="msg warn box" id="adminmsg" hidden>This browser is now signed in as someone else (a rep). Sign in as an admin to keep using Admin.</div>
@@ -59,7 +59,7 @@ form{display:flex;flex-direction:column;gap:14px}
     </div>
   </section>
   <section class="card box row">
-    <span class="note" style="margin:0">Put the tracker on your phone or PC.</span>
+    <span class="note" style="margin:0">Put the portal on your phone or PC.</span>
     <a class="btn" href="/download">Download the app</a>
   </section>
   <footer class="foot box">Never enter patient names, MRNs or dates of birth. Confidential: 360 Medical internal sales data. Computers sign out after 10 minutes without activity.</footer>
@@ -84,7 +84,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').cat
   }
   $('#tab-rep').addEventListener('click', function () { tab('rep'); }); $('#tab-mgr').addEventListener('click', function () { tab('mgr'); });
   var who = $('#who');
-  (function(){ var e = new URLSearchParams(location.search).get('err'); if (e === 'sso') show('#err-rep', 'That sign-in link from the store has expired — go back to the store and tap Case tracker again.'); if (e === 'noaccess') show('#err-rep', "Your login doesn't have the Case tracker box ticked in the store's Team logins yet. Ask an admin."); })();
+  (function(){ var e = new URLSearchParams(location.search).get('err'); if (e === 'sso') show('#err-rep', 'That sign-in link from the store has expired — go back to the store and tap 360 Medical Portal again.'); if (e === 'noaccess') show('#err-rep', "Your login doesn't have the 360 Medical Portal box ticked in the store's Team logins yet. Ask an admin."); })();
   who.appendChild(new Option('Loading names…', '')); // the store may be waking up: this can take up to a minute
   fetch('/api/login-options').then(function (r) { return r.json(); }).then(function (j) {
     who.innerHTML = '';

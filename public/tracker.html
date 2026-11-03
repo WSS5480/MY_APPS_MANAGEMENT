@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>360 MEDICAL - SURGICAL CASE TRACKER</title>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>360 MEDICAL PORTAL</title>
 <link rel="icon" href="/favicon.png"><link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="360 Cases">
 <meta name="theme-color" content="#0f1b33">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap">
@@ -151,7 +151,7 @@ html{overflow-anchor:none} /* the pills place the page themselves; the browser's
 @media (min-width:761px){.jump{flex-wrap:wrap;overflow:visible}} /* computers: pills wrap onto a second line instead of scrolling */
 section[id^="sec-"]{scroll-margin-top:62px}
 </style>
-<link rel="stylesheet" href="/theme-360.css?v=21"><style id="upload-look">/* the dashboard keeps the original tracker's look (accent-topped tiles, big numbers, sentence-case card titles) */
+<link rel="stylesheet" href="/theme-360.css?v=21"><style id="upload-look">/* the dashboard keeps the original portal's look (accent-topped tiles, big numbers, sentence-case card titles) */
 #main .tile{border-top:3px solid var(--accent);border-radius:var(--r);padding:20px;gap:6px}
 #main .tile .num{font-size:2rem;letter-spacing:-.02em;line-height:1.1}
 #main .tile .lab{font-size:.75rem;letter-spacing:.05em}
@@ -162,11 +162,11 @@ section[id^="sec-"]{scroll-margin-top:62px}
 <div class="wrap" id="root">
   <header class="head" style="position:relative">
     <div class="logobox"><img class="logo" src="/logo-dark.png?v=1" alt="360 Medical"></div>
-    <div class="brand"><small class="appname">Case tracker</small><div class="ver" id="ver"></div><div class="appswitch" id="appswitch" hidden><a class="on">Case tracker</a><a id="sw-store" href="#">Peptide store ↗</a></div><div class="appswitch views" id="views" style="margin-top:.35rem"><a href="/admin" id="views-admin">Admin</a><a id="v-store" href="#" hidden>Store</a><a id="v-rep" href="#" hidden>Rep</a><a class="on">Tracker</a></div></div>
+    <div class="brand"><small class="appname">360 Medical Portal</small><div class="ver" id="ver"></div><div class="appswitch" id="appswitch" hidden><a class="on">Portal</a><a id="sw-store" href="#">Peptide store ↗</a></div><div class="appswitch views" id="views" style="margin-top:.35rem"><a href="/admin" id="views-admin">Admin</a><a id="v-store" href="#" hidden>Store</a><a id="v-rep" href="#" hidden>Rep</a><a class="on">Portal</a></div></div>
     <button type="button" class="who-badge" id="who-badge" hidden aria-haspopup="menu" aria-expanded="false"><span class="wb-ic" id="wb-ic" aria-hidden="true"></span><span><b id="wb-name"></b><small id="wb-role"></small></span><span class="wb-caret" aria-hidden="true">▾</span></button>
     <div class="who-menu" id="who-menu" role="menu" hidden><a role="menuitem" id="wm-admin" href="/admin">⚙️ Open Admin</a><button role="menuitem" type="button" id="wm-adminlogin">🔐 Admin sign-in</button><button role="menuitem" type="button" id="wm-logout">↩ Log out</button></div>
     <div class="headtxt">
-      <h1>Surgical Case Tracker</h1>
+      <h1>360 Medical Portal</h1>
       <span class="conf">Confidential · Internal use only</span>
       <p class="take" id="take">Loading the case log…</p>
       <p class="plan" id="plan" hidden title="Tap to show the full plan" onclick="this.classList.toggle('open')"></p>
@@ -409,7 +409,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
   function flush(key) { if (timers[key]) { clearTimeout(timers[key]); var fn = timerFns[key]; delete timers[key]; delete timerFns[key]; run(key, fn); } }
   function writeError(e) {
     var code = e && e.code;
-    if (code === 'invalid_argument' && !S.writeKnown) { S.canWrite = false; render(); setStatus('err', 'View only: you cannot edit this tracker'); return; }
+    if (code === 'invalid_argument' && !S.writeKnown) { S.canWrite = false; render(); setStatus('err', 'View only: you cannot edit this portal'); return; }
     if (code === 'quota_exceeded') { setStatus('err', 'Storage is full. Delete old cases, then try again'); return; }
     setStatus('err', 'Could not save. Check your connection and edit again');
   }
@@ -649,7 +649,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
       var wl = $('#who-list'); wl.replaceChildren();
       reps.forEach(function (r) { var b = el('button', 'btn', r); b.type = 'button'; b.dataset.rep = r; wl.appendChild(b); });
       if (!reps.length) $('#who-note').textContent = 'No reps are set up yet. Ask the owner to add the rep list.';
-      $('#take').textContent = 'Pick your name to open your tracker.';
+      $('#take').textContent = 'Pick your name to open your portal.';
     }
 
     /* header */
@@ -663,7 +663,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
     document.querySelectorAll('.mname').forEach(function (n) { n.textContent = monthName(month); });
     document.querySelectorAll('.vname').forEach(function (n) { n.textContent = viewRep || 'All reps'; });
     var bn = $('#banner');
-    if (S.unavailable) { bn.hidden = false; bn.textContent = 'The tracker could not reach the server. Check your connection; it will reconnect automatically.'; }
+    if (S.unavailable) { bn.hidden = false; bn.textContent = 'The portal could not reach the server. Check your connection; it will reconnect automatically.'; }
     else if (loaded && !S.canWrite) { bn.hidden = false; bn.textContent = 'You have view-only access. Ask the owner for "Can edit" access to log or update cases.'; }
     else bn.hidden = true;
     if (noRep) return;
@@ -764,7 +764,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
       var cst = $('#comm-stats'); cst.replaceChildren();
       var cf = $('#comm-formula'), cmb = $('#comm-months tbody'); cmb.replaceChildren();
       if (!me || !me.comm_rate) {
-        cf.textContent = 'Salaried plan: monthly bonuses are tracked outside this tracker.';
+        cf.textContent = 'Salaried plan: monthly bonuses are tracked outside this portal.';
         $('#comm-months').hidden = true;
       } else {
         $('#comm-months').hidden = false;
@@ -1174,7 +1174,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
   sync(); setInterval(sync, 2000);
   var syncT = null; new MutationObserver(function () { clearTimeout(syncT); syncT = setTimeout(sync, 60); }).observe(document.getElementById('main'), { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] }); // pills show as soon as their section fills in
   var rb = document.getElementById('btn-refresh'); if (rb) rb.addEventListener('click', function () { rb.disabled = true; rb.textContent = '⟳ Refreshing…'; location.reload(); });
-  // reps: the original tracker's view first (quota tiles → pace to quota + pace alerts → estimated commissions → SIM Lab →
+  // reps: the original portal's view first (quota tiles → pace to quota + pace alerts → estimated commissions → SIM Lab →
   // target surgeon conversion → surgeon activity → case log), then the field tools added since (calendar, upcoming, visits, cards, directory…)
   var REP_ORDER = ['tiles', 'sec-score', 'sec-comm', 'sec-sim', 'sec-notes', 'sec-mix', 'sec-conv', 'sec-surgeons', 'sec-invq', 'sec-log', 'sec-wcu', 'sec-vcal', 'sec-upcoming', 'sec-visits', 'sec-pref', 'sec-dir', 'sec-billing', 'sec-cred', 'sec-notify'];
   var REP_OPEN = ['sec-comm', 'sec-sim', 'sec-conv', 'sec-surgeons', 'sec-log', 'sec-wcu']; // shown open, like the original

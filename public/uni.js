@@ -1,4 +1,4 @@
-/* 360 University card on a rep's tracker dashboard: how many courses are left (courses and tests live in the store's rep app). */
+/* 360 University card on a rep's portal dashboard: how many courses are left (courses and tests live in the store's rep app). */
 (function () {
   'use strict';
   if (/[?&]embed=1/.test(location.search)) return;

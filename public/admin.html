@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Admin · 360 MEDICAL - SURGICAL CASE TRACKER</title>
+<title>Admin · 360 MEDICAL PORTAL</title>
 <link rel="manifest" href="/admin.webmanifest"><link rel="icon" href="/favicon.png"><link rel="apple-touch-icon" href="/apple-touch-icon-admin.png"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="360 Admin">
 <meta name="theme-color" content="#0f1b33">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap">
@@ -69,10 +69,10 @@ header.head.has-who{padding-top:58px}
 <div class="wrap">
   <header class="head" style="position:relative">
     <div class="logobox"><img class="logo" src="/logo-dark.png?v=1" alt="360 Medical"></div>
-    <div class="brand"><small class="appname">Case tracker admin</small><div class="ver" id="ver"></div><div class="appswitch" id="appswitch" hidden><a class="on">Case tracker</a><a id="sw-store" href="#">Peptide store ↗</a></div><div class="appswitch views" id="views" style="margin-top:.35rem"><a class="on">Admin</a><a id="v-store" href="#" hidden>Store</a><a id="v-rep" href="#" hidden>Rep</a><a href="/">Tracker</a></div></div>
+    <div class="brand"><small class="appname">Portal admin</small><div class="ver" id="ver"></div><div class="appswitch" id="appswitch" hidden><a class="on">Portal</a><a id="sw-store" href="#">Peptide store ↗</a></div><div class="appswitch views" id="views" style="margin-top:.35rem"><a class="on">Admin</a><a id="v-store" href="#" hidden>Store</a><a id="v-rep" href="#" hidden>Rep</a><a href="/">Portal</a></div></div>
     <div class="who-badge" id="who-badge" hidden title=""><span class="wb-ic" id="wb-ic" aria-hidden="true"></span><span><b id="wb-name"></b><small id="wb-role"></small></span></div>
-    <div class="headtxt"><h1>Admin</h1><span class="conf">360 MEDICAL - SURGICAL CASE TRACKER</span><p class="sub">Reps, PINs, quotas and commission plans. Changes here show in the tracker within seconds.</p></div>
-    <div class="tools"><button class="btn" id="btn-refresh" type="button" onclick="this.disabled=true;this.textContent='⟳ Refreshing…';location.reload()">⟳ Refresh</button><a class="btn" href="/">Open tracker</a><a class="btn" href="#sec-wcu">📝 WCU</a><a class="btn" href="#sec-logins">🔐 Login activity</a><a class="btn" href="#sec-import">⬆ Import history</a><a class="btn" href="#managers">Managers</a><a class="btn" href="#visits">Visits</a><a class="btn" href="#surgeons">Surgeons</a><a class="btn" href="#facilities">Facilities</a><a class="btn" href="/products">Products</a><a class="btn" href="#mail-card">Approval emails</a><hr class="navline both-apps" hidden><a class="btn both-apps" hidden data-go="/admin#university" data-hub="university">🎓 360 University</a><a class="btn both-apps" hidden data-go="/admin#staff" data-hub="staff">Team logins</a><a class="btn both-apps" hidden data-go="/admin#setup" data-hub="setup">Email &amp; approvals</a><a class="btn both-apps" hidden data-local="geo-card" href="#hub-geo">Geofencing</a><a class="btn both-apps" hidden data-go="/admin#apps" data-hub="apps">Apps &amp; downloads</a><a class="btn both-apps" hidden data-go="/admin#howto" data-hub="howto">How to</a><a class="btn both-apps" hidden data-go="/admin#account" data-hub="account">My account</a><button class="btn" id="logout" type="button">Log out</button></div>
+    <div class="headtxt"><h1>Admin</h1><span class="conf">360 MEDICAL PORTAL</span><p class="sub">Reps, PINs, quotas and commission plans. Changes here show in the portal within seconds.</p></div>
+    <div class="tools"><button class="btn" id="btn-refresh" type="button" onclick="this.disabled=true;this.textContent='⟳ Refreshing…';location.reload()">⟳ Refresh</button><a class="btn" href="/">Open portal</a><a class="btn" href="#sec-wcu">📝 WCU</a><a class="btn" href="#sec-logins">🔐 Login activity</a><a class="btn" href="#sec-import">⬆ Import history</a><a class="btn" href="#managers">Managers</a><a class="btn" href="#visits">Visits</a><a class="btn" href="#surgeons">Surgeons</a><a class="btn" href="#facilities">Facilities</a><a class="btn" href="/products">Products</a><a class="btn" href="#mail-card">Approval emails</a><hr class="navline both-apps" hidden><a class="btn both-apps" hidden data-go="/admin#university" data-hub="university">🎓 360 University</a><a class="btn both-apps" hidden data-go="/admin#staff" data-hub="staff">Team logins</a><a class="btn both-apps" hidden data-go="/admin#setup" data-hub="setup">Email &amp; approvals</a><a class="btn both-apps" hidden data-local="geo-card" href="#hub-geo">Geofencing</a><a class="btn both-apps" hidden data-go="/admin#apps" data-hub="apps">Apps &amp; downloads</a><a class="btn both-apps" hidden data-go="/admin#howto" data-hub="howto">How to</a><a class="btn both-apps" hidden data-go="/admin#account" data-hub="account">My account</a><button class="btn" id="logout" type="button">Log out</button></div>
   </header>
   <div id="hubpane" hidden><iframe id="hubframe" title="Shared admin page"></iframe></div>
 
@@ -82,7 +82,7 @@ header.head.has-who{padding-top:58px}
   <section class="card" id="sec-dash" data-nofold></section>
   <section class="card" id="sec-wcu"><p class="note">Loading WCUs…</p></section>
   <section class="card" id="sec-replist" data-nofold hidden></section>
-  <section class="card" id="reps-pointer" hidden><div class="cardhead"><h2>Reps and plans</h2><a class="btn primary" href="#hub-staff">Open Team logins</a></div><p class="note">Reps, PINs, access and each rep's quota and commission plan are all under <a href="#hub-staff">Team logins</a> — one roster for the store and the tracker.</p></section>
+  <section class="card" id="reps-pointer" hidden><div class="cardhead"><h2>Reps and plans</h2><a class="btn primary" href="#hub-staff">Open Team logins</a></div><p class="note">Reps, PINs, access and each rep's quota and commission plan are all under <a href="#hub-staff">Team logins</a> — one roster for the store and the portal.</p></section>
   <section class="card" id="reps-card">
     <div class="cardhead">
       <h2>Reps and plans</h2>
@@ -150,7 +150,7 @@ header.head.has-who{padding-top:58px}
 
   <section class="card" id="managers">
     <div class="cardhead"><h2>Sign-in accounts · managers &amp; reps</h2><span class="note" id="mg-who" style="margin:0"></span></div>
-    <p class="note"><b>Managers</b> can open this Admin page and the team view. <b>Sales reps</b> see only their own tracker. Each gets an email setup link, picks a password and signs in with email + password. On their phone they can then sign in with Face ID. <b>Can manage managers</b> lets them add or remove managers and change these settings.</p>
+    <p class="note"><b>Managers</b> can open this Admin page and the team view. <b>Sales reps</b> see only their own portal. Each gets an email setup link, picks a password and signs in with email + password. On their phone they can then sign in with Face ID. <b>Can manage managers</b> lets them add or remove managers and change these settings.</p>
     <div class="scroll"><table id="mg"><thead><tr><th>Person</th><th>Role</th><th>Status</th><th>Face ID devices</th><th>Last sign-in</th><th>Can manage managers</th><th></th></tr></thead><tbody></tbody></table></div>
     <form class="form" id="mg-form" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(12rem,1fr));gap:10px;margin-top:12px;align-items:end">
       <label class="f">Name<input class="field" id="mg-name" required placeholder="First Last"></label>
@@ -175,7 +175,7 @@ header.head.has-who{padding-top:58px}
 
   <section class="card" id="visits">
     <div class="cardhead"><h2>Target visits · all reps</h2><span class="pill mute" id="av-count"></span></div>
-    <p class="note">Every planned target-surgeon visit. When a rep checks in, their phone's location at that moment is compared with the facility address and the visit time. <b style="color:#12805A">Green</b> = at the facility during the visit. <b style="color:#B93426">Red</b> = somewhere else, outside the time window, or no check-in; you also get a push notification (turn on notifications in the tracker's Weekly digest card). <b style="color:#8A5A00">Amber</b> = the facility has no address yet, so it can't be checked.</p>
+    <p class="note">Every planned target-surgeon visit. When a rep checks in, their phone's location at that moment is compared with the facility address and the visit time. <b style="color:#12805A">Green</b> = at the facility during the visit. <b style="color:#B93426">Red</b> = somewhere else, outside the time window, or no check-in; you also get a push notification (turn on notifications in the portal's Weekly digest card). <b style="color:#8A5A00">Amber</b> = the facility has no address yet, so it can't be checked.</p>
     <details id="av-plan" style="margin:4px 0 12px"><summary class="btn primary" style="display:inline-flex;list-style:none">+ Schedule a visit for a rep</summary>
       <form class="form" id="ap-form" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(11rem,1fr));gap:10px;margin-top:12px;align-items:end">
         <label class="f">Rep<select class="field" id="ap-rep" required></select></label>
@@ -248,7 +248,7 @@ header.head.has-who{padding-top:58px}
   <div class="grid">
     <section class="card">
       <h2>Alert settings</h2>
-      <p class="note">When the tracker flags billing, pathway and credential problems.</p>
+      <p class="note">When the portal flags billing, pathway and credential problems.</p>
       <form class="form" id="st-form" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(10rem,1fr));gap:10px">
         <label class="f">PO late after (days)<input class="field" id="st-po" type="number" min="1" max="60"></label>
         <label class="f">Invoice late after PO (days)<input class="field" id="st-inv" type="number" min="1" max="90"></label>
@@ -286,7 +286,7 @@ header.head.has-who{padding-top:58px}
 
     <section class="card">
       <h2>Weekly digest</h2>
-      <p class="note">Each Monday morning everyone who turned on notifications gets their week: pace to quota, POs to chase, next steps due, credentials expiring. You get the team version. Reps turn it on in the tracker (Weekly digest card).</p>
+      <p class="note">Each Monday morning everyone who turned on notifications gets their week: pace to quota, POs to chase, next steps due, credentials expiring. You get the team version. Reps turn it on in the portal (Weekly digest card).</p>
       <div class="tools"><button class="btn" id="dg-send" type="button">Send this week's digest now</button></div>
       <div class="msg" id="dg-msg" hidden style="margin-top:10px"></div>
     </section>
@@ -295,9 +295,9 @@ header.head.has-who{padding-top:58px}
   <div class="grid">
     <section class="card">
       <h2>Sign-in links</h2>
-      <p class="note">Send reps the tracker link and their PIN. They pick their name on the sign-in page.</p>
+      <p class="note">Send reps the portal link and their PIN. They pick their name on the sign-in page.</p>
       <div class="kv">
-        <span>Tracker</span><span class="copy" id="u-app"></span>
+        <span>Portal</span><span class="copy" id="u-app"></span>
         <span>Download app</span><span class="copy" id="u-dl"></span>
         <span>Admin</span><span class="copy" id="u-admin"></span>
       </div>
@@ -349,7 +349,7 @@ header.head.has-who{padding-top:58px}
       <p class="note" style="margin-top:12px">For YES / STOP replies to reach the app, set the Twilio number's messaging webhook (<b>A message comes in</b>, HTTP POST) to:</p>
       <div class="kv"><span>Webhook</span><span class="copy" id="sm-webhook"></span></div>
       <h3 style="margin:16px 0 6px;font-size:.95rem">Who gets texts</h3>
-      <p class="note">Type a mobile number and tap <b>Send code</b>: the person gets a 6-digit code to enter in the tracker (Weekly digest &amp; notifications card), or they reply YES. If they read the code to you, enter it here. Reps can also add their own number in the tracker.</p>
+      <p class="note">Type a mobile number and tap <b>Send code</b>: the person gets a 6-digit code to enter in the portal (Weekly digest &amp; notifications card), or they reply YES. If they read the code to you, enter it here. Reps can also add their own number in the portal.</p>
       <div class="scroll"><table id="sm-people"><thead><tr><th>Person</th><th>Role</th><th>Mobile</th><th>Status</th><th></th></tr></thead><tbody></tbody></table></div>
       <h3 style="margin:16px 0 6px;font-size:.95rem">Recent texts</h3>
       <div class="scroll"><table id="sm-log"><thead><tr><th>When</th><th>To</th><th>What</th><th>Result</th></tr></thead><tbody></tbody></table></div>
@@ -508,7 +508,7 @@ header.head.has-who{padding-top:58px}
       var x = td(), rm = el('button', 'btn small danger', 'Remove'); rm.type = 'button'; x.style.alignSelf = 'end';
       rm.addEventListener('click', function () {
         if (!rm.dataset.armed) { rm.dataset.armed = '1'; rm.textContent = 'Confirm'; setTimeout(function () { rm.dataset.armed = ''; rm.textContent = 'Remove'; }, 4000); return; }
-        rows.splice(idx, 1); repPick = 0; setDirty(true); draw(); say('#save-msg', 'warn', 'Removed from the list. Their logged cases stay in the tracker. Click Save changes to apply.');
+        rows.splice(idx, 1); repPick = 0; setDirty(true); draw(); say('#save-msg', 'warn', 'Removed from the list. Their logged cases stay in the portal. Click Save changes to apply.');
       });
       if (!(hubRow && r.active !== false)) x.appendChild(rm); // an active store rep is removed under Team logins
       b.appendChild(tr);
@@ -531,7 +531,7 @@ header.head.has-who{padding-top:58px}
   });
 
   $('#copy-all').addEventListener('click', function () {
-    var lines = ['360 MEDICAL - SURGICAL CASE TRACKER', 'Sign in: ' + ST.url + '/', 'Install the app: ' + ST.url + '/download', ''];
+    var lines = ['360 MEDICAL PORTAL', 'Sign in: ' + ST.url + '/', 'Install the app: ' + ST.url + '/download', ''];
     rows.filter(function (r) { return r.role !== 'Team' && r.pin && r.active !== false; }).forEach(function (r) { lines.push(r.rep + ' — PIN ' + r.pin); });
     var t = lines.join('\n');
     (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(function () { say('#copy-msg', 'ok', 'Copied. Send each rep only their own line.'); }, function () { prompt('Copy this:', t); });
@@ -565,7 +565,7 @@ header.head.has-who{padding-top:58px}
       send.addEventListener('click', function () {
         var v = inp.value.trim(); if (!v) { inp.focus(); return; }
         if (p.verified && v === p.phone) { say('#sm-msg', 'ok', p.name + "'s number is already confirmed."); return; }
-        send.disabled = true; api('/api/admin/sms/person', { key: p.key, phone: v }).then(function (j) { SM.people = j.people; drawSms(); say('#sm-msg', 'ok', j.sent ? 'Code sent to ' + p.name + '. They enter it in the tracker, reply YES, or read it to you.' : 'Saved.'); }, function (x) { send.disabled = false; say('#sm-msg', 'err', (x && x.error) || 'Could not save.'); });
+        send.disabled = true; api('/api/admin/sms/person', { key: p.key, phone: v }).then(function (j) { SM.people = j.people; drawSms(); say('#sm-msg', 'ok', j.sent ? 'Code sent to ' + p.name + '. They enter it in the portal, reply YES, or read it to you.' : 'Saved.'); }, function (x) { send.disabled = false; say('#sm-msg', 'err', (x && x.error) || 'Could not save.'); });
       });
       act.appendChild(send);
       if (p.phone && !p.verified) {
@@ -956,7 +956,7 @@ header.head.has-who{padding-top:58px}
   }
   $('#dg-send').addEventListener('click', function () {
     var b = $('#dg-send'); b.disabled = true;
-    api('/api/cron/digest', {}).then(function (j) { say('#dg-msg', j.sent ? 'ok' : 'warn', j.sent ? 'Sent to ' + j.sent + ' device' + (j.sent === 1 ? '' : 's') + '.' : 'Nobody has turned on notifications yet. Each person turns them on in the tracker\'s Weekly digest card.'); }, function () { say('#dg-msg', 'err', 'Could not send.'); }).finally(function () { b.disabled = false; });
+    api('/api/cron/digest', {}).then(function (j) { say('#dg-msg', j.sent ? 'ok' : 'warn', j.sent ? 'Sent to ' + j.sent + ' device' + (j.sent === 1 ? '' : 's') + '.' : 'Nobody has turned on notifications yet. Each person turns them on in the portal\'s Weekly digest card.'); }, function () { say('#dg-msg', 'err', 'Could not send.'); }).finally(function () { b.disabled = false; });
   });
   loadConfig().catch(function () {});
 
@@ -1175,7 +1175,7 @@ header.head.has-who{padding-top:58px}
     var code = el('div', ''); code.style.cssText = 'font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.75rem;word-break:break-all;margin:6px 0'; code.textContent = url; box.appendChild(code);
     var row = el('div', 'tools');
     var cp = el('button', 'btn small', 'Copy link'); cp.type = 'button'; cp.addEventListener('click', function () { (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(function () { cp.textContent = 'Copied'; }, function () { prompt('Copy this link:', url); }); }); row.appendChild(cp);
-    var subj = '360 Medical case tracker: set up your sign-in', body = 'Hi ' + name + ',\n\nYou now have access to the 360 Medical Surgical Case Tracker. Open this link to choose your password. On your phone you can then turn on Face ID.\n\n' + url + '\n\nThe link works once and expires in 7 days.\n';
+    var subj = '360 Medical Portal: set up your sign-in', body = 'Hi ' + name + ',\n\nYou now have access to the 360 Medical Portal. Open this link to choose your password. On your phone you can then turn on Face ID.\n\n' + url + '\n\nThe link works once and expires in 7 days.\n';
     var em = el('a', 'btn small primary', 'Email the invite'); em.href = 'mailto:' + encodeURIComponent(email) + '?subject=' + encodeURIComponent(subj) + '&body=' + encodeURIComponent(body); row.appendChild(em);
     box.appendChild(row);
   }

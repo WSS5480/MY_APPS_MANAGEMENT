@@ -1,7 +1,7 @@
-/* 360 MEDICAL - SURGICAL CASE TRACKER · additions
+/* 360 MEDICAL PORTAL · additions
    Barcode/UDI scan, price book, PO-to-paid pipeline, photo attachments, data checks, change history,
    commission statement, case calendar, surgeon preference cards, pathway visit log, hospital credentials,
-   voice notes and notifications. Hooks into the tracker through window.SCT / window.SCTX. */
+   voice notes and notifications. Hooks into the portal through window.SCT / window.SCTX. */
 (function () {
   'use strict';
   var T = window.SCT; if (!T) return;
@@ -113,7 +113,7 @@
     box.replaceChildren.apply(box, msgs.map(function (t) { return el('div', '', t); }));
   }
 
-  /* called by the tracker every time the editor is read (each autosave) */
+  /* called by the portal every time the editor is read (each autosave) */
   function augment(d) {
     var c = curCase(); if (!c) return;
     blockMsg = '';
@@ -557,7 +557,7 @@
     }, function () { box.textContent = 'Could not get the link. Check your connection.'; });
   }
 
-  // put the tracker's cases and visits into Outlook: a subscribed calendar that refreshes on its own (read-only in Outlook)
+  // put the portal's cases and visits into Outlook: a subscribed calendar that refreshes on its own (read-only in Outlook)
   function outlookBox() {
     var box = $('#x-outlook'); if (!box) return; if (!box.hidden && box.dataset.ready) { box.hidden = true; return; }
     box.hidden = false; box.textContent = 'Getting your calendar link…';
@@ -565,7 +565,7 @@
       var https = j.url, web = j.url.replace(/^https?:/, 'webcal:'), name = encodeURIComponent('360 Medical cases & visits');
       box.replaceChildren(); box.dataset.ready = '1';
       box.appendChild(el('b', '', 'Show your cases and visits in Outlook'));
-      box.appendChild(el('div', '', 'Pick the Outlook you use. It adds a "360 Medical cases & visits" calendar next to your own; new and changed visits show up there on their own (Outlook refreshes it every few hours). Plan and change visits here in the tracker.'));
+      box.appendChild(el('div', '', 'Pick the Outlook you use. It adds a "360 Medical cases & visits" calendar next to your own; new and changed visits show up there on their own (Outlook refreshes it every few hours). Plan and change visits here in the portal.'));
       var row = el('div', 'tools'); row.style.flexWrap = 'wrap';
       var a1 = el('a', 'btn primary small', 'Outlook (work · Microsoft 365)'); a1.href = 'https://outlook.office.com/calendar/0/addfromweb?url=' + encodeURIComponent(https) + '&name=' + name; a1.target = '_blank'; a1.rel = 'noopener';
       var a2 = el('a', 'btn small', 'Outlook.com / Hotmail'); a2.href = 'https://outlook.live.com/calendar/0/addfromweb?url=' + encodeURIComponent(https) + '&name=' + name; a2.target = '_blank'; a2.rel = 'noopener';
@@ -1104,7 +1104,7 @@
     if (row.comm_rate) line('Commission ' + T.qLabel(month) + ' to date', money(row.comm_qtd));
     paper.appendChild(calc);
     if (Math.abs(qual - row.actual) > 1) paper.appendChild(el('p', 'fine', 'Note: the case list totals ' + money(qual) + ' counted; the plan total above uses the same rules and may differ only by rounding.'));
-    paper.appendChild(el('p', 'fine', 'Estimate from cases logged in the 360 Medical case tracker. Final commissions are calculated by 360 Medical from invoiced net sales under the written commission plan; where they differ, the written plan governs. Every change to a case is recorded in its history.'));
+    paper.appendChild(el('p', 'fine', 'Estimate from cases logged in the 360 Medical Portal. Final commissions are calculated by 360 Medical from invoiced net sales under the written commission plan; where they differ, the written plan governs. Every change to a case is recorded in its history.'));
     var sg = el('div', 'x-sign'); sg.appendChild(el('div', '', 'Rep signature / date')); sg.appendChild(el('div', '', 'COO signature / date')); paper.appendChild(sg);
     sheet.appendChild(paper);
   }

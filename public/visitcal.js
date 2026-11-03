@@ -1,4 +1,4 @@
-/* Target surgeon visit calendar (month grid + agenda), shared by the tracker and the admin page.
+/* Target surgeon visit calendar (month grid + agenda), shared by the portal and the admin page.
    Colors: green = checked in at the facility during the visit window; red = not at the facility,
    outside the window, or missed; amber = facility has no address so it can't be verified;
    blue = planned; grey = logged without a plan. */

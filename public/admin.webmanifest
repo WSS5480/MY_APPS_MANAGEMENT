@@ -2,7 +2,7 @@
   "id": "/admin",
   "name": "360 MEDICAL - ADMIN",
   "short_name": "360 Admin",
-  "description": "360 Medical Surgical Case Tracker admin: reps and plans, PINs, visits, surgeons, facilities and products.",
+  "description": "360 Medical Portal admin: reps and plans, PINs, visits, surgeons, facilities and products.",
   "start_url": "/admin",
   "scope": "/admin",
   "display": "standalone",

@@ -1,4 +1,4 @@
-/* Server-backed stand-in for the window.claude runtime the tracker was written against.
+/* Server-backed stand-in for the window.claude runtime the portal was written against.
    Gives it a small document database (collections + docs with live snapshots via polling),
    the signed-in user, and file downloads. */
 (function () {

@@ -1,4 +1,4 @@
-/* Admin as pages, like the tracker: pills on top, and the menu on the left grouped Rep / Manager / Admin. Each item shows only its own cards;
+/* Admin as pages, like the portal: pills on top, and the menu on the left grouped Rep / Manager / Admin. Each item shows only its own cards;
    tapping the lit pill again goes back to the first page. Not used in embed mode (the store shows single cards from here). */
 (function () {
   'use strict';
@@ -53,7 +53,7 @@
       });
       // a group opens and closes by its name; opening one closes the others (like the pills)
       box.addEventListener('click', function (e) { var h = e.target.closest('.navgrp-h'); if (!h) return; var g = h.dataset.grp, open = box.querySelector('.navgrp-items[data-grp="' + g + '"]').hidden; openGroup(open ? g : null); });
-      // Admin is the same list, in the same order, in the case tracker and the store: Sales reps, then the shared pages (Team logins … My account)
+      // Admin is the same list, in the same order, in the portal and the store: Sales reps, then the shared pages (Team logins … My account)
       var adm = box.querySelector('.navgrp-items[data-grp="Admin"]');
       ['staff', 'setup', 'geo-card', 'apps', 'howto', 'account'].forEach(function (k) { var a = tools.querySelector('.both-apps[data-hub="' + k + '"], .both-apps[data-local="' + k + '"]'); if (a && adm) adm.appendChild(a); });
       var mgr = box.querySelector('.navgrp-items[data-grp="Manager"]'), uni = tools.querySelector('.both-apps[data-hub="university"]'); if (uni && mgr) mgr.appendChild(uni); // 360 University lives in the store; it opens here like Team logins

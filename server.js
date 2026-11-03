@@ -1,5 +1,5 @@
-/* 360 MEDICAL - SURGICAL CASE TRACKER
- * Small Node server for the case tracker: PIN logins (COO/admin + each rep),
+/* 360 MEDICAL PORTAL
+ * Small Node server for the portal: PIN logins (COO/admin + each rep),
  * a document store (Postgres when DATABASE_URL is set, otherwise a JSON file),
  * per-rep data scoping on the server, and an admin page. */
 'use strict';
@@ -327,7 +327,7 @@ app.get('/admin.webmanifest', (req, res) => { res.type('application/manifest+jso
 
 
 /* ---------------- the hub: the peptide store admin is the one login for both apps ----------------
-   HUB_URL = the store's address, HUB_SECRET = the same shared secret set on the store. People ticked "Case tracker" in the
+   HUB_URL = the store's address, HUB_SECRET = the same shared secret set on the store. People ticked "360 Medical Portal" in the
    store's Team logins show up here as reps/managers; sign-in from the store lands here through /sso; the store's email
    setup (Microsoft 365 app + COO address) is used for approval emails. Everything still works without the link. */
 const HUB_URL = String(process.env.HUB_URL || '').replace(/\/$/, '');
@@ -390,9 +390,9 @@ async function syncPeople(force, wait) {
     }
     if (!rows.some(r => r.rep === name && r.role !== 'Team')) { rows.push({ rep: name, role: 'Sales Rep', territory: name, metric: 'Revenue', quota: null, counts: 'All', product_filter: '', carry: false, draw: null, comm_rate: null, comm_floor: 0, pay_kind: '', pay_amount: null, hub: u.id }); rowsChanged = true; }
   }
-  // a rep whose Case tracker box was unticked in the store is switched off here (their records stay)
+  // a rep whose 360 Medical Portal box was unticked in the store is switched off here (their records stay)
   for (const [name, rec] of Object.entries(p.reps)) if (rec.hub && rec.hubActive !== false && !people.some(u => u.role === 'rep' && u.id === rec.hub && u.active !== false)) { rec.active = false; rec.hubActive = false; pinsChanged = true; }
-  // Team logins is the roster: a rep deleted there (or an old tracker-only rep with no login) leaves the tracker's rep list.
+  // Team logins is the roster: a rep deleted there (or an old portal-only rep with no login) leaves the portal's rep list.
   // Their cases, visits and notes stay on record. Skipped if the store sent nobody (a bad sync must never empty the list).
   if (people.length) {
     // a person with a login who sells under a plan stays too, even if their login is an admin/manager (e.g. an operations director with a quota)
@@ -421,7 +421,7 @@ app.get(['/sso', '/admin/sso'], async (req, res) => { // /admin/sso keeps the in
   await syncPeople(true).catch(() => {});
   const dev = /iPhone|iPad|Android|Mobile/i.test(req.headers['user-agent'] || '') ? 'phone' : 'computer';
   if (!t.apps || !t.apps.tracker) return res.redirect('/login?err=noaccess');
-  if (t.role === 'owner' || t.role === 'staff') { setSession(res, { role: 'owner', hub: t.email, hubId: t.id, hubName: t.name, hubStaff: t.role === 'staff', v: adminV() }, dev); return res.redirect(next); } // '/' = the tracker (COO view), '/admin' = Admin
+  if (t.role === 'owner' || t.role === 'staff') { setSession(res, { role: 'owner', hub: t.email, hubId: t.id, hubName: t.name, hubStaff: t.role === 'staff', v: adminV() }, dev); return res.redirect(next); } // '/' = the portal (COO view), '/admin' = Admin
   const name = String(t.name || '').trim();
   if (!t.apps || !t.apps.tracker || !pins().reps[name]) return res.redirect('/login?err=noaccess');
   setSession(res, { role: 'rep', rep: name, hub: t.email, v: pins().reps[name].v }, dev);
@@ -432,7 +432,7 @@ app.get('/api/hub/reps', hubAuth, (req, res) => {
   const p = pins().reps;
   res.json({ reps: quotaRows().filter(r => r.role !== 'Team').map(r => ({ rep: r.rep, role: r.role, pin: p[r.rep] ? String(p[r.rep].pin || '') : '', active: !(p[r.rep] && p[r.rep].active === false), hub: p[r.rep] ? p[r.rep].hub || null : null })) });
 });
-// Surgical commission per rep for a month (same plan math as the tracker's scorecard): rate × (sales − floor), the floor rises by any
+// Surgical commission per rep for a month (same plan math as the portal's scorecard): rate × (sales − floor), the floor rises by any
 // carried shortfall; quarter to date, month-end at today's pace, estimated pay (draw/base + commission) and the cases behind it.
 function surgicalComm(r, ym, cases) {
   const actual = rowActual(r, ym, cases), target = rowTarget(r, ym, cases), carried = r.carry && target && r.quota ? target - r.quota : 0;
@@ -477,7 +477,7 @@ app.post('/api/hub/mail-test', hubAuth, async (req, res) => {
   if (!r.ok) return res.status(400).json({ error: r.error === 'off' ? 'Approval emails are turned off.' : r.error });
   res.json({ ok: true, to: mailCfg().to || '' });
 });
-// email previews for the hub's Setup page: the link carries a short signed token instead of a tracker session
+// email previews for the hub's Setup page: the link carries a short signed token instead of a portal session
 app.get('/hub/mail-preview', (req, res) => {
   const t = hubVerify(req.query.t); if (!t || !t.preview) return res.status(401).type('text').send('This preview link has expired. Open it again from the Setup page.');
   const kind = req.query.kind === 'surgeon' ? 'surgeon' : 'facility';
@@ -513,13 +513,13 @@ app.get(['/go/store', '/admin/go/store'], (req, res) => {
   res.redirect(HUB_URL + (next.startsWith('/rep') ? '/rep/sso' : next.startsWith('/admin') ? '/admin/sso' : '/sso') + '?t=' + encodeURIComponent(token) + '&next=' + encodeURIComponent(next));
 });
 app.get('/api/hub/ping', hubAuth, (req, res) => res.json({ ok: true, app: 'case-tracker' }));
-// the store's Team logins removing a tracker-only rep (one that was never a store login): row + PIN go, their logged cases stay
+// the store's Team logins removing a portal-only rep (one that was never a store login): row + PIN go, their logged cases stay
 app.post('/api/hub/rep-remove', hubAuth, async (req, res) => {
   const rep = String((req.body || {}).rep || '').trim(); if (!rep) return res.status(400).json({ error: 'Which rep?' });
   const p = JSON.parse(JSON.stringify(pins()));
   if (p.reps[rep] && p.reps[rep].hub) return res.status(400).json({ error: rep + ' is a store login — delete it under Team logins.' });
   const rows = quotaRows().filter(r => !(r.rep === rep && r.role !== 'Team'));
-  if (rows.length === quotaRows().length && !p.reps[rep]) return res.status(404).json({ error: 'No such rep in the tracker.' });
+  if (rows.length === quotaRows().length && !p.reps[rep]) return res.status(404).json({ error: 'No such rep in the portal.' });
   delete p.reps[rep];
   await put('config/quotas', Object.assign({}, docs.get('config/quotas') || {}, { rows, updated_at: new Date().toISOString() }));
   await put('_auth/pins', p);
@@ -570,7 +570,7 @@ const needApi = role => (req, res, next) => {
 
 // can this person use the peptide store? (reps: their Team logins row; store managers: theirs; the COO PIN: yes, as the store's admin)
 const storeOk = (s) => { if (!hubLinked()) return false; if (s.role === 'rep') { const u = hubPerson(s.rep); return !!(u && u.apps && u.apps.store !== false); } if (s.hubStaff || s.hub) { const u = hubPeople.list.find(x => x.id === s.hubId); return !u || !u.apps || u.apps.store !== false; } return !s.mgr; };
-// a rep's 360 University progress (courses live in the store); shown as a card on their tracker dashboard
+// a rep's 360 University progress (courses live in the store); shown as a card on their portal dashboard
 app.get('/api/uni/mine', needApi(), async (req, res) => {
   if (req.s.role !== 'rep' || !hubLinked()) return res.json({ ok: false });
   const email = req.s.hub || (pins().reps[req.s.rep] || {}).email || '';
@@ -723,7 +723,7 @@ app.post('/api/admin/import-cases', needApi('owner'), async (req, res) => {
   const roster = quotaRows().filter((r) => r.role !== 'Team').map((r) => r.rep), aliases = req.body?.repMap && typeof req.body.repMap === 'object' ? req.body.repMap : {};
   const findRep = (n) => { const t = String(n || '').trim(); if (!t) return ''; if (aliases[t]) return String(aliases[t]); const l = t.toLowerCase();
     return roster.find((r) => r.toLowerCase() === l) || roster.find((r) => r.toLowerCase().split(/\s+/)[0] === l.split(/\s+/)[0] && (l.split(/\s+/).length === 1 || r.toLowerCase().split(/\s+/).slice(-1)[0] === l.split(/\s+/).slice(-1)[0])) || t; };
-  // duplicates = already in the tracker (two identical rows in the same file are two cases, e.g. two units on one day); rows with an id from an export match by that id
+  // duplicates = already in the portal (two identical rows in the same file are two cases, e.g. two units on one day); rows with an id from an export match by that id
   const seen = new Set(), seenSrc = new Set(); for (const [k, d] of docs) if (k.startsWith('cases/') && d && d.date) { seen.add(impKey(d)); if (d.src_id) seenSrc.add(d.src_id); }
   const batch = 'imp-' + new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '') + '-' + crypto.randomBytes(2).toString('hex');
   const out = { ok: 0, dup: 0, bad: 0, errors: [], unknownReps: {}, months: {}, sales: 0, sample: [] }, good = [];
@@ -910,12 +910,12 @@ app.get('/api/leaderboard', needApi(), (req, res) => {
 });
 app.get('/api/admin/backup', needApi('owner'), (req, res) => {
   const out = {}; for (const [k, d] of docs) if (!k.startsWith('_auth/') && !k.startsWith('_seed/') && !k.startsWith('_push/')) out[k] = d;
-  res.setHeader('Content-Disposition', `attachment; filename="360-medical-tracker-backup-${new Date().toISOString().slice(0, 10)}.json"`);
+  res.setHeader('Content-Disposition', `attachment; filename="360-medical-portal-backup-${new Date().toISOString().slice(0, 10)}.json"`);
   res.json({ app: '360-medical-surgical-case-tracker', exported_at: new Date().toISOString(), docs: out });
 });
 app.post('/api/admin/restore', needApi('owner'), async (req, res) => {
   const inc = req.body && req.body.docs;
-  if (!inc || typeof inc !== 'object') return res.status(400).json({ error: 'That file is not a tracker backup.' });
+  if (!inc || typeof inc !== 'object') return res.status(400).json({ error: 'That file is not a portal backup.' });
   let n = 0;
   for (const k of Object.keys(inc)) {
     const parts = k.split('/');
@@ -1198,7 +1198,7 @@ function wcuHtml(r, base) {
     ${(r.pod || []).map((p) => `<tr>${[p.surgeon, p.hospital, p.specialty, p.products, p.next].map((x) => `<td style="padding:4px;border-bottom:1px solid #eee;vertical-align:top">${e(x)}</td>`).join('')}</tr>`).join('') || '<tr><td colspan="5" style="color:#999;padding:4px">—</td></tr>'}</table>
   ${h('Next Week Plan')}${(r.plan || []).map((d) => `<div style="margin-top:8px"><b>${e(d.day)}:</b>${li(d.items)}</div>`).join('')}
   ${h('Comments/Additional Notes')}<div style="white-space:pre-line">${e(r.notes) || '<span style="color:#999">—</span>'}</div>
-  ${base ? `<p style="margin-top:22px"><a href="${e(base)}/#sec-wcu" style="background:#0f1b33;color:#fff;padding:9px 16px;border-radius:8px;text-decoration:none;font-weight:600">Open in the tracker</a></p>` : ''}</div>`;
+  ${base ? `<p style="margin-top:22px"><a href="${e(base)}/#sec-wcu" style="background:#0f1b33;color:#fff;padding:9px 16px;border-radius:8px;text-decoration:none;font-weight:600">Open in the portal</a></p>` : ''}</div>`;
 }
 app.post('/api/wcu/send', needApi(), async (req, res) => {
   if (req.s.role !== 'rep') return res.status(403).json({ error: 'Reps send their own weekly update.' });
@@ -1246,10 +1246,10 @@ const icsEsc = t => String(t || '').replace(/\\/g, '\\\\').replace(/;/g, '\;').r
 const icsDate = d => d.replace(/-/g, '');
 app.get('/cal/:tok', (req, res) => {
   const s = calSession(String(req.params.tok).replace(/\.ics$/, ''));
-  if (!s) return res.status(404).send('Calendar link expired. Get a new one from the tracker.');
+  if (!s) return res.status(404).send('Calendar link expired. Get a new one from the portal.');
   const today = new Date(), lo = new Date(today - 45 * 864e5).toISOString().slice(0, 10), hi = new Date(+today + 180 * 864e5).toISOString().slice(0, 10);
   const mine = d => s.role === 'owner' || d.rep === s.rep;
-  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//360 Medical//Surgical Case Tracker//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//360 Medical//360 Medical Portal//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
     'X-WR-CALNAME:' + icsEsc(s.role === 'owner' ? '360 Medical cases (team)' : '360 Medical cases · ' + s.rep), 'X-WR-TIMEZONE:America/Chicago', 'REFRESH-INTERVAL;VALUE=DURATION:PT1H'];
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
   const ev = (uid, date, time, mins, summary, desc, alarmMin, where) => {
@@ -1722,7 +1722,7 @@ async function smsRep(rep, title, body, kind) {
   if (!smsKinds().rep) return;
   await smsTo('rep-' + slug(rep), smsText(title, body), kind || 'rep alert').catch(() => {});
 }
-// everyone who can get texts: reps on the roster + admins/managers (store logins, tracker managers, the COO PIN)
+// everyone who can get texts: reps on the roster + admins/managers (store logins, portal managers, the COO PIN)
 function smsRoster() {
   const people = smsPeople(), out = [], seen = new Set();
   const add = (key, name, role, active) => { if (seen.has(key)) return; seen.add(key); const r = people[key] || {}; out.push({ key, name, role, active, phone: r.phone ? sms.fmtPhone(r.phone) : '', verified: !!r.verified, on: r.on !== false && !!r.phone, pending: !!(r.code && r.code_exp > Date.now()), stopped: !!r.stopped, by: r.by || '', updated_at: r.updated_at || '' }); };
@@ -1819,13 +1819,13 @@ app.post('/api/admin/sms/test', needApi('owner'), async (req, res) => {
   if (raw) {
     const to = sms.normalize(raw); if (!to) return res.status(400).json({ error: 'That mobile number does not look right.' });
     await smsCountUp();
-    const r = await sms.send(smsCfg(), { to, body: smsText('Test', 'text alerts from the Surgical Case Tracker are working.') });
+    const r = await sms.send(smsCfg(), { to, body: smsText('Test', 'text alerts from the 360 Medical Portal are working.') });
     await smsLog({ key: 'test', name: whoName(req.s), to: sms.masked(to), kind: 'test', ok: r.ok, error: r.ok ? '' : r.error, code: r.ok ? '' : r.code });
     return r.ok ? res.json({ ok: true }) : res.status(400).json({ error: r.auth ? 'Twilio rejected the Account SID / Auth token.' : r.error });
   }
   const key = personKey(req.s), rec = smsPeople()[key];
   if (!rec || !rec.verified) return res.status(400).json({ error: 'Add and confirm your own mobile number below first, or type a number to test.' });
-  const ok = await smsTo(key, smsText('Test', 'text alerts from the Surgical Case Tracker are working.'), 'test');
+  const ok = await smsTo(key, smsText('Test', 'text alerts from the 360 Medical Portal are working.'), 'test');
   return ok ? res.json({ ok: true }) : res.status(400).json({ error: 'Not sent. See Recent texts for the reason.' });
 });
 app.post('/api/admin/sms/person', needApi('owner'), async (req, res) => {
@@ -1852,7 +1852,7 @@ app.post('/api/sms/inbound', express.urlencoded({ extended: false }), async (req
     else if (/^(START|UNSTOP|YES|Y|CONFIRM|OK)$/.test(up) || /^\d{6}$/.test(up)) {
       let any = false;
       keys.forEach(k => { const r = people[k]; if (/^\d{6}$/.test(up) && r.code && r.code !== up) return; if (r.code && r.code_exp < Date.now() && !r.verified && /^\d{6}$/.test(up)) return; people[k] = Object.assign({}, r, { verified: true, on: true, stopped: false, code: null, code_exp: 0, verified_at: r.verified_at || now, updated_at: now }); any = true; });
-      if (any) reply = "360 Medical: you're set. Alerts from the Surgical Case Tracker will come to this number. Reply STOP any time to opt out.";
+      if (any) reply = "360 Medical: you're set. Alerts from the 360 Medical Portal will come to this number. Reply STOP any time to opt out.";
     }
     await saveSmsPeople(people);
     await smsLog({ key: keys[0], name: people[keys[0]].name, to: sms.masked(from), kind: 'reply: ' + text.slice(0, 40), ok: true, error: '' });
@@ -1899,7 +1899,7 @@ function approvalEmail({ kind, doc, id, by, base }) {
 <table role="presentation" width="640" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%;background:#fff;border-radius:14px;overflow:hidden;border:1px solid ${LINE}">
   <tr><td style="background:${NAVY};padding:20px 28px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
     <td align="left"><img src="${esc(base)}/logo.png" alt="360 Medical" height="36" style="display:block;height:36px;width:auto;border:0"></td>
-    <td align="right" style="font:700 11px/1.3 ${FONT};color:#8fc6ff;text-transform:uppercase;letter-spacing:.12em">Surgical Case Tracker</td></tr></table></td></tr>
+    <td align="right" style="font:700 11px/1.3 ${FONT};color:#8fc6ff;text-transform:uppercase;letter-spacing:.12em">360 Medical Portal</td></tr></table></td></tr>
   <tr><td style="padding:28px 28px 6px">
     <div style="font:700 12px/1.4 ${FONT};color:${BLUE};text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">Approval needed</div>
     <h1 style="margin:0 0 10px;font:800 24px/1.2 ${FONT};color:${INK}">${esc(title)} &nbsp;<span style="display:inline-block;vertical-align:middle;padding:5px 12px;border-radius:999px;background:#fff1cc;color:#6b4b00;font:700 11px/1.3 ${FONT};text-transform:uppercase;letter-spacing:.06em">Pending</span></h1>
@@ -1913,7 +1913,7 @@ function approvalEmail({ kind, doc, id, by, base }) {
     ${mapUrl ? `<td style="width:10px"></td><td style="border:1px solid #c9d1dc;border-radius:8px"><a href="${esc(mapUrl)}" style="display:inline-block;padding:12px 20px;font:600 15px/1 ${FONT};color:${NAVY};text-decoration:none">See map</a></td>` : ''}
   </tr></table></td></tr>
   <tr><td style="padding:14px 28px 26px;font:13px/1.55 ${FONT};color:${INK2}">The Approve link works once, for ${APPROVE_DAYS} days, without signing in. To change or remove the entry, use Admin → ${isFac ? 'Facilities' : 'Surgeons'}.</td></tr>
-  <tr><td style="padding:16px 28px;font:12px/1.5 ${FONT};color:${INK2};background:${GROUND};border-top:1px solid ${LINE}">Sent by the 360 Medical Surgical Case Tracker to the COO address under Admin → Approval emails. Confidential: internal sales data.</td></tr>
+  <tr><td style="padding:16px 28px;font:12px/1.5 ${FONT};color:${INK2};background:${GROUND};border-top:1px solid ${LINE}">Sent by the 360 Medical Portal to the COO address under Admin → Approval emails. Confidential: internal sales data.</td></tr>
 </table></td></tr></table></body></html>`;
   const text = [title, '', `${by} added ${isFac ? 'a facility' : 'a surgeon'} to the shared directory.`, '', ...facts.map(([l, v]) => `${l}: ${v}`), '', `Approve: ${approveUrl}`, `Open in Admin: ${adminUrl}`, mapUrl ? `Map: ${mapUrl}` : ''].filter((x) => x !== '').join('\n');
   return { subject: `Approve ${isFac ? 'facility' : 'surgeon'}: ${doc.name} (added by ${by})`, html, text };
@@ -1934,7 +1934,7 @@ app.get('/approve', (req, res) => {
   const base = baseUrl(req);
   const pageHtml = (title, body, ok) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap"><link rel="stylesheet" href="/app.css"><link rel="stylesheet" href="/theme-360.css"></head>
-<body><div class="wrap"><header class="head"><img class="logo" src="/logo.png" alt="360 Medical"><div class="headtxt"><h1>Surgical Case Tracker</h1><span class="conf">Directory approval</span></div></header>
+<body><div class="wrap"><header class="head"><img class="logo" src="/logo.png" alt="360 Medical"><div class="headtxt"><h1>360 Medical Portal</h1><span class="conf">Directory approval</span></div></header>
 <section class="card" style="max-width:34rem"><h2>${esc(title)}</h2><p class="note" style="margin:8px 0 14px">${body}</p><div class="tools"><a class="btn primary" href="${esc(base)}/admin">Open Admin</a>${ok ? '' : `<a class="btn" href="${esc(base)}/login">Sign in</a>`}</div></section></div></body></html>`;
   res.set('Cache-Control', 'no-store');
   if (!t) return res.status(400).send(pageHtml("That link isn't valid", 'It may have been copied incompletely. Open Admin and approve the entry there.', false));
@@ -2074,7 +2074,7 @@ app.delete('/api/admin/managers/:id', needApi('super'), async (req, res) => {
 app.post('/api/admin/pin-login', needApi('super'), async (req, res) => {
   const off = req.body.enabled === false;
   if (off) {
-    // safe to turn off when someone can still get in: an owner in the store's Team logins with the tracker on (one login for both apps), or a tracker manager account
+    // safe to turn off when someone can still get in: an owner in the store's Team logins with the portal on (one login for both apps), or a portal manager account
     const hubOwner = hubLinked() && hubPeople.ok && hubPeople.list.some(u => u.role === 'owner' && u.active !== false && (u.apps || {}).tracker !== false);
     if (!hubOwner) {
       if (!req.s.mgr) return res.status(400).json({ error: 'Sign in with your own manager account first, then turn off the PIN, so you are not locked out.' });
@@ -2110,7 +2110,7 @@ app.post('/api/setup/finish', async (req, res) => {
 app.post('/api/login/manager', async (req, res) => {
   const t = throttled(req.ip); if (t.n >= 10) return res.status(429).json({ error: 'Too many tries. Wait 15 minutes and try again.' });
   const email = String(req.body.email || '').trim().toLowerCase(), rec = Object.values(mgrs()).find(m => m.email === email);
-  // no 2-step code (owner request): a tracker account with the right password signs straight in
+  // no 2-step code (owner request): a portal account with the right password signs straight in
   if (rec && rec.active !== false && rec.pw && checkPw(req.body.password, rec.pw)) {
     const m = Object.assign({}, mgrs()); m[rec.id] = Object.assign({}, rec, { last_login: new Date().toISOString() }); await saveMgrs(m);
     tries.delete(req.ip); setSession(res, acctSession(rec), req.body.dev); return res.json({ ok: true, role: rec.kind === 'rep' ? 'rep' : 'owner' });
@@ -2122,14 +2122,14 @@ app.post('/api/login/manager', async (req, res) => {
       const u = r.user;
       if (u.role === 'rep') {
         const name = Object.keys(pins().reps).find(k => pins().reps[k].hub === u.id && pins().reps[k].active !== false);
-        if (!name) { t.n++; return res.status(403).json({ error: 'Your login is not set up for the case tracker yet. Ask the COO to turn on the tracker for you in Team logins.' }); }
+        if (!name) { t.n++; return res.status(403).json({ error: 'Your login is not set up for the portal yet. Ask the COO to turn on the portal for you in Team logins.' }); }
         tries.delete(req.ip); setSession(res, { role: 'rep', rep: name, hub: u.email, v: (pins().reps[name] || {}).v }, req.body.dev);
         return res.json({ ok: true, role: 'rep' });
       }
       tries.delete(req.ip); setSession(res, { role: 'owner', hub: u.email, hubId: u.id, hubName: u.name, hubStaff: u.role !== 'owner', v: adminV() }, req.body.dev);
       return res.json({ ok: true, role: 'owner' });
     }
-    if (r && r.noTracker) { t.n++; return res.status(403).json({ error: 'This login does not have the case tracker turned on. Tick it under Team logins in the store admin.' }); }
+    if (r && r.noTracker) { t.n++; return res.status(403).json({ error: 'This login does not have the portal turned on. Tick it under Team logins in the store admin.' }); }
   }
   t.n++; return res.status(401).json({ error: 'Wrong email or password.' });
 });
@@ -2151,7 +2151,7 @@ app.post('/api/passkey/register/options', needApi(), async (req, res) => {
   if (!wa) return res.status(501).json({ error: 'Passkeys are not available on this server.' });
   const rec = acctOf(req.s); if (!rec) return res.status(400).json({ error: 'Face ID needs an email account. Ask the COO for an email invite.' });
   const r = rp(req);
-  const options = await wa.srv.generateRegistrationOptions({ rpName: '360 Medical Case Tracker', rpID: r.id, userID: rec.id, userName: rec.email, userDisplayName: rec.name, attestationType: 'none',
+  const options = await wa.srv.generateRegistrationOptions({ rpName: '360 Medical Portal', rpID: r.id, userID: rec.id, userName: rec.email, userDisplayName: rec.name, attestationType: 'none',
     excludeCredentials: (rec.passkeys || []).map(p => ({ id: wa.b64.toBuffer(p.id), type: 'public-key' })), authenticatorSelection: { residentKey: 'required', userVerification: 'required' } });
   res.json({ options, ticket: sign({ t: 'reg', mgr: rec.id, ch: options.challenge, exp: Date.now() + 5 * 60e3 }) });
 });
@@ -2314,5 +2314,5 @@ function diagDump() {
   const m = (docs.get('_auth/managers') || {}).m || {}; Object.values(m).forEach(a => { if (q.some(x => (a.rep || a.name || '').toLowerCase().includes(x))) console.log('DIAG account', JSON.stringify({ kind: a.kind, rep: a.rep, name: a.name, active: a.active, totp_on: a.totp_on, passkeys: (a.passkeys || []).length })); });
   console.log('DIAG settings', JSON.stringify(docs.get('config/settings') || {}), 'now', new Date().toISOString());
 }
-initStore().then(() => { diagDump(); app.listen(PORT, () => console.log(`360 Medical tracker on :${PORT} (storage: ${dbMode})`)); })
+initStore().then(() => { diagDump(); app.listen(PORT, () => console.log(`360 Medical Portal on :${PORT} (storage: ${dbMode})`)); })
   .catch(e => { console.error('startup failed', e); process.exit(1); });

@@ -1,4 +1,4 @@
-/* Email for the Surgical Case Tracker: Microsoft 365 (Graph) sending, the same app registration the peptide store uses.
+/* Email for the 360 Medical Portal: Microsoft 365 (Graph) sending, the same app registration the peptide store uses.
    Settings come from Admin → Approval emails (doc config/mail); GRAPH_TENANT / GRAPH_CLIENT / GRAPH_SECRET / MAIL_FROM / COO_EMAIL
    on the host are the fallback. send() never throws. */
 'use strict';

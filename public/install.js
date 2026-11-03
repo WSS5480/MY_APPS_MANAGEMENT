@@ -1,9 +1,9 @@
-/* Ask to install the app when the tracker is opened in a browser instead of the installed app.
+/* Ask to install the app when the portal is opened in a browser instead of the installed app.
    Android / Windows / Chrome / Edge: one-tap Install (only offered when the app is not installed yet).
    iPhone / iPad: Safari can't install for you, so show the Share → Add to Home Screen steps. */
 (function () {
   'use strict';
-  var APP = window.SCT_APP || {}; // the admin page sets its own name, icon and storage keys; the tracker uses the defaults
+  var APP = window.SCT_APP || {}; // the admin page sets its own name, icon and storage keys; the portal uses the defaults
   var NAME = APP.name || '360 Cases', ICON = APP.icon || '/icon-192.png', BLURB = APP.blurb || 'Opens full screen, stays signed in, works offline and sends visit reminders.';
   var KEY = APP.key || 'sct_app_installed', SKIP = APP.skip || 'sct_install_later';
   var standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;

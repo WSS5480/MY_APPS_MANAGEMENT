@@ -1,7 +1,7 @@
 {
-  "name": "360 MEDICAL - SURGICAL CASE TRACKER",
+  "name": "360 MEDICAL PORTAL",
   "short_name": "360 Cases",
-  "description": "360 Medical surgical case tracker: quota, pace, commissions and the case log.",
+  "description": "360 Medical Portal: quota, pace, commissions and the case log.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

@@ -1,5 +1,5 @@
 /* Leaderboard: reps ranked by % to their own quota this month, with month-to-date sales.
-   Tracker: its own card on the Dashboard page, right under the tiles. Admin: on top of the Dashboard. Refreshes every 2 minutes. */
+   Portal: its own card on the Dashboard page, right under the tiles. Admin: on top of the Dashboard. Refreshes every 2 minutes. */
 (function () {
   'use strict';
   if (/[?&]embed=1/.test(location.search)) return;

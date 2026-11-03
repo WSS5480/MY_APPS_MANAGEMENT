@@ -1,15 +1,15 @@
-# 360 MEDICAL - SURGICAL CASE TRACKER
+# 360 MEDICAL PORTAL
 
 Case log, quota pace, commission estimates and target-surgeon pathway for 360 Medical reps, with an admin page and an installable app (Windows, iPhone, Android).
 
 Lives on branch `surgical-case-tracker` of MY_APPS_MANAGEMENT; Render service `360-medical-surgical-case-tracker` in the MY APPS workspace.
 
 ## Pages
-- `/` tracker. Admin (COO) sees the team view, scorecard, every rep and private COO notes. A rep sees only their own quota, cases, targets and SIM events (enforced on the server).
+- `/` portal. Admin (COO) sees the team view, scorecard, every rep and private COO notes. A rep sees only their own quota, cases, targets and SIM events (enforced on the server).
 - `/admin` reps and plans (quota, counts, product, carry, commission %, floor, draw/salary, SIM quota), PINs, access on/off, rename (moves their records), admin PIN, backup/restore.
 - `/products` product demo (catalog with photos, videos, 360° drag-to-rotate views, Present mode). Products are managed in Admin → Products; the Q4 2026 brochure is seeded and any brochure product that gets deleted can be restored from Admin.
-- `/download` install steps + QR code for the rep tracker app; `/admin/download` the same for the Admin app (the admin page installs as its own app, "360 Admin", with its own icon; manifest `/admin.webmanifest`). `/login` sign-in. `/setup` one-time account setup from an invite link.
-- The tracker asks to install the app when opened in a browser; the installed app refreshes on pull-down and loads new versions by itself (an "Update" bar appears if someone is mid-edit).
+- `/download` install steps + QR code for the rep portal app; `/admin/download` the same for the Admin app (the admin page installs as its own app, "360 Admin", with its own icon; manifest `/admin.webmanifest`). `/login` sign-in. `/setup` one-time account setup from an invite link.
+- The portal asks to install the app when opened in a browser; the installed app refreshes on pull-down and loads new versions by itself (an "Update" bar appears if someone is mid-edit).
 
 ## Features
 - Case log with barcode/UDI scan (camera or keyboard scanner; GS1 lot/expiry parsed; FDA AccessGUDID lookup), lot and expiration fields, case time.
@@ -19,10 +19,10 @@ Lives on branch `surgical-case-tracker` of MY_APPS_MANAGEMENT; Render service `3
 - Change history on every case (server audit log); COO can close a month to lock it.
 - Commission statement per rep and month, printable to PDF.
 - Upcoming 14 days + private calendar feed (/cal/…ics) for iPhone/Google/Outlook.
-- Surgeon preference cards (prefill cases), pathway visit log with next steps, hospital vendor credential tracker.
+- Surgeon preference cards (prefill cases), pathway visit log with next steps, hospital vendor credential portal.
 - Target visit calendar (month + agenda) for each rep and for all reps in Admin. Reps plan visits; at the visit they tap Check in and the phone's location (one reading, at that moment) is compared with the facility address (Admin → Facilities, geocoded with OpenStreetMap) and the visit window. Green = verified, red = not at the facility / outside the window / missed (COO gets a push alert), amber = facility has no address.
 - Geofence (web-app version): when a visit's check-in window opens the rep gets a push; with the app open at the facility it checks in automatically (pop-up + buzz), and leaving before the visit ends is flagged "Left early" with a COO alert. Location is only read while the app is open during a visit window.
-- Shared surgeon/facility directory: Admin and reps can add entries; rep-added facilities (addresses) and surgeons wait for COO approval (Admin → Facilities / Surgeons, or the one-tap Approve link in the email). Facility addresses can be added from the tracker directory too.
+- Shared surgeon/facility directory: Admin and reps can add entries; rep-added facilities (addresses) and surgeons wait for COO approval (Admin → Facilities / Surgeons, or the one-tap Approve link in the email). Facility addresses can be added from the portal directory too.
 - Approval emails: when a rep adds a facility or surgeon the COO gets an email (plus the push) with a signed Approve link that works for 14 days without signing in. Set up under Admin → Approval emails: COO address and the Microsoft 365 app (same Tenant/Client/secret as the peptide store, sends as no-reply@360medical.net); env fallback GRAPH_TENANT / GRAPH_CLIENT / GRAPH_SECRET / MAIL_FROM / COO_EMAIL.
 - Phone calendar feed includes cases, target visits (with facility address and a reminder when check-in opens), next steps and credential expiry dates.
 - Voice dictation on notes; works offline (changes queue on the device and sync later).
@@ -33,7 +33,7 @@ Lives on branch `surgical-case-tracker` of MY_APPS_MANAGEMENT; Render service `3
 - Sales reps: PIN, or (once invited) email + password + authenticator app code; Face ID / passkey on their phone.
 - Managers: invited from Admin → Sign-in accounts (setup link, password, authenticator app), Face ID on phone. "Can manage managers" = can add/remove accounts and change the COO PIN. The COO PIN sign-in can be turned off once a manager account exists.
 - Computers sign out after 10 minutes without activity (IDLE_MIN env to change); phones stay signed in 30 days.
-- **One login with the peptide store** (when `HUB_URL` + `HUB_SECRET` are set): the store admin's Team logins is the one list of people. Tick "Case tracker" on a login and they appear here (reps get a plan row; untick to switch them off). Their store PIN works on this login page, and the app switch at the top of the store admin / rep app signs them straight in here (`/sso`). Approval emails then use the store's Microsoft 365 app and COO address. Everything here still works on its own if the link is down.
+- **One login with the peptide store** (when `HUB_URL` + `HUB_SECRET` are set): the store admin's Team logins is the one list of people. Tick "360 Medical Portal" on a login and they appear here (reps get a plan row; untick to switch them off). Their store PIN works on this login page, and the app switch at the top of the store admin / rep app signs them straight in here (`/sso`). Approval emails then use the store's Microsoft 365 app and COO address. Everything here still works on its own if the link is down.
 
 ## Render env
 - `DATABASE_URL` Postgres connection string (table `sct360_docs`). Without it data is kept in a local file and resets when the service restarts.

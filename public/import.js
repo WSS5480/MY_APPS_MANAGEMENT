@@ -1,4 +1,4 @@
-/* Import historical cases (COO): pick an Excel or CSV file (or paste rows copied from Excel), match its columns to the tracker's
+/* Import historical cases (COO): pick an Excel or CSV file (or paste rows copied from Excel), match its columns to the portal's
    fields, check the dry run, then import. Every import is a batch that can be undone. */
 (function () {
   'use strict';
@@ -10,7 +10,7 @@
       .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw j; return j; }); });
   };
   var money = function (n) { return '$' + Math.round(Number(n) || 0).toLocaleString('en-US'); };
-  // tracker field → header words that usually mean it
+  // portal field → header words that usually mean it
   var FIELDS = [
     ['date', 'Case date *', ['date', 'case date', 'surgery date', 'dos', 'date of service', 'procedure date', 'day']],
     ['rep', 'Rep *', ['rep', 'sales rep', 'representative', 'rep name', 'territory manager', 'tm', 'salesperson']],
@@ -85,14 +85,14 @@
     var opts = function (cur) { return '<option value="">— not in file —</option>' + HEAD.map(function (h, i) { return '<option value="' + i + '"' + (cur === i ? ' selected' : '') + '>' + esc(h || ('Column ' + (i + 1))) + '</option>'; }).join(''); };
     $('#im-map').innerHTML = '<h3 style="margin:0 0 6px">Match the columns</h3><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,12rem),1fr));gap:8px 12px">' +
       FIELDS.map(function (f) { return '<label class="f" style="margin:0;min-width:0"><b>' + esc(f[1]) + '</b><select class="field" data-map="' + f[0] + '">' + opts(MAP[f[0]]) + '</select></label>'; }).join('') + '</div>' +
-      '<p class="note" style="margin-top:6px">Missing status = Completed. Missing New/Legacy = New. Missing units = 1. Rep names are matched to the tracker\'s reps (full name or first + last); anything else stays as written.</p>';
+      '<p class="note" style="margin-top:6px">Missing status = Completed. Missing New/Legacy = New. Missing units = 1. Rep names are matched to the portal\'s reps (full name or first + last); anything else stays as written.</p>';
     [].forEach.call(box.querySelectorAll('[data-map]'), function (s) { s.onchange = function () { MAP[s.dataset.map] = s.value === '' ? undefined : Number(s.value); dry(); }; });
   }
   function rowsOut() { return DATA.map(function (r) { var o = {}; FIELDS.forEach(function (f) { if (MAP[f[0]] !== undefined) o[f[0]] = r[MAP[f[0]]]; }); return o; }); }
   function report(j) {
     var months = Object.keys(j.months).sort(), unk = Object.keys(j.unknownReps);
     return '<div style="display:flex;flex-wrap:wrap;gap:6px;margin:10px 0"><span class="pill ok">' + j.ok + ' to import</span><span class="pill ' + (j.dup ? 'warn' : 'mute') + '">' + j.dup + ' duplicates skipped</span><span class="pill ' + (j.bad ? 'bad' : 'mute') + '">' + j.bad + ' with problems</span><span class="pill mute">' + money(j.sales) + ' net sales</span>' + (months.length ? '<span class="pill mute">' + months[0] + ' → ' + months[months.length - 1] + '</span>' : '') + '</div>' +
-      (unk.length ? '<div class="msg warn">Not one of the tracker\'s current reps: ' + unk.map(function (u) { return '<b>' + esc(u) + '</b> (' + j.unknownReps[u] + ')'; }).join(', ') + '. Those cases import under that name. Fix the name in the file to put them under a current rep.</div>' : '') +
+      (unk.length ? '<div class="msg warn">Not one of the portal\'s current reps: ' + unk.map(function (u) { return '<b>' + esc(u) + '</b> (' + j.unknownReps[u] + ')'; }).join(', ') + '. Those cases import under that name. Fix the name in the file to put them under a current rep.</div>' : '') +
       (j.errors.length ? '<details' + (j.ok ? '' : ' open') + '><summary class="note">Rows with problems (' + j.bad + ')</summary><ul style="margin:4px 0 0 18px">' + j.errors.map(function (e) { return '<li>Row ' + e.line + ': ' + esc(e.why) + '</li>'; }).join('') + '</ul></details>' : '') +
       (j.sample.length ? '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr));gap:6px;margin-top:8px">' + j.sample.map(function (c) { return '<div style="border:1px solid var(--line,#dde3ec);border-radius:10px;padding:6px 10px;font-size:.85rem"><b>' + esc(c.date) + ' · ' + esc(c.rep) + '</b><div>' + esc([c.surgeon, c.facility].filter(Boolean).join(' · ')) + '</div><div class="note">' + esc([c.product, c.units > 1 ? '×' + c.units : '', c.net_sales != null ? money(c.net_sales) : '', c.status, c.surgeon_type].filter(Boolean).join(' · ')) + '</div></div>'; }).join('') + '</div>' : '');
   }
@@ -105,7 +105,7 @@
       var go = $('#im-go'); if (go) go.onclick = function () {
         go.disabled = true; go.textContent = 'Importing…';
         call('/api/admin/import-cases', { rows: rowsOut(), dry: false, file: FILE }).then(function (k) {
-          res.innerHTML = '<div class="msg ok">Imported ' + k.ok + ' case' + (k.ok === 1 ? '' : 's') + ' (' + money(k.sales) + '). They show in the tracker now. Undo below if something looks wrong.</div>'; DATA = []; $('#im-map').innerHTML = ''; $('#im-name').textContent = ''; hist();
+          res.innerHTML = '<div class="msg ok">Imported ' + k.ok + ' case' + (k.ok === 1 ? '' : 's') + ' (' + money(k.sales) + '). They show in the portal now. Undo below if something looks wrong.</div>'; DATA = []; $('#im-map').innerHTML = ''; $('#im-name').textContent = ''; hist();
         }, function (e) { go.disabled = false; go.textContent = 'Import'; res.insertAdjacentHTML('beforeend', '<div class="msg err">' + esc((e && e.error) || 'Import failed.') + '</div>'); });
       };
     }, function (e) { res.innerHTML = '<div class="msg err">' + esc((e && e.error) || 'Could not check the file.') + '</div>'; });
