@@ -27,6 +27,7 @@ Lives on branch `surgical-case-tracker` of MY_APPS_MANAGEMENT; Render service `3
 - Phone calendar feed includes cases, target visits (with facility address and a reminder when check-in opens), next steps and credential expiry dates.
 - Voice dictation on notes; works offline (changes queue on the device and sync later).
 - Weekly digest push notifications (Monday morning) via web push; Render cron job `360-medical-weekly-digest` wakes the service.
+- Text alerts (SMS) through Twilio: the same alerts as push, by text, for people who confirmed a mobile number (code in the app or a YES reply). Admin → Text alerts holds the Twilio setup (Account SID, Auth token, from number or Messaging Service), which alerts go by text, a daily cap, the roster with numbers and a log. Replies (YES/STOP/START) arrive at `/api/sms/inbound` (set as the number's messaging webhook; Twilio-signed). `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM` or `TWILIO_MESSAGING_SERVICE_SID` on the host are the fallback.
 
 ## Sign-in
 - Sales reps: PIN, or (once invited) email + password + authenticator app code; Face ID / passkey on their phone.

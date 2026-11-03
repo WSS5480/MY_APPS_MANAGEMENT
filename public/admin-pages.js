@@ -16,10 +16,11 @@
     { k: 'managers', l: 'Managers & sign-in', g: 'Manager', ids: ['managers', 'mysign', 'sec-signin-links', 'pin-card'] },
     { k: 'settings', l: 'Settings', g: 'Manager', ids: ['sec-alerts', 'geo-card', 'sec-close', 'sec-digest'] },
     { k: 'mail', l: 'Approval emails', g: 'Manager', ids: ['mail-card'] },
+    { k: 'sms', l: '💬 Text alerts', g: 'Manager', ids: ['sms-card'] },
     { k: 'backup', l: 'Backup', g: 'Manager', ids: ['sec-backup'] }
   ];
   var NAME_IDS = { 'Alert settings': 'sec-alerts', 'Close a month': 'sec-close', 'Weekly digest': 'sec-digest', 'Sign-in links': 'sec-signin-links', 'Activity': 'sec-activity', 'Backup and restore': 'sec-backup' };
-  var OLD = { '#sec-wcu': 'wcu', '#sec-logins': 'logins', '#sec-import': 'import', '#managers': 'managers', '#visits': 'visits', '#surgeons': 'surgeons', '#facilities': 'facilities', '#mail-card': 'mail', '#reps-card': 'reps', '#sec-replist': 'reps', '#products': 'products', '#pricebook': 'products', '#geo-card': 'settings' };
+  var OLD = { '#sec-wcu': 'wcu', '#sec-logins': 'logins', '#sec-import': 'import', '#managers': 'managers', '#visits': 'visits', '#surgeons': 'surgeons', '#facilities': 'facilities', '#mail-card': 'mail', '#sms-card': 'sms', '#reps-card': 'reps', '#sec-replist': 'reps', '#products': 'products', '#pricebook': 'products', '#geo-card': 'settings' };
   var css = document.createElement('style');
   css.textContent = '.jump{position:sticky;top:0;z-index:20;display:flex;flex-wrap:wrap;gap:6px;padding:8px 2px;margin:0 0 10px;background:var(--bg)}' +
     '.jump a{flex:none;padding:8px 12px;border-radius:999px;background:var(--panel);border:1px solid var(--line);color:var(--fg);font-size:.8125rem;font-weight:600;text-decoration:none;white-space:nowrap}' +

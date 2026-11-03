@@ -860,11 +860,42 @@
     var prev = el('div', 'x-cal'); prev.id = 'xn-prev'; prev.textContent = 'Loading this week\'s digest…'; sec.appendChild(prev);
     var row = el('div', 'tools'); row.style.marginTop = '12px'; row.id = 'xn-row'; sec.appendChild(row);
     var msg = el('p', 'note'); msg.id = 'xn-msg'; sec.appendChild(msg);
+    sec.appendChild(el('div', 'x-sub', 'Text alerts'));
+    var tm = el('p', 'note'); tm.id = 'xt-msg'; sec.appendChild(tm);
+    var trow = el('div', 'tools'); trow.id = 'xt-row'; trow.style.alignItems = 'center'; sec.appendChild(trow);
     sec.appendChild(el('div', 'x-sub', 'Your sign-in'));
     var sg = el('p', 'note'); sg.id = 'xs-msg'; sec.appendChild(sg);
     var srow = el('div', 'tools'); srow.id = 'xs-row'; sec.appendChild(srow);
-    drawSignIn();
+    drawSignIn(); drawSms();
     loadPreview(); refreshNotify();
+  }
+  /* text alerts: the same alerts by SMS once the person confirms their mobile number with a code */
+  function drawSms() {
+    var msg = $('#xt-msg'), row = $('#xt-row'); if (!msg || !row) return; row.replaceChildren();
+    api('/api/sms/me').then(function (j) {
+      if (!j.enabled) { msg.textContent = T.isLead() ? 'Text alerts are not set up yet. Admin → Text alerts has the Twilio setup.' : 'Text alerts are not turned on by the COO yet.'; return; }
+      var tel = function (ph) { var i = el('input', 'field'); i.type = 'tel'; i.inputMode = 'tel'; i.autocomplete = 'tel'; i.placeholder = ph; i.style.maxWidth = '12rem'; return i; };
+      var start = function (inp, b) {
+        var v = inp.value.trim(); if (!v) { inp.focus(); return; } b.disabled = true;
+        api('/api/sms/me', { phone: v }).then(function () { T.setStatus('saved', 'Code sent'); drawSms(); }, function (e) { b.disabled = false; msg.textContent = (e && e.error) || 'Could not send the code.'; });
+      };
+      if (!j.phone) {
+        msg.textContent = 'Get your alerts by text too: check-in reminders, visits scheduled for you and invoice decisions. Enter your mobile number and we text you a code to confirm it.';
+        var inp = tel('Mobile number'), b = btn('Text me a code', 'primary', function () { start(inp, b); }); row.appendChild(inp); row.appendChild(b); return;
+      }
+      if (!j.verified) {
+        msg.textContent = (j.pending ? 'We texted a code to ' + j.phone + '. Enter it here (or reply YES to the text).' : 'The code for ' + j.phone + ' has expired. Send a new one.');
+        var code = el('input', 'field'); code.inputMode = 'numeric'; code.maxLength = 6; code.placeholder = '6-digit code'; code.style.maxWidth = '8rem'; code.setAttribute('aria-label', 'Confirmation code');
+        var ok = btn('Confirm', 'primary', function () { ok.disabled = true; api('/api/sms/me/verify', { code: code.value }).then(function () { T.setStatus('saved', 'Text alerts on'); drawSms(); }, function (e) { ok.disabled = false; msg.textContent = (e && e.error) || 'That code is not right.'; }); });
+        var again = btn('Send a new code', '', function () { var inp2 = tel(''); inp2.value = j.phone; start(inp2, again); });
+        var chg = btn('Change number', '', function () { api('/api/sms/me', null, 'DELETE').then(drawSms); });
+        if (j.pending) { row.appendChild(code); row.appendChild(ok); } row.appendChild(again); row.appendChild(chg); return;
+      }
+      msg.textContent = (j.on ? 'Text alerts are on for ' + j.phone + '.' : 'Text alerts are off for ' + j.phone + (j.stopped ? ' (you replied STOP).' : '.')) + ' Reply STOP to any text to opt out.';
+      row.appendChild(btn(j.on ? 'Turn off texts' : 'Turn on texts', j.on ? '' : 'primary', function () { api('/api/sms/me/toggle', { on: !j.on }).then(drawSms, function (e) { msg.textContent = (e && e.error) || 'Could not change it.'; }); }));
+      if (j.on) row.appendChild(btn('Send a test text', '', function () { var b = this; b.disabled = true; api('/api/sms/me/test', {}).then(function () { T.setStatus('saved', 'Test text sent'); b.disabled = false; }, function (e) { b.disabled = false; msg.textContent = (e && e.error) || 'Could not send.'; }); }));
+      row.appendChild(btn('Change number', '', function () { if (!confirm('Remove ' + j.phone + ' and enter a different number?')) return; api('/api/sms/me', null, 'DELETE').then(drawSms); }));
+    }, function () { msg.textContent = 'Text alert settings need a connection.'; });
   }
   function drawSignIn() {
     var msg = $('#xs-msg'), row = $('#xs-row'); row.replaceChildren();

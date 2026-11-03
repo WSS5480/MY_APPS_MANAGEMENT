@@ -1404,6 +1404,13 @@ async function sendDigests() {
     if (!subValid(d)) continue;
     if (await sendTo(d, d.role === 'owner' ? teamDigest(today) : repDigest(d.rep, today))) sent++;
   }
+  if (smsKinds().digest) { // the same digest by text, for people who confirmed a number
+    for (const [key, rec] of Object.entries(smsPeople())) {
+      if (!rec.verified || rec.on === false) continue;
+      const m = rec.role === 'admin' ? teamDigest(today) : repDigest(rec.name, today);
+      if (await smsTo(key, smsText(m.title, m.body), 'weekly digest')) sent++;
+    }
+  }
   await put('_auth/digest', { last: today, sent, at: new Date().toISOString() });
   return sent;
 }
@@ -1450,9 +1457,11 @@ function metersBetween(a, b, c, d) { const R = 6371000, r = x => x * Math.PI / 1
 const fmtClock = ms => new Date(ms).toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit' });
 async function notifyOwner(title, body, url) {
   for (const [k, d] of [...docs]) if (k.startsWith('_push/') && d.role === 'owner' && subValid(d)) await sendTo(d, { title, body, url: url || '/admin#visits' });
+  await smsAdmins(title, body, 'admin alert').catch(e => console.error('sms admins', e.message));
 }
 async function notifyRep(rep, title, body) {
   for (const [k, d] of [...docs]) if (k.startsWith('_push/') && d.role === 'rep' && d.rep === rep) await sendTo(d, { title, body, url: '/' });
+  await smsRep(rep, title, body, 'rep alert').catch(e => console.error('sms rep', e.message));
 }
 let lastSweep = 0;
 function sweepVisits() {
@@ -1661,6 +1670,196 @@ async function ensureSurgeon(name, facility, specialty, s) {
 }
 /* ---------------- approval emails: a rep adds a facility or surgeon → the COO gets an email with a one-click Approve link ---------------- */
 const mail = require('./server/mail');
+const sms = require('./server/sms');
+
+/* ---------------- text messages (SMS): the same alerts as push, by text, for people who turned it on ----------------
+   config/sms = Twilio setup + which alerts go by text (Admin → Text alerts). _auth/sms_people = one record per person:
+   { key: { name, role: 'admin'|'rep', phone, verified, on, code, code_exp, code_sent, by, updated_at } }. _sms/count = today's
+   count against the daily cap, _sms/log = the last 200 texts (number masked). Nothing is sent to a number that has not
+   confirmed with its code (or replied YES), and STOP from the phone switches that person off. */
+const smsCfg = () => Object.assign({ on: true, daily_cap: 300, kinds: { admin: true, rep: true, digest: false } }, docs.get('config/sms') || {});
+const smsReady = () => !!sms.resolve(smsCfg());
+const smsPeople = () => Object.assign({}, (docs.get('_auth/sms_people') || {}).p || {});
+async function saveSmsPeople(p) { await put('_auth/sms_people', { p }); }
+const personKey = s => s.role === 'rep' ? 'rep-' + slug(s.rep) : s.mgr ? 'mgr-' + s.mgr : s.hubId ? 'hub-' + s.hubId : 'owner';
+const smsKinds = () => Object.assign({ admin: true, rep: true, digest: false }, smsCfg().kinds || {});
+function smsText(title, body) {
+  const clean = t => String(t || '').replace(/[*_`]/g, '').replace(/\s+/g, ' ').trim();
+  let t = '360 Medical: ' + clean(title).replace(/^360 Medical\s*[·-]\s*/i, '') + (body ? ' — ' + clean(body) : '');
+  if (t.length > 300) t = t.slice(0, 297) + '…';
+  return t;
+}
+async function smsLog(entry) {
+  const l = Object.assign({ items: [] }, docs.get('_sms/log') || {});
+  l.items = [Object.assign({ at: new Date().toISOString() }, entry)].concat(l.items).slice(0, 200);
+  await put('_sms/log', l);
+}
+async function smsCountUp() {
+  const today = chiDate(), c = docs.get('_sms/count') || {};
+  const n = (c.date === today ? Number(c.n) || 0 : 0) + 1;
+  await put('_sms/count', { date: today, n });
+  return n;
+}
+const smsToday = () => { const c = docs.get('_sms/count') || {}; return c.date === chiDate() ? Number(c.n) || 0 : 0; };
+// send one text to a person record (by key); honours setup, the person's switch, verification and the daily cap
+async function smsTo(key, body, kind) {
+  const cfg = smsCfg(); if (cfg.on === false || !smsReady()) return false;
+  const people = smsPeople(), rec = people[key];
+  if (!rec || !rec.phone || !rec.verified || rec.on === false) return false;
+  if (smsToday() >= (Number(cfg.daily_cap) || 300)) { await smsLog({ key, to: sms.masked(rec.phone), kind, ok: false, error: 'Daily text limit reached' }); return false; }
+  await smsCountUp();
+  const r = await sms.send(cfg, { to: rec.phone, body });
+  await smsLog({ key, name: rec.name, to: sms.masked(rec.phone), kind, ok: r.ok, error: r.ok ? '' : r.error, code: r.ok ? '' : r.code });
+  if (!r.ok && (r.stopped || r.badNumber)) { people[key] = Object.assign({}, rec, { on: false, stopped: !!r.stopped, updated_at: new Date().toISOString() }); await saveSmsPeople(people); }
+  return r.ok;
+}
+async function smsAdmins(title, body, kind) {
+  if (!smsKinds().admin) return;
+  const people = smsPeople();
+  for (const key of Object.keys(people)) if (people[key].role === 'admin') await smsTo(key, smsText(title, body), kind || 'admin alert').catch(() => {});
+}
+async function smsRep(rep, title, body, kind) {
+  if (!smsKinds().rep) return;
+  await smsTo('rep-' + slug(rep), smsText(title, body), kind || 'rep alert').catch(() => {});
+}
+// everyone who can get texts: reps on the roster + admins/managers (store logins, tracker managers, the COO PIN)
+function smsRoster() {
+  const people = smsPeople(), out = [], seen = new Set();
+  const add = (key, name, role, active) => { if (seen.has(key)) return; seen.add(key); const r = people[key] || {}; out.push({ key, name, role, active, phone: r.phone ? sms.fmtPhone(r.phone) : '', verified: !!r.verified, on: r.on !== false && !!r.phone, pending: !!(r.code && r.code_exp > Date.now()), stopped: !!r.stopped, by: r.by || '', updated_at: r.updated_at || '' }); };
+  const p = pins().reps;
+  quotaRows().filter(r => r.role !== 'Team').forEach(r => add('rep-' + slug(r.rep), r.rep, 'rep', !p[r.rep] || p[r.rep].active !== false));
+  hubPeople.list.filter(u => u.role !== 'rep' && u.active !== false).forEach(u => add('hub-' + u.id, String(u.name || u.email || 'Admin'), 'admin', true));
+  Object.values(mgrs()).filter(m => m.kind === 'manager' && m.active !== false).forEach(m => add('mgr-' + m.id, m.name, 'admin', true));
+  if (!pinOff()) add('owner', 'COO (PIN sign-in)', 'admin', true);
+  // numbers saved for people who are no longer on the roster still show, so they can be removed
+  Object.keys(people).forEach(k => { if (!seen.has(k)) add(k, people[k].name || k, people[k].role || 'rep', false); });
+  return out;
+}
+const smsRoleOf = key => key.startsWith('rep-') ? 'rep' : 'admin';
+// save a number and text its confirmation code (6 digits, 15 minutes, at most 3 codes an hour)
+async function smsStart(key, name, rawPhone, by) {
+  const phone = sms.normalize(rawPhone); if (!phone) return { error: 'That mobile number does not look right. Use 10 digits, like 956-555-0123.' };
+  if (!smsReady()) return { error: 'Text messages are not set up yet (Admin → Text alerts).' };
+  const people = smsPeople(), prev = people[key] || {}, now = Date.now();
+  const sends = (prev.code_sends || []).filter(t => now - t < 3600e3);
+  if (sends.length >= 3 && prev.phone === phone) return { error: 'Three codes were already sent in the last hour. Wait a bit and try again.' };
+  const code = sms.code6();
+  people[key] = Object.assign({}, prev, { name, role: smsRoleOf(key), phone, verified: prev.phone === phone && prev.verified ? true : false, on: true, stopped: false, code, code_exp: now + 15 * 60e3, code_sent: new Date(now).toISOString(), code_sends: sends.concat([now]), by, updated_at: new Date(now).toISOString() });
+  await saveSmsPeople(people);
+  if (people[key].verified) return { ok: true, verified: true };
+  await smsCountUp();
+  const r = await sms.send(smsCfg(), { to: phone, body: '360 Medical: your code is ' + code + '. Enter it in the app, or reply YES, to get text alerts here. Reply STOP to opt out.' });
+  await smsLog({ key, name, to: sms.masked(phone), kind: 'confirmation code', ok: r.ok, error: r.ok ? '' : r.error, code: r.ok ? '' : r.code });
+  if (!r.ok) return { error: r.auth ? 'Twilio rejected the Account SID / Auth token. Check them under Admin → Text alerts.' : r.badNumber ? 'Twilio says that number cannot receive texts.' : "The code could not be sent: " + r.error };
+  return { ok: true, sent: true };
+}
+async function smsVerify(key, rawCode) {
+  const people = smsPeople(), rec = people[key];
+  if (!rec || !rec.phone) return { error: 'No mobile number saved yet.' };
+  if (rec.verified) return { ok: true };
+  const code = String(rawCode || '').replace(/\D/g, '');
+  if (!rec.code || rec.code_exp < Date.now()) return { error: 'That code has expired. Send a new one.' };
+  if (code !== rec.code) return { error: 'That code is not right.' };
+  people[key] = Object.assign({}, rec, { verified: true, on: true, code: null, code_exp: 0, verified_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+  await saveSmsPeople(people);
+  return { ok: true };
+}
+function smsMe(key) {
+  const r = smsPeople()[key] || {};
+  return { enabled: smsReady() && smsCfg().on !== false, phone: r.phone ? sms.fmtPhone(r.phone) : '', verified: !!r.verified, on: r.on !== false && !!r.phone, pending: !!(r.code && r.code_exp > Date.now()), stopped: !!r.stopped, kinds: smsKinds() };
+}
+app.get('/api/sms/me', needApi(), (req, res) => res.json(smsMe(personKey(req.s))));
+app.post('/api/sms/me', needApi(), async (req, res) => {
+  const r = await smsStart(personKey(req.s), whoName(req.s), (req.body || {}).phone, whoName(req.s));
+  if (r.error) return res.status(400).json({ error: r.error });
+  res.json(Object.assign({ ok: true }, smsMe(personKey(req.s))));
+});
+app.post('/api/sms/me/verify', needApi(), async (req, res) => {
+  const r = await smsVerify(personKey(req.s), (req.body || {}).code);
+  if (r.error) return res.status(400).json({ error: r.error });
+  res.json(Object.assign({ ok: true }, smsMe(personKey(req.s))));
+});
+app.post('/api/sms/me/toggle', needApi(), async (req, res) => {
+  const key = personKey(req.s), people = smsPeople(); if (!people[key]) return res.status(400).json({ error: 'No mobile number saved yet.' });
+  people[key] = Object.assign({}, people[key], { on: !!(req.body || {}).on, stopped: false, updated_at: new Date().toISOString() }); await saveSmsPeople(people);
+  res.json(Object.assign({ ok: true }, smsMe(key)));
+});
+app.delete('/api/sms/me', needApi(), async (req, res) => { const key = personKey(req.s), people = smsPeople(); delete people[key]; await saveSmsPeople(people); res.json(Object.assign({ ok: true }, smsMe(key))); });
+app.post('/api/sms/me/test', needApi(), async (req, res) => {
+  const key = personKey(req.s), rec = smsPeople()[key];
+  if (!rec || !rec.verified) return res.status(400).json({ error: 'Confirm your number first.' });
+  const ok = await smsTo(key, smsText('Test', 'text alerts are working on this number.'), 'test');
+  res.json({ ok, error: ok ? '' : 'The test text could not be sent. Check Admin → Text alerts → Recent texts for the reason.' });
+});
+// Admin → Text alerts
+const smsWebhookUrl = req => (process.env.PUBLIC_URL || `https://${req.get('host')}`).replace(/\/$/, '') + '/api/sms/inbound';
+app.get('/api/admin/sms', needApi('owner'), async (req, res) => {
+  await syncPeople(false, 0).catch(() => {});
+  const c = smsCfg(), r = sms.resolve(c) || {};
+  res.json({ on: c.on !== false, sid: c.sid || process.env.TWILIO_ACCOUNT_SID || '', tokenSet: !!(c.token || process.env.TWILIO_AUTH_TOKEN), from: c.from || process.env.TWILIO_FROM || '', msid: c.msid || process.env.TWILIO_MESSAGING_SERVICE_SID || '', fromEnv: !c.sid && !!process.env.TWILIO_ACCOUNT_SID,
+    daily_cap: Number(c.daily_cap) || 300, today: smsToday(), kinds: smsKinds(), info: sms.info(c), ready: !!r.sid, webhook: smsWebhookUrl(req), me: personKey(req.s), super: isSuper(req.s),
+    people: smsRoster(), log: (docs.get('_sms/log') || { items: [] }).items.slice(0, 40) });
+});
+app.post('/api/admin/sms', needApi('super'), async (req, res) => {
+  const b = req.body || {}, prev = docs.get('config/sms') || {};
+  const str = (v, n) => String(v || '').trim().slice(0, n);
+  const from = str(b.from, 40), fromE = from ? sms.normalize(from) : '';
+  if (from && !fromE) return res.status(400).json({ error: 'The "texts come from" number should be the Twilio phone number, like +1 956 555 0123.' });
+  const sid = str(b.sid, 60); if (sid && !/^AC[0-9a-fA-F]{32}$/.test(sid)) return res.status(400).json({ error: 'The Account SID starts with AC and is 34 characters long.' });
+  const msid = str(b.msid, 60); if (msid && !/^MG[0-9a-fA-F]{32}$/.test(msid)) return res.status(400).json({ error: 'A Messaging Service SID starts with MG and is 34 characters long.' });
+  const k = b.kinds || {};
+  const doc = { on: b.on !== false, sid, token: str(b.token, 120) || prev.token || '', from: fromE, msid, daily_cap: Math.min(5000, Math.max(10, Math.round(Number(b.daily_cap)) || 300)), kinds: { admin: k.admin !== false, rep: k.rep !== false, digest: !!k.digest }, updated_at: new Date().toISOString() };
+  await put('config/sms', doc);
+  res.json({ ok: true, info: sms.info(doc) });
+});
+app.post('/api/admin/sms/clear', needApi('super'), async (req, res) => { await del('config/sms'); res.json({ ok: true }); });
+app.post('/api/admin/sms/test', needApi('owner'), async (req, res) => {
+  const raw = String((req.body || {}).phone || '').trim();
+  if (!smsReady()) return res.status(400).json({ error: 'Paste the Twilio details and save first.' });
+  if (raw) {
+    const to = sms.normalize(raw); if (!to) return res.status(400).json({ error: 'That mobile number does not look right.' });
+    await smsCountUp();
+    const r = await sms.send(smsCfg(), { to, body: smsText('Test', 'text alerts from the Surgical Case Tracker are working.') });
+    await smsLog({ key: 'test', name: whoName(req.s), to: sms.masked(to), kind: 'test', ok: r.ok, error: r.ok ? '' : r.error, code: r.ok ? '' : r.code });
+    return r.ok ? res.json({ ok: true }) : res.status(400).json({ error: r.auth ? 'Twilio rejected the Account SID / Auth token.' : r.error });
+  }
+  const key = personKey(req.s), rec = smsPeople()[key];
+  if (!rec || !rec.verified) return res.status(400).json({ error: 'Add and confirm your own mobile number below first, or type a number to test.' });
+  const ok = await smsTo(key, smsText('Test', 'text alerts from the Surgical Case Tracker are working.'), 'test');
+  return ok ? res.json({ ok: true }) : res.status(400).json({ error: 'Not sent. See Recent texts for the reason.' });
+});
+app.post('/api/admin/sms/person', needApi('owner'), async (req, res) => {
+  const b = req.body || {}, key = String(b.key || '').slice(0, 80);
+  if (!/^(rep-[a-z0-9-]+|hub-[A-Za-z0-9_-]+|mgr-[A-Za-z0-9_-]+|owner)$/.test(key)) return res.status(400).json({ error: 'Unknown person.' });
+  const who = smsRoster().find(x => x.key === key), name = who ? who.name : key, people = smsPeople();
+  if (b.remove) { delete people[key]; await saveSmsPeople(people); return res.json({ ok: true, people: smsRoster() }); }
+  if (b.code != null) { const r = await smsVerify(key, b.code); if (r.error) return res.status(400).json({ error: r.error }); return res.json({ ok: true, people: smsRoster() }); }
+  if (b.on != null) { if (!people[key]) return res.status(400).json({ error: 'No mobile number saved for ' + name + ' yet.' }); people[key] = Object.assign({}, people[key], { on: !!b.on, stopped: false, updated_at: new Date().toISOString() }); await saveSmsPeople(people); return res.json({ ok: true, people: smsRoster() }); }
+  const r = await smsStart(key, name, b.phone, whoName(req.s));
+  if (r.error) return res.status(400).json({ error: r.error });
+  res.json({ ok: true, sent: !!r.sent, people: smsRoster() });
+});
+// replies from phones (Twilio posts here when the number's messaging webhook points at /api/sms/inbound): YES / the code confirms, STOP turns texts off, START turns them back on
+app.post('/api/sms/inbound', express.urlencoded({ extended: false }), async (req, res) => {
+  const cfg = sms.resolve(smsCfg()); if (!cfg) return res.status(404).end();
+  if (!sms.validSignature(cfg.token, smsWebhookUrl(req), req.body || {}, req.get('X-Twilio-Signature'))) return res.status(403).end();
+  const from = sms.normalize((req.body || {}).From), text = String((req.body || {}).Body || '').trim(), up = text.toUpperCase();
+  const people = smsPeople(), keys = Object.keys(people).filter(k => people[k].phone === from);
+  let reply = '';
+  if (keys.length) {
+    const now = new Date().toISOString();
+    if (/^(STOP|STOPALL|UNSUBSCRIBE|CANCEL|END|QUIT)$/.test(up)) { keys.forEach(k => { people[k] = Object.assign({}, people[k], { on: false, stopped: true, updated_at: now }); }); }
+    else if (/^(START|UNSTOP|YES|Y|CONFIRM|OK)$/.test(up) || /^\d{6}$/.test(up)) {
+      let any = false;
+      keys.forEach(k => { const r = people[k]; if (/^\d{6}$/.test(up) && r.code && r.code !== up) return; if (r.code && r.code_exp < Date.now() && !r.verified && /^\d{6}$/.test(up)) return; people[k] = Object.assign({}, r, { verified: true, on: true, stopped: false, code: null, code_exp: 0, verified_at: r.verified_at || now, updated_at: now }); any = true; });
+      if (any) reply = "360 Medical: you're set. Alerts from the Surgical Case Tracker will come to this number. Reply STOP any time to opt out.";
+    }
+    await saveSmsPeople(people);
+    await smsLog({ key: keys[0], name: people[keys[0]].name, to: sms.masked(from), kind: 'reply: ' + text.slice(0, 40), ok: true, error: '' });
+  }
+  res.type('text/xml').send('<?xml version="1.0" encoding="UTF-8"?><Response>' + (reply ? '<Message>' + reply.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</Message>' : '') + '</Response>');
+});
+
 let hubMail = { at: 0, cfg: null };
 const mailCfg = () => Object.assign({}, docs.get('config/mail') || {}, hubMail.cfg && hubMail.cfg.tenant && hubMail.cfg.client && hubMail.cfg.secret ? { tenant: hubMail.cfg.tenant, client: hubMail.cfg.client, secret: hubMail.cfg.secret, mailbox: hubMail.cfg.mailbox || (docs.get('config/mail') || {}).mailbox, from: hubMail.cfg.from || (docs.get('config/mail') || {}).from, to: hubMail.cfg.to || (docs.get('config/mail') || {}).to, viaHub: true } : {});
 async function refreshHubMail() { if (!hubLinked() || Date.now() - hubMail.at < 300000) return; try { hubMail = { at: Date.now(), cfg: await hubCall('/api/hub/mail') }; } catch (e) { hubMail.at = Date.now() - 240000; } }

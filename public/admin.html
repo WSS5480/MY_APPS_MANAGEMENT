@@ -326,6 +326,35 @@ header.head.has-who{padding-top:58px}
       <div class="msg" id="apin-msg" hidden style="margin-top:10px"></div>
     </section>
 
+    <section class="card" id="sms-card">
+      <h2>Text alerts (SMS)</h2>
+      <p class="note">The same alerts that go out as push notifications can also go by text message: reps get their check-in reminders, visits you schedule for them and invoice decisions; admins get visits not verified, left early, approvals, invoices and WCUs. Texts go through <b>Twilio</b>: paste the Account SID, Auth token and the phone number (or Messaging Service) texts come from. Each person confirms their number once with a code (or by replying YES) before anything is sent to it; replying STOP turns their texts off.</p>
+      <p class="note" id="sm-info"></p>
+      <form class="form" id="smsf">
+        <label class="f">Text alerts<select class="field" id="sm-on"><option value="1">On</option><option value="0">Off (keep the setup)</option></select></label>
+        <label class="f">Twilio Account SID<input class="field" id="sm-sid" autocomplete="off" placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"></label>
+        <label class="f">Twilio Auth token<input class="field" id="sm-token" type="password" autocomplete="new-password" placeholder="Paste the auth token"></label>
+        <label class="f">Texts come from (Twilio number)<input class="field" id="sm-from" inputmode="tel" placeholder="+1 956 555 0123"></label>
+        <label class="f">or Messaging Service SID<input class="field" id="sm-msid" autocomplete="off" placeholder="MGxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx (optional)"></label>
+        <label class="f">Daily limit (texts per day)<input class="field" id="sm-cap" type="number" min="10" max="5000" placeholder="300"></label>
+        <div class="full" style="display:flex;gap:16px;flex-wrap:wrap;align-items:center">
+          <b style="font-size:.85rem">Send by text:</b>
+          <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="sm-k-admin"> Admin alerts</label>
+          <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="sm-k-rep"> Rep alerts</label>
+          <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="sm-k-digest"> Monday digest</label>
+        </div>
+        <div class="full tools"><button class="btn primary" type="submit" id="sm-save">Save</button><button class="btn" type="button" id="sm-test">Send me a test text</button><input class="field" id="sm-test-to" inputmode="tel" placeholder="…or test a number" style="max-width:14rem"><button class="btn danger" type="button" id="sm-clear">Forget these settings</button></div>
+      </form>
+      <div class="msg" id="sm-msg" hidden style="margin-top:10px"></div>
+      <p class="note" style="margin-top:12px">For YES / STOP replies to reach the app, set the Twilio number's messaging webhook (<b>A message comes in</b>, HTTP POST) to:</p>
+      <div class="kv"><span>Webhook</span><span class="copy" id="sm-webhook"></span></div>
+      <h3 style="margin:16px 0 6px;font-size:.95rem">Who gets texts</h3>
+      <p class="note">Type a mobile number and tap <b>Send code</b>: the person gets a 6-digit code to enter in the tracker (Weekly digest &amp; notifications card), or they reply YES. If they read the code to you, enter it here. Reps can also add their own number in the tracker.</p>
+      <div class="scroll"><table id="sm-people"><thead><tr><th>Person</th><th>Role</th><th>Mobile</th><th>Status</th><th></th></tr></thead><tbody></tbody></table></div>
+      <h3 style="margin:16px 0 6px;font-size:.95rem">Recent texts</h3>
+      <div class="scroll"><table id="sm-log"><thead><tr><th>When</th><th>To</th><th>What</th><th>Result</th></tr></thead><tbody></tbody></table></div>
+    </section>
+
     <section class="card" id="mail-card">
       <h2>Approval emails</h2>
       <p class="note">When a rep adds a facility or a surgeon, the COO gets an email with a one-tap <b>Approve</b> button (plus the push notification). Sends through the same Microsoft 365 app the peptide store uses — paste the same Tenant ID, Client ID and secret here. <a href="/api/admin/mail/preview?kind=facility" target="_blank" rel="noopener">Preview the facility email</a> · <a href="/api/admin/mail/preview?kind=surgeon" target="_blank" rel="noopener">surgeon email</a></p>
@@ -381,7 +410,7 @@ header.head.has-who{padding-top:58px}
 <script src="/import.js?v=1"></script>
 <script src="/logins.js?v=1"></script>
 <script src="/exec.js?v=1"></script><script src="/replist.js?v=2"></script><script src="/admin-dash.js?v=4"></script>
-<script src="/admin-pages.js?v=9"></script>
+<script src="/admin-pages.js?v=10"></script>
 <script>
 (function () {
   'use strict';
@@ -513,6 +542,82 @@ header.head.has-who{padding-top:58px}
     if (a !== b) return say('#apin-msg', 'err', 'The two PINs do not match.');
     api('/api/admin/admin-pin', { pin: a }).then(function () { $('#apin1').value = $('#apin2').value = ''; $('#pinwarn').hidden = true; say('#apin-msg', 'ok', 'Admin PIN changed.'); }, function (e) { say('#apin-msg', 'err', (e && e.error) || 'Could not change it.'); });
   });
+
+  /* ---------- text alerts (SMS) ---------- */
+  var SM = null;
+  function smsStatus(p) {
+    if (!p.phone) return ['No number', 'mute'];
+    if (p.stopped) return ['Replied STOP', 'warn'];
+    if (!p.verified) return [p.pending ? 'Code sent, not confirmed' : 'Not confirmed', 'warn'];
+    return p.on ? ['On', 'ok'] : ['Off', 'mute'];
+  }
+  function drawSms() {
+    if (!SM) return;
+    var tb = $('#sm-people tbody'); tb.replaceChildren();
+    SM.people.forEach(function (p) {
+      var tr = el('tr'); if (!p.active) tr.style.opacity = '.6';
+      tr.appendChild(el('td', '', p.name + (p.key === SM.me ? ' (you)' : '') + (p.active ? '' : ' · no longer on the roster')));
+      tr.appendChild(el('td', '', p.role === 'admin' ? 'Admin' : 'Sales rep'));
+      var td = el('td'), inp = el('input', 'field'); inp.inputMode = 'tel'; inp.value = p.phone || ''; inp.placeholder = '956-555-0123'; inp.style.maxWidth = '11rem'; inp.setAttribute('aria-label', 'Mobile for ' + p.name); td.appendChild(inp); tr.appendChild(td);
+      var st = smsStatus(p), sp = el('span', 'pill ' + st[1], st[0]); var tds = el('td'); tds.appendChild(sp); tr.appendChild(tds);
+      var act = el('td'); act.style.whiteSpace = 'nowrap';
+      var send = el('button', 'btn small' + (p.verified ? '' : ' primary'), p.phone && inp.value === p.phone && !p.verified ? 'Send code again' : p.verified ? 'Change number' : 'Send code'); send.type = 'button';
+      send.addEventListener('click', function () {
+        var v = inp.value.trim(); if (!v) { inp.focus(); return; }
+        if (p.verified && v === p.phone) { say('#sm-msg', 'ok', p.name + "'s number is already confirmed."); return; }
+        send.disabled = true; api('/api/admin/sms/person', { key: p.key, phone: v }).then(function (j) { SM.people = j.people; drawSms(); say('#sm-msg', 'ok', j.sent ? 'Code sent to ' + p.name + '. They enter it in the tracker, reply YES, or read it to you.' : 'Saved.'); }, function (x) { send.disabled = false; say('#sm-msg', 'err', (x && x.error) || 'Could not save.'); });
+      });
+      act.appendChild(send);
+      if (p.phone && !p.verified) {
+        var code = el('input', 'field'); code.inputMode = 'numeric'; code.placeholder = 'Code'; code.maxLength = 6; code.style.width = '5.5rem'; code.style.marginLeft = '6px'; code.setAttribute('aria-label', 'Code for ' + p.name); act.appendChild(code);
+        var ok = el('button', 'btn small', 'Confirm'); ok.type = 'button'; ok.style.marginLeft = '4px';
+        ok.addEventListener('click', function () { api('/api/admin/sms/person', { key: p.key, code: code.value }).then(function (j) { SM.people = j.people; drawSms(); say('#sm-msg', 'ok', p.name + ' is confirmed and will get texts.'); }, function (x) { say('#sm-msg', 'err', (x && x.error) || 'Could not confirm.'); }); });
+        act.appendChild(ok);
+      }
+      if (p.phone && p.verified) {
+        var tg = el('button', 'btn small', p.on ? 'Turn off' : 'Turn on'); tg.type = 'button'; tg.style.marginLeft = '6px';
+        tg.addEventListener('click', function () { api('/api/admin/sms/person', { key: p.key, on: !p.on }).then(function (j) { SM.people = j.people; drawSms(); }, function (x) { say('#sm-msg', 'err', (x && x.error) || 'Could not change it.'); }); });
+        act.appendChild(tg);
+      }
+      if (p.phone) {
+        var rm = el('button', 'btn small danger', 'Remove'); rm.type = 'button'; rm.style.marginLeft = '6px';
+        rm.addEventListener('click', function () { if (!confirm('Remove ' + p.name + "'s mobile number?")) return; api('/api/admin/sms/person', { key: p.key, remove: true }).then(function (j) { SM.people = j.people; drawSms(); }, function (x) { say('#sm-msg', 'err', (x && x.error) || 'Could not remove it.'); }); });
+        act.appendChild(rm);
+      }
+      tr.appendChild(act); tb.appendChild(tr);
+    });
+    var lb = $('#sm-log tbody'); lb.replaceChildren();
+    if (!SM.log.length) { var e0 = el('tr'); e0.appendChild(el('td', 'note', 'No texts sent yet.')); e0.firstChild.colSpan = 4; lb.appendChild(e0); }
+    SM.log.forEach(function (l) {
+      var tr = el('tr'); tr.appendChild(el('td', '', fmtDate(l.at)));
+      tr.appendChild(el('td', '', (l.name ? l.name + ' ' : '') + (l.to || ''))); tr.appendChild(el('td', '', l.kind || ''));
+      tr.appendChild(el('td', '', l.ok ? 'Sent' : 'Failed: ' + (l.error || '') + (l.code ? ' (' + l.code + ')' : ''))); lb.appendChild(tr);
+    });
+  }
+  function loadSms() {
+    api('/api/admin/sms').then(function (m) {
+      SM = m;
+      $('#sm-on').value = m.on ? '1' : '0'; $('#sm-sid').value = m.sid || ''; $('#sm-from').value = m.from || ''; $('#sm-msid').value = m.msid || ''; $('#sm-cap').value = m.daily_cap || 300;
+      $('#sm-token').placeholder = m.tokenSet ? 'Saved — leave blank to keep it' : 'Paste the auth token';
+      $('#sm-k-admin').checked = !!m.kinds.admin; $('#sm-k-rep').checked = !!m.kinds.rep; $('#sm-k-digest').checked = !!m.kinds.digest;
+      $('#sm-info').textContent = (m.info && m.info.text ? m.info.text : '') + (m.ready ? ' Sent today: ' + m.today + ' of ' + m.daily_cap + '.' : '') + (m.fromEnv ? ' (Twilio details come from the server settings.)' : '');
+      $('#sm-webhook').textContent = m.webhook || '';
+      ['#sm-sid', '#sm-token', '#sm-from', '#sm-msid', '#sm-cap', '#sm-k-admin', '#sm-k-rep', '#sm-k-digest', '#sm-on', '#sm-save', '#sm-clear'].forEach(function (id) { $(id).disabled = !m.super; });
+      if (!m.super) $('#sm-info').textContent += ' Only the account owner can change the Twilio setup.';
+      drawSms();
+    }).catch(function () {});
+  }
+  loadSms();
+  $('#smsf').addEventListener('submit', function (e) {
+    e.preventDefault();
+    api('/api/admin/sms', { on: $('#sm-on').value === '1', sid: $('#sm-sid').value, token: $('#sm-token').value, from: $('#sm-from').value, msid: $('#sm-msid').value, daily_cap: $('#sm-cap').value, kinds: { admin: $('#sm-k-admin').checked, rep: $('#sm-k-rep').checked, digest: $('#sm-k-digest').checked } })
+      .then(function (j) { $('#sm-token').value = ''; say('#sm-msg', 'ok', 'Saved. ' + (j.info && j.info.text ? j.info.text : '')); loadSms(); }, function (x) { say('#sm-msg', 'err', (x && x.error) || 'Could not save.'); });
+  });
+  $('#sm-test').addEventListener('click', function () {
+    say('#sm-msg', 'warn', 'Sending a test text…');
+    api('/api/admin/sms/test', { phone: $('#sm-test-to').value }).then(function () { say('#sm-msg', 'ok', 'Test text sent.'); loadSms(); }, function (x) { say('#sm-msg', 'err', (x && x.error) || 'Could not send.'); loadSms(); });
+  });
+  $('#sm-clear').addEventListener('click', function () { if (!confirm('Forget the Twilio settings? Saved mobile numbers are kept.')) return; api('/api/admin/sms/clear', {}).then(function () { loadSms(); say('#sm-msg', 'ok', 'Text settings cleared.'); }); });
 
   function loadMail() {
     api('/api/admin/mail').then(function (m) {
