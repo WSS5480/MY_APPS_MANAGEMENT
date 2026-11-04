@@ -277,7 +277,10 @@ const app = express();
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '12mb' })); // a few PDF pages as photos in one request
 require('./server/migrate')(app, () => pool); // moving workspaces: data copy + forwarding (off unless MIGRATE_SECRET / REDIRECT_TO are set)
-app.use((req, res, next) => { const hub = String(process.env.HUB_URL || '').replace(/\/$/, ''); if (hub && process.env.HUB_SECRET) res.setHeader('Content-Security-Policy', `frame-ancestors 'self' ${hub}`); else res.setHeader('X-Frame-Options', 'SAMEORIGIN'); res.setHeader('Referrer-Policy', 'same-origin'); res.setHeader('X-Robots-Tag', 'noindex'); next(); });
+// the store frames this portal inside its own address (its "portal" switch); HUB_URL_ALSO lists any other address the store
+// still answers at (comma-separated, e.g. its old onrender.com address) so apps installed from there keep working
+const FRAMERS = () => [process.env.HUB_URL || '', ...String(process.env.HUB_URL_ALSO || '').split(',')].map(u => u.trim().replace(/\/$/, '')).filter(u => /^https?:\/\/[A-Za-z0-9.-]+(:\d+)?$/.test(u));
+app.use((req, res, next) => { const hub = String(process.env.HUB_URL || '').replace(/\/$/, ''); if (hub && process.env.HUB_SECRET) res.setHeader('Content-Security-Policy', `frame-ancestors 'self' ${FRAMERS().join(' ')}`); else res.setHeader('X-Frame-Options', 'SAMEORIGIN'); res.setHeader('Referrer-Policy', 'same-origin'); res.setHeader('X-Robots-Tag', 'noindex'); next(); });
 
 const pub = path.join(__dirname, 'public');
 const page = f => (req, res) => res.sendFile(path.join(pub, f));
