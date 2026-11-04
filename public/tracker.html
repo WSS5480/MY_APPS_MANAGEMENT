@@ -315,7 +315,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
             <label>Facility<input class="field" id="ce-facility" list="dl-facilities" autocomplete="off"></label>
             <label>Service line<select class="field" id="ce-service"></select></label>
             <div class="full x-pref" id="ce-pref" hidden></div>
-            <label class="full">Photo or invoice — fills in the case<span class="x-scanrow x-readrow"><button class="btn" id="ce-photo" type="button">📷 Take photo</button><button class="btn" id="ce-upload" type="button">⬆ Upload photo or PDF</button><input type="file" id="ce-photo-in" accept="image/*" capture="environment" hidden><input type="file" id="ce-upload-in" accept="image/*,application/pdf" hidden><input type="hidden" id="ce-udi"></span><span class="x-scanmsg" id="ce-scanmsg"></span></label>
+            <div class="full x-att"><span class="x-lab">Photo or invoice — fills in the case</span><span class="x-scanrow x-readrow"><button class="btn" id="ce-photo" type="button">📷 Take photo</button><button class="btn" id="ce-upload" type="button">⬆ Upload photo or PDF</button><input type="file" id="ce-photo-in" accept="image/*" capture="environment" hidden><input type="file" id="ce-upload-in" accept="image/*,application/pdf" hidden><input type="hidden" id="ce-udi"></span><span class="x-scanmsg" id="ce-scanmsg"></span></div>
             <label>Product<input class="field" id="ce-product" list="dl-products" autocomplete="off"></label>
             <label>Lot #<input class="field" id="ce-lot" autocomplete="off"></label>
             <label>Expiration<input class="field" id="ce-exp" type="date"></label>
@@ -968,7 +968,23 @@ section[id^="sec-"]{scroll-margin-top:62px}
     $('#editor').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     if (window.SCTX) SCTX.openEditor(c);
   }
-  function closeEditor() { if (S.editId) flush('case:' + S.editId); S.editId = null; $('#editor').hidden = true; if (window.SCTX) SCTX.closeEditor(); drawLog(); }
+  var freshCases = {}; // cases added in this sitting (only these are discarded when closed empty)
+  function blankCase(c) { return !!c && !(c.surgeon || c.facility || c.product || c.po || c.notes || c.net_sales || (c.attachments && c.attachments.length) || c.invoice || c.lot || c.expiry); }
+  function closeEditor() {
+    var id = S.editId;
+    if (id) {
+      flush('case:' + id);
+      var c = S.cases.find(function (x) { return x.id === id; });
+      if (freshCases[id] && blankCase(c) && S.db) { // a case just added with nothing entered: the empty row is removed rather than counted as a case
+        clearTimeout(timers['case:' + id]); delete timers['case:' + id]; delete timerFns['case:' + id];
+        S.cases = S.cases.filter(function (x) { return x.id !== id; });
+        run('case:' + id, function () { return S.db.doc('cases/' + id).delete(); });
+        setStatus('ok', 'Empty case discarded');
+      }
+    }
+    if (id) delete freshCases[id];
+    S.editId = null; $('#editor').hidden = true; if (window.SCTX) SCTX.closeEditor(); render();
+  }
   function editorChanged(ms) {
     var id = S.editId; if (!id || !S.db) return;
     var data = readEditor(), ref = S.db.doc('cases/' + id);
@@ -985,7 +1001,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
     var ref = S.db.collection('cases').doc(), stamp = new Date().toISOString();
     var body = { date: date, rep: rep || '', surgeon: '', facility: '', service_line: '', product: '', units: 1, net_sales: null, surgeon_type: 'New', status: 'Completed', po: '', notes: '', created_by: S.uid || '', created_at: stamp, updated_at: stamp };
     S.cases = S.cases.concat([Object.assign({ id: ref.id }, body)]);
-    pendingNew[ref.id] = true;
+    pendingNew[ref.id] = true; freshCases[ref.id] = true;
     run('case:' + ref.id, function () { return ref.set(body); }).then(function () { delete pendingNew[ref.id]; });
     $('#search').value = '';
     openEditor(ref.id); render();

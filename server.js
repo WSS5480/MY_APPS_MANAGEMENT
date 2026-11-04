@@ -324,7 +324,7 @@ app.get('/media/:id', async (req, res) => {
   } catch (e) { res.status(500).end(); }
 });
 app.get(['/logo.png', '/logo-dark.png', '/collapse.js', '/d3.min.js', '/shim.js', '/plus.js', '/plus.css', '/addr.js', '/wcu.js', '/leader.js', '/uni.js', '/import.js', '/logins.js', '/admin-pages.js', '/admin-dash.js', '/exec.js', '/replist.js', '/visitcal.js', '/idle.js', '/zoom.js', '/spin.js', '/install.js', '/ptr.js', '/update.js', '/webauthn.js', '/qrious.min.js', '/app.css', '/theme-360.css', '/icon-admin-192.png', '/icon-admin-512.png', '/icon-admin-maskable-512.png', '/apple-touch-icon-admin.png', '/sw.js', '/favicon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'], (req, res) => { if (req.path === '/sw.js') res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, req.path)); });
-app.get(['/vendor/pdf.min.mjs', '/vendor/pdf.worker.min.mjs'], (req, res) => { res.type('text/javascript'); res.setHeader('Cache-Control', 'public, max-age=31536000, immutable'); res.sendFile(path.join(pub, req.path)); }); // pdf.js (Apache-2.0): turns an uploaded PDF into page photos on the phone
+app.get(['/vendor/pdf.min.mjs', '/vendor/pdf.worker.min.mjs'], (req, res) => { res.type('text/javascript'); res.setHeader('Cache-Control', 'public, max-age=86400'); res.sendFile(path.join(pub, req.path)); }); // pdf.js (Apache-2.0): turns an uploaded PDF into page photos on the phone
 app.get('/manifest.webmanifest', (req, res) => { res.type('application/manifest+json'); res.sendFile(path.join(pub, 'manifest.webmanifest')); });
 app.get('/admin.webmanifest', (req, res) => { res.type('application/manifest+json'); res.sendFile(path.join(pub, 'admin.webmanifest')); });
 
@@ -1099,17 +1099,24 @@ async function readDocument(files) { // [{ type, b64 }]: one photo or PDF, or th
     'Match names to these known lists when they clearly refer to the same thing (use the list spelling), otherwise use what is printed.\n' +
     'Known products: ' + (names.products.join('; ') || '(none)') + '\nKnown surgeons: ' + (names.surgeons.join('; ') || '(none)') + '\nKnown facilities: ' + (names.facilities.join('; ') || '(none)') + '\nUse null for numbers you cannot read and "" for text you cannot read. JSON only.';
   const blocks = files.slice(0, 6).map((f) => (f.type === 'application/pdf' ? { type: 'document', source: { type: 'base64', media_type: f.type, data: f.b64 } } : { type: 'image', source: { type: 'base64', media_type: f.type, data: f.b64 } }));
-  const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({ model: READ_MODEL, max_tokens: 1500, system, messages: [{ role: 'user', content: blocks.concat([{ type: 'text', text: (blocks.length > 1 ? 'These are the pages of one document. ' : '') + prompt }]) }] }) });
+  const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' }, signal: AbortSignal.timeout(90000),
+    body: JSON.stringify({ model: READ_MODEL, max_tokens: 4000, system, messages: [{ role: 'user', content: blocks.concat([{ type: 'text', text: (blocks.length > 1 ? 'These are the pages of one document. ' : '') + prompt }]) }] }) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error((j.error && j.error.message) || ('the AI reader answered ' + r.status));
+  if (j.stop_reason === 'max_tokens') throw new Error('the document has more lines than the reader can return at once; try a photo of the page that matters');
   const text = (j.content || []).map((c) => c.text || '').join('');
   const m = /\{[\s\S]*\}/.exec(text); let out;
   try { out = JSON.parse(m ? m[0] : text); } catch (e) { throw new Error('the AI reader sent back something that was not a form'); }
   return { engine: 'ai', model: READ_MODEL, fields: cleanRead(out) };
 }
+const readHits = new Map(); // uid → times read this hour (a paid call per upload)
 app.post('/api/read-doc', needApi(), async (req, res) => {
-  const list = Array.isArray(req.body.pages) && req.body.pages.length ? req.body.pages.slice(0, 12) : [req.body.data];
+  const list = Array.isArray(req.body.pages) && req.body.pages.length ? req.body.pages.slice(0, 6) : [req.body.data];
+  const okRe = /^data:(image\/(?:jpeg|png|webp)|application\/pdf);base64,([A-Za-z0-9+/=]+)$/;
+  for (const d of list) { const m = okRe.exec(String(d || '')); if (!m) return res.status(400).json({ error: 'That file is not a JPG, PNG or WebP photo or a PDF.' }); if (m[2].length > 4.2e6) return res.status(400).json({ error: 'That file is too large (3 MB max). Take a photo of it instead.' }); }
+  const uid = uidOf(req.s), now = Date.now(), hits = (readHits.get(uid) || []).filter((t) => now - t < 3600e3);
+  if (hits.length >= 30) return res.status(429).json({ error: 'That is a lot of reads in one hour; try again a little later.' });
+  hits.push(now); readHits.set(uid, hits);
   const ups = [];
   for (const d of list) { const up = await storeUpload(req, d); if (up.error) return res.status(400).json({ error: up.error }); ups.push(up); }
   let read;

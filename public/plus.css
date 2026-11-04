@@ -69,3 +69,6 @@
 .x-sheet .bar{position:sticky;top:0;z-index:2;background:var(--bg);padding:8px 0}
 
 .wcu-day{display:flex;flex-direction:column;gap:5px;min-width:0}.wcu-day>b{font-size:.6875rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}.wcu-day .field{width:100%}
+
+.wcu-day>button{align-self:flex-start}
+.msg{font-size:.875rem;font-weight:500;padding:10px 12px;border-radius:8px}.msg.err{background:var(--bad-bg,#fdecec);color:var(--bad,#9b1c1c)}.msg.ok{background:var(--ok-bg,#e3f4eb);color:var(--ok,#15734a)}.msg.warn{background:var(--warn-bg,#faefd6);color:var(--warn,#8a5a00)}

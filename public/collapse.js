@@ -96,7 +96,8 @@
     'table.flip td,table.flip tbody th{display:block;border:0!important;padding:0!important;text-align:left!important;white-space:normal!important;min-width:0!important;width:auto!important;max-width:100%;overflow-wrap:anywhere;background:none}' +
     'table.flip td[data-label]:not([data-label=""])::before,table.flip tbody th[data-label]:not([data-label=""])::before{content:attr(data-label);display:block;font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted,#6b7280);margin-bottom:2px}' +
     'table.flip td:first-child,table.flip td.flipwide{grid-column:1/-1}table.flip td:empty{display:none}' +
-    'table.flip input:not([type=checkbox]):not([type=radio]),table.flip select,table.flip textarea{width:100%!important;min-width:0!important}';
+    'table.flip input:not([type=checkbox]):not([type=radio]),table.flip select,table.flip textarea{width:100%!important;min-width:0!important}' +
+    '.flipbox{max-height:none!important;overflow:visible!important;border:0!important}table.flip td:first-child{box-shadow:none!important}';
     (document.head || document.documentElement).appendChild(st); })();
   function headCells(t) {
     var hr = t.tHead && t.tHead.rows[0] ? t.tHead.rows[0] : null;
@@ -109,10 +110,10 @@
     var narrow = window.innerWidth <= FLIP_W;
     [].slice.call(document.querySelectorAll('table')).forEach(function (t) {
       if (t.hasAttribute('data-noflip') || t.closest('[data-noflip]')) return;
-      if (!narrow) { if (t.classList.contains('flip')) t.classList.remove('flip'); return; }
+      if (!narrow) { if (t.classList.contains('flip')) { t.classList.remove('flip'); if (t.parentElement) t.parentElement.classList.remove('flipbox'); } return; }
       if (!t.offsetParent && !t.classList.contains('flip')) return;
       var h = headCells(t); if (!h) return;
-      if (!t.classList.contains('flip')) { var box = t.parentElement; if (!box || t.scrollWidth <= box.clientWidth + 4) return; t.classList.add('flip'); }
+      if (!t.classList.contains('flip')) { var box = t.parentElement; if (!box || t.scrollWidth <= box.clientWidth + 4) return; t.classList.add('flip'); if (box.matches('.tblwrap, .scroll')) box.classList.add('flipbox'); } // cards flow with the page, not inside a short scroll box
       h.row.classList.add('fliphead');
       [].forEach.call(t.rows, function (r) {
         if (r === h.row) return; var col = 0;

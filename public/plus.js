@@ -202,11 +202,11 @@
   function pdfToImages(file, onPage) {
     if (!pdfLib) pdfLib = import('/vendor/pdf.min.mjs').then(function (m) { m.GlobalWorkerOptions.workerSrc = '/vendor/pdf.worker.min.mjs'; return m; });
     return pdfLib.then(function (pdfjs) { return file.arrayBuffer().then(function (buf) { return pdfjs.getDocument({ data: buf }).promise; }); }).then(function (doc) {
-      var n = Math.min(doc.numPages, 8), out = [], chain = Promise.resolve();
+      var n = Math.min(doc.numPages, 6), out = [], chain = Promise.resolve();
       for (var i = 1; i <= n; i++) (function (pg) { chain = chain.then(function () { return doc.getPage(pg); }).then(function (page) {
         var v0 = page.getViewport({ scale: 1 }), sc = Math.min(3, 1800 / Math.max(v0.width, v0.height)), vp = page.getViewport({ scale: sc });
         var c = document.createElement('canvas'); c.width = Math.round(vp.width); c.height = Math.round(vp.height);
-        return page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise.then(function () { out.push(c.toDataURL('image/jpeg', 0.85)); if (onPage) onPage(pg, n); });
+        return page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise.then(function () { out.push(c.toDataURL('image/jpeg', 0.8)); if (onPage) onPage(pg, n); });
       }); })(i);
       return chain.then(function () { return out; });
     }, function (e) { throw { error: 'That PDF could not be opened' + (e && e.message ? ' (' + e.message + ')' : '') + '. Take a photo of it instead.' }; });
@@ -214,8 +214,8 @@
   // fills an empty field (or a default: today's date, 1 unit); a value the rep typed stays, and the difference is pointed out
   function setIf(sel, v, filled, label, force, differs) { var i = $(sel); if (v === '' || v === null || v === undefined) return; if (i.value && !force) { if (differs && lc(i.value) !== lc(v)) differs.push(label + ' (document says ' + v + ')'); return; } i.value = v; filled.push(label); }
   function bestProduct(name, ref) {
-    if (!name && !ref) return '';
-    var n = lc(name), best = '', bestLen = 0;
+    if (!name) return ref || '';
+    var n = lc(name), best = '', bestLen = 0; if (n.length < 4) return name;
     S.products.forEach(function (p) {
       var label = (p.case_names && p.case_names[0]) || p.name;
       [p.name].concat(p.case_names || []).forEach(function (x) {
@@ -262,7 +262,8 @@
   }
   function fieldsFromText(text) {
     var t = text.replace(/[|]/g, 'I'), out = { lines: [] }, g = function (re) { var m = re.exec(t); return m ? m[1].trim() : ''; };
-    var toYmd = function (v) { var m = /^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/.exec(v || ''); if (!m) return /^\d{4}-\d{2}-\d{2}$/.test(v || '') ? v : ''; var y = m[3].length === 2 ? '20' + m[3] : m[3]; return y + '-' + String(m[1]).padStart(2, '0') + '-' + String(m[2]).padStart(2, '0'); };
+    var real = function (ymd) { var p = ymd.split('-').map(Number); if (p[1] < 1 || p[1] > 12 || p[2] < 1 || p[2] > 31 || p[0] < 2000 || p[0] > 2100) return ''; var d = new Date(Date.UTC(p[0], p[1] - 1, p[2])); return d.getUTCMonth() === p[1] - 1 ? ymd : ''; };
+    var toYmd = function (v) { var m = /^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/.exec(v || ''); if (!m) return /^\d{4}-\d{2}-\d{2}$/.test(v || '') ? real(v) : ''; var y = m[3].length === 2 ? '20' + m[3] : m[3]; return real(y + '-' + String(m[1]).padStart(2, '0') + '-' + String(m[2]).padStart(2, '0')); };
     out.invoice_number = g(/\binv(?:oice)?\.?\s*(?:#|no\.?|number)?\s*[:#]?\s*([A-Z0-9][A-Z0-9-]{2,})/i);
     out.po_number = g(/\bP\.?O\.?\s*(?:#|no\.?|number)?\s*[:#]?\s*([A-Z0-9][A-Z0-9-]{2,})/i);
     out.date = toYmd(g(/\b(?:date of (?:service|surgery|procedure)|surgery date|procedure date|service date|DOS)\s*[:#]?\s*(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}|\d{4}-\d{2}-\d{2})/i));
@@ -298,11 +299,13 @@
       extra.forEach(function (data) { chain = chain.then(function () { return api('/api/upload', { data: data, rep: c.rep }); }).then(function (u) { ids.push(u.id); }, function () {}); });
       return chain.then(function () { j.pages = ids.length; j.allIds = ids; return j; });
     }).then(function (j) {
-      var cc = curCase() || c; setAtt(cc, (cc.attachments || []).concat(j.allIds || j.ids || [j.id])); drawAtt();
+      var cc = curCase(); var same = cc && cc.id === c.id; setAtt(same ? cc : c, ((same ? cc : c).attachments || []).concat(j.allIds || j.ids || [j.id])); drawAtt();
+      if (!same) { msg.textContent = 'Saved to ' + (c.surgeon || 'the case it was started on') + '; open that case to fill it in.'; return; }
       var done = function (filled, how) {
         msg.className = 'x-scanmsg ' + (filled.length ? 'ok' : '');
         var kept = filled.differs && filled.differs.length ? ' Left as you typed: ' + filled.differs.join(', ') + '.' : '';
         var what = isPdf ? 'PDF' + (j.pages > 1 ? ' (' + j.pages + ' pages)' : '') : 'photo';
+        if (j.fields && j.fields.doc_type === 'invoice' && !(curCase() || {}).invoice) how = (how ? how + '; ' : '') + 'to send this invoice for approval, use Add invoice below';
         msg.textContent = (filled.length ? 'Filled in from the ' + what + ': ' + filled.join(', ') + '. Check them before you tap Done.' : 'Saved to the case; ' + (filled.any ? 'the case already has what is on it.' : 'nothing on it matched the case fields.')) + kept + (how ? ' (' + how + ')' : '');
         T.editorChanged(0); T.render();
       };
@@ -470,6 +473,7 @@
     var lock = closedMonth(c.date), lb = $('#ce-lock');
     lb.hidden = !lock; lb.textContent = lock ? T.monthName(lock) + ' is closed for commissions. This case is read-only; ask the COO to reopen the month to change it.' : '';
     document.querySelectorAll('#editor .form input, #editor .form select, #editor .form textarea').forEach(function (f) { f.disabled = !!lock || (f.id === 'ce-rep' && !T.isLead()); });
+    ['#ce-photo', '#ce-upload'].forEach(function (s) { if ($(s)) $(s).disabled = !!lock; });
     $('#ed-delete').disabled = !!lock;
     var sales = $('#ce-sales'), p = contractPrice(c.product, c.facility);
     sales.dataset.auto = p != null && c.net_sales != null && Math.abs(c.net_sales - p * (c.units || 0)) < 0.5 ? String(c.net_sales) : (c.net_sales == null ? '' : '__');
