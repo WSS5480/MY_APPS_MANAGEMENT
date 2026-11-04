@@ -1,5 +1,6 @@
 /* Additions: scan, price book, PO pipeline, checks, statement, calendar, visits, preference cards, credentials, notifications */
 .x-scanrow{display:flex;gap:8px}
+.x-readrow{flex-wrap:wrap}.x-readrow .btn{flex:1 1 10rem}
 .x-scanrow .field{flex:1}
 .x-scanmsg,.x-price{font-size:.75rem;font-weight:500;text-transform:none;letter-spacing:0;color:var(--muted);min-height:1em}
 .x-price.bad,.x-scanmsg.bad{color:var(--bad)}.x-price.ok,.x-scanmsg.ok{color:var(--ok)}
@@ -11,6 +12,7 @@
 .x-thumbs{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .x-thumb{position:relative}
 .x-thumb img{width:84px;height:64px;object-fit:cover;border-radius:6px;border:1px solid var(--line);display:block}
+.x-thumb .x-doc{display:grid;place-items:center;width:84px;height:64px;border-radius:6px;border:1px solid var(--line);background:var(--panel);font-size:.75rem;font-weight:600;text-decoration:none;color:inherit}
 .x-thumb button{position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;border:1px solid var(--line);background:var(--panel);color:var(--bad);font-weight:700;cursor:pointer;line-height:1;padding:0}
 .x-checks{border-radius:8px;padding:10px 12px;font-size:.8125rem;text-transform:none;letter-spacing:0;font-weight:500;display:flex;flex-direction:column;gap:4px}
 .x-checks.warn{background:var(--warn-bg);color:var(--warn)}.x-checks.bad{background:var(--bad-bg);color:var(--bad)}

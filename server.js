@@ -1044,19 +1044,72 @@ app.get('/api/audit/:id', needApi(), (req, res) => {
 });
 
 /* ---------------- attachments (PO / sticker sheet photos) ---------------- */
-app.post('/api/upload', needApi(), async (req, res) => {
-  const m = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body.data || ''));
-  if (!m) return res.status(400).json({ error: 'That file is not a JPG, PNG or WebP image.' });
-  if (m[2].length > 4.2e6) return res.status(400).json({ error: 'Photo is too large.' });
-  const id = 'att' + crypto.randomBytes(9).toString('hex');
+// a photo (JPG, PNG, WebP) or a PDF; PDFs get a "doc" id so the app shows them as a document, not a picture
+async function storeUpload(req) {
+  const m = /^data:(image\/(?:jpeg|png|webp)|application\/pdf);base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body.data || ''));
+  if (!m) return { error: 'That file is not a JPG, PNG or WebP photo or a PDF.' };
+  if (m[2].length > 4.2e6) return { error: 'That file is too large (3 MB max). Take a photo of it instead.' };
+  const id = (m[1] === 'application/pdf' ? 'doc' : 'att') + crypto.randomBytes(9).toString('hex');
   await put('_img/' + id, { type: m[1], b64: m[2], rep: req.s.role === 'owner' ? (String(req.body.rep || '') || null) : req.s.rep, by: uidOf(req.s), at: new Date().toISOString() });
-  res.json({ ok: true, id });
+  return { id, type: m[1], b64: m[2] };
+}
+app.post('/api/upload', needApi(), async (req, res) => {
+  const up = await storeUpload(req); if (up.error) return res.status(400).json({ error: up.error });
+  res.json({ ok: true, id: up.id, kind: up.type === 'application/pdf' ? 'pdf' : 'image' });
 });
 app.delete('/api/upload/:id', needApi(), async (req, res) => {
   const k = '_img/' + req.params.id, d = docs.get(k);
-  if (!d || !/^att/.test(req.params.id)) return res.json({ ok: true });
+  if (!d || !/^(att|doc)/.test(req.params.id)) return res.json({ ok: true });
   if (req.s.role !== 'owner' && d.rep !== req.s.rep) return res.status(403).json({ error: 'Not yours' });
   await del(k); res.json({ ok: true });
+});
+
+/* ---------------- read a photo or invoice: what's on it fills in the case ----------------
+   With ANTHROPIC_API_KEY set, the file goes to Claude (READ_MODEL, default claude-sonnet-5-5) which returns the fields as JSON;
+   without the key the app reads the picture on the phone itself (text recognition) and picks out what it can. */
+const READ_MODEL = process.env.READ_MODEL || 'claude-sonnet-5-5';
+function knownNames() {
+  const products = new Set(), surgeons = new Set(), facilities = new Set();
+  for (const [k, d] of docs) {
+    if (!d) continue;
+    if (k.startsWith('products/')) (d.case_names && d.case_names.length ? d.case_names : [d.name]).forEach((n) => n && products.add(String(n).trim()));
+    else if (k.startsWith('surgeons/') && d.name) surgeons.add(String(d.name).trim());
+    else if (k.startsWith('facilities/') && d.name) facilities.add(String(d.name).trim());
+    else if (k.startsWith('cases/')) { if (d.product) products.add(String(d.product).trim()); if (d.surgeon) surgeons.add(String(d.surgeon).trim()); if (d.facility) facilities.add(String(d.facility).trim()); }
+  }
+  return { products: [...products].slice(0, 300), surgeons: [...surgeons].slice(0, 300), facilities: [...facilities].slice(0, 300) };
+}
+const ymdOrBlank = (v) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || '').trim()); if (!m) return ''; const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])); return isNaN(d) || d.getUTCMonth() !== +m[2] - 1 ? '' : m[0]; };
+const numOrNull = (v) => { if (v === null || v === undefined || v === '') return null; const n = Number(String(v).replace(/[$,\s]/g, '')); return isFinite(n) ? n : null; };
+const txt = (v, n) => String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, n);
+function cleanRead(o) {
+  o = o && typeof o === 'object' ? o : {};
+  const lines = (Array.isArray(o.lines) ? o.lines : []).slice(0, 40).map((l) => ({ product: txt(l.product, 120), ref: txt(l.ref, 60), lot: txt(l.lot, 60), expiration: ymdOrBlank(l.expiration), units: numOrNull(l.units), unit_price: numOrNull(l.unit_price), total: numOrNull(l.total) })).filter((l) => l.product || l.ref || l.lot);
+  return { doc_type: txt(o.doc_type, 30).toLowerCase(), date: ymdOrBlank(o.date), invoice_date: ymdOrBlank(o.invoice_date), surgeon: txt(o.surgeon, 120), facility: txt(o.facility, 160), po_number: txt(o.po_number, 60), invoice_number: txt(o.invoice_number, 60), total: numOrNull(o.total), notes: txt(o.notes, 600), lines };
+}
+async function readDocument(mediaType, b64) {
+  const key = process.env.ANTHROPIC_API_KEY; if (!key) return { engine: 'none' };
+  const names = knownNames();
+  const system = 'You read photos and PDFs of surgical-case paperwork for a medical device distributor: invoices, purchase orders, packing slips, delivery tickets and implant sticker sheets (product labels with REF, LOT and expiration). You answer with one JSON object and nothing else. Compliance: never return patient names, MRNs, dates of birth, account numbers or any other patient identifier; leave them out entirely.';
+  const prompt = 'Read this document and return JSON with exactly these keys:\n' +
+    '{"doc_type": "invoice" | "po" | "packing_slip" | "sticker_sheet" | "other",\n "date": "YYYY-MM-DD" (the surgery / date of service / delivery date if shown, else the document date; "" if none),\n "invoice_date": "YYYY-MM-DD" or "",\n "surgeon": "Dr. Lastname" style if a surgeon or physician is named, else "",\n "facility": the hospital, surgery center, clinic or ship-to / bill-to organisation, else "",\n "po_number": "", "invoice_number": "",\n "lines": [{"product": product name as printed, "ref": catalog/REF number, "lot": lot or batch, "expiration": "YYYY-MM-DD" or "", "units": number, "unit_price": number, "total": number}],\n "total": the document total as a number or null,\n "notes": one short line of anything else useful (terms, ship date), no patient details}\n' +
+    'Match names to these known lists when they clearly refer to the same thing (use the list spelling), otherwise use what is printed.\n' +
+    'Known products: ' + (names.products.join('; ') || '(none)') + '\nKnown surgeons: ' + (names.surgeons.join('; ') || '(none)') + '\nKnown facilities: ' + (names.facilities.join('; ') || '(none)') + '\nUse null for numbers you cannot read and "" for text you cannot read. JSON only.';
+  const file = mediaType === 'application/pdf' ? { type: 'document', source: { type: 'base64', media_type: mediaType, data: b64 } } : { type: 'image', source: { type: 'base64', media_type: mediaType, data: b64 } };
+  const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+    body: JSON.stringify({ model: READ_MODEL, max_tokens: 1500, system, messages: [{ role: 'user', content: [file, { type: 'text', text: prompt }] }] }) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error((j.error && j.error.message) || ('the AI reader answered ' + r.status));
+  const text = (j.content || []).map((c) => c.text || '').join('');
+  const m = /\{[\s\S]*\}/.exec(text); let out;
+  try { out = JSON.parse(m ? m[0] : text); } catch (e) { throw new Error('the AI reader sent back something that was not a form'); }
+  return { engine: 'ai', model: READ_MODEL, fields: cleanRead(out) };
+}
+app.post('/api/read-doc', needApi(), async (req, res) => {
+  const up = await storeUpload(req); if (up.error) return res.status(400).json({ error: up.error });
+  let read;
+  try { read = await readDocument(up.type, up.b64); } catch (e) { console.error('read-doc', e.message); read = { engine: 'ai', error: e.message }; }
+  res.json({ ok: true, id: up.id, kind: up.type === 'application/pdf' ? 'pdf' : 'image', ...read });
 });
 
 /* ---------------- case invoices: the rep attaches the invoice (photo or PDF) with its details; it waits for the COO ---------------- */
@@ -1067,7 +1120,7 @@ app.post('/api/cases/:id/invoice', needApi(), async (req, res) => {
   if (closedMonth(c.date)) return res.status(423).json({ error: monthLabel(closedMonth(c.date)) + ' is closed. Ask the COO to reopen it.' });
   if (c.invoice && c.invoice.status === 'approved' && req.s.role !== 'owner') return res.status(409).json({ error: 'This invoice is already approved. Ask the COO to change it.' });
   const b = req.body || {}, amount = Number(String(b.amount ?? '').replace(/[$,\s]/g, ''));
-  const files = (Array.isArray(b.files) ? b.files : []).map(String).filter((id) => /^att[0-9a-f]+$/.test(id) && docs.has('_img/' + id)).slice(0, 10);
+  const files = (Array.isArray(b.files) ? b.files : []).map(String).filter((id) => /^(att|doc)[0-9a-f]+$/.test(id) && docs.has('_img/' + id)).slice(0, 10);
   const why = [];
   if (!String(b.number || '').trim()) why.push('the invoice number');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(b.date || ''))) why.push('the invoice date');

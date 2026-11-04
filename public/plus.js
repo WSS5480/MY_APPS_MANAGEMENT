@@ -1,5 +1,5 @@
 /* 360 MEDICAL PORTAL · additions
-   Barcode/UDI scan, price book, PO-to-paid pipeline, photo attachments, data checks, change history,
+   Photo / invoice reader (fills the case), price book, PO-to-paid pipeline, photo attachments, data checks, change history,
    commission statement, case calendar, surgeon preference cards, pathway visit log, hospital credentials,
    voice notes and notifications. Hooks into the portal through window.SCT / window.SCTX. */
 (function () {
@@ -195,63 +195,100 @@
     });
     return best;
   }
-  function handleCode(raw) {
-    var msg = $('#ce-scanmsg'), g = parseCode(raw);
-    if (!g.raw) return;
-    $('#ce-udi').value = g.raw;
-    if (g.lot) $('#ce-lot').value = g.lot;
-    if (g.exp) $('#ce-exp').value = g.exp;
-    var found = [g.lot ? 'lot ' + g.lot : '', g.exp ? 'exp ' + dayName(g.exp) : ''].filter(Boolean);
-    var finish = function (product, note, ok) {
-      if (product) { $('#ce-product').value = product; autoPrice(); }
-      msg.className = 'x-scanmsg ' + (ok ? 'ok' : product ? 'ok' : '');
-      msg.textContent = [product ? 'Product: ' + product : '', found.join(', '), note].filter(Boolean).join(' · ');
-      if (g.exp && g.exp < TODAY) { msg.className = 'x-scanmsg bad'; msg.textContent = '⚠ EXPIRED ' + dayName(g.exp) + ' · ' + msg.textContent; }
-      T.editorChanged(0); T.render();
-    };
-    if (!g.di) return finish(null, 'Barcode saved; no device ID found in it.');
-    var local = productByDI(g.di);
-    if (local) return finish(local, '', true);
-    msg.className = 'x-scanmsg'; msg.textContent = 'Looking up device ' + g.di + '…';
-    api('/api/udi/' + encodeURIComponent(g.di)).then(function (j) {
-      if (j.product_id) { var p = S.products.find(function (x) { return x.id === j.product_id; }); return finish(p ? ((p.case_names && p.case_names[0]) || p.name) : null, '', true); }
-      if (!j.found) return finish(null, j.error || 'Device ' + g.di + ' not found in the FDA database. Pick the product.');
-      var match = productByName(j.brand, j.company);
-      finish(match, 'FDA: ' + [j.brand, j.company].filter(Boolean).join(' · ') + (match ? '' : ' — not in our catalog, pick the product'));
-    }, function () { finish(null, 'Could not reach the device lookup. Pick the product.'); });
+  /* ---------- read a photo or invoice into the case ---------- */
+  // The file is saved on the case, then read: on the server by the AI reader when the key is set; otherwise the phone reads the text itself.
+  function readPdf(file) { return new Promise(function (ok, bad) { if (file.size > 3e6) return bad({ error: 'That PDF is over 3 MB. Take a photo of it instead.' }); var r = new FileReader(); r.onload = function () { ok(r.result); }; r.onerror = bad; r.readAsDataURL(file); }); }
+  // fills an empty field (or a default: today's date, 1 unit); a value the rep typed stays, and the difference is pointed out
+  function setIf(sel, v, filled, label, force, differs) { var i = $(sel); if (v === '' || v === null || v === undefined) return; if (i.value && !force) { if (differs && lc(i.value) !== lc(v)) differs.push(label + ' (document says ' + v + ')'); return; } i.value = v; filled.push(label); }
+  function bestProduct(name, ref) {
+    if (!name && !ref) return '';
+    var n = lc(name), best = '', bestLen = 0;
+    S.products.forEach(function (p) {
+      var label = (p.case_names && p.case_names[0]) || p.name;
+      [p.name].concat(p.case_names || []).forEach(function (x) {
+        var k = lc(x).replace(/[®™]/g, '').trim(); if (k.length < 4) return;
+        if (k === n) { best = label; bestLen = 1e9; }
+        else if (bestLen < 1e9 && (n.indexOf(k) >= 0 || k.indexOf(n) >= 0) && k.length > bestLen) { best = label; bestLen = k.length; }
+      });
+    });
+    return best || name || ref;
   }
-  var scanStream = null, scanStop = null;
-  function openScanner() {
-    var m = $('#x-scan'); m.hidden = false; $('#x-scanmsg').textContent = 'Starting camera…';
-    var v = $('#x-video');
-    var done = function (text) { closeScanner(); handleCode(text); };
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { $('#x-scanmsg').textContent = 'This browser cannot use the camera. Type or paste the barcode instead.'; return; }
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }).then(function (stream) {
-      scanStream = stream; v.srcObject = stream; v.play().catch(function () {});
-      $('#x-scanmsg').textContent = 'Hold the product label barcode inside the frame.';
-      if ('BarcodeDetector' in window) {
-        var det = new window.BarcodeDetector({ formats: ['data_matrix', 'code_128', 'qr_code', 'ean_13', 'upc_a', 'code_39'] }), live = true;
-        scanStop = function () { live = false; };
-        var tick = function () { if (!live) return; det.detect(v).then(function (r) { if (r && r[0] && r[0].rawValue) done(r[0].rawValue); else setTimeout(tick, 250); }, function () { setTimeout(tick, 400); }); };
-        tick();
-      } else loadZXing().then(function (Z) {
-        var reader = new Z.BrowserMultiFormatReader(), live = true; scanStop = function () { live = false; try { reader.reset(); } catch (e) {} };
-        var loop = function () { if (!live) return; reader.decodeOnceFromVideoElement(v).then(function (r) { if (live) done(r.getText()); }, function () { setTimeout(loop, 300); }); };
-        loop();
-      }, function () { $('#x-scanmsg').textContent = 'The scanner could not load. Type or paste the barcode instead.'; });
-    }, function () { $('#x-scanmsg').textContent = 'Camera permission was blocked. Allow the camera, or type the barcode.'; });
+  function fillFromFields(f) {
+    var filled = [], differs = [], lines = f.lines || [];
+    // the case is one product: the biggest line fills the product fields, the rest go in the notes
+    var main = lines.slice().sort(function (a, b) { return (b.total || 0) - (a.total || 0); })[0] || null;
+    if (f.date) setIf('#ce-date', f.date, filled, 'date', $('#ce-date').value === TODAY);
+    else if (f.invoice_date) setIf('#ce-date', f.invoice_date, filled, 'date', $('#ce-date').value === TODAY);
+    setIf('#ce-surgeon', f.surgeon, filled, 'surgeon', false, differs);
+    setIf('#ce-facility', f.facility, filled, 'facility', false, differs);
+    if (main) {
+      var prod = bestProduct(main.product, main.ref); setIf('#ce-product', prod, filled, 'product', false, differs);
+      setIf('#ce-lot', main.lot, filled, 'lot', false, differs); setIf('#ce-exp', main.expiration, filled, 'expiration', false, differs);
+      if (main.units !== null && main.units !== undefined) setIf('#ce-units', String(main.units), filled, 'units', $('#ce-units').value === '1' || $('#ce-units').value === '0', differs);
+    }
+    var sales = f.total !== null && f.total !== undefined ? f.total : (main && main.total !== null && main.total !== undefined ? main.total : null);
+    if (sales !== null && sales > 0) setIf('#ce-sales', String(Math.round(sales * 100) / 100), filled, 'net sales', false, differs);
+    setIf('#ce-po', f.po_number || f.invoice_number, filled, 'PO / invoice #', false, differs);
+    var extra = [];
+    if (lines.length > 1) extra.push('Lines: ' + lines.map(function (l) { return [l.product || l.ref, l.units != null ? '×' + l.units : '', l.total != null ? '$' + l.total : ''].filter(Boolean).join(' '); }).join('; '));
+    if (f.po_number && f.invoice_number && f.po_number !== f.invoice_number) extra.push('Invoice ' + f.invoice_number);
+    if (f.notes) extra.push(f.notes);
+    if (extra.length) { var nt = $('#ce-notes'); var add = extra.join(' · '); if (nt.value.indexOf(add) < 0) { nt.value = (nt.value ? nt.value + '\n' : '') + add; filled.push('notes'); } }
+    if (filled.indexOf('product') >= 0 || filled.indexOf('units') >= 0 || filled.indexOf('facility') >= 0) autoPrice();
+    filled.differs = differs;
+    filled.any = !!(f.date || f.invoice_date || f.surgeon || f.facility || f.po_number || f.invoice_number || f.total || lines.length);
+    return filled;
   }
-  var zx = null;
-  function loadZXing() {
-    if (window.ZXing) return Promise.resolve(window.ZXing);
-    if (zx) return zx;
-    zx = new Promise(function (ok, bad) { var sc = document.createElement('script'); sc.src = 'https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js'; sc.onload = function () { ok(window.ZXing); }; sc.onerror = bad; document.head.appendChild(sc); });
-    return zx;
+  // without the server-side AI reader: text recognition in the browser (tesseract.js, loaded on first use), then the obvious fields
+  var tess = null;
+  function loadTesseract() {
+    if (window.Tesseract) return Promise.resolve(window.Tesseract);
+    if (tess) return tess;
+    tess = new Promise(function (ok, bad) { var sc = document.createElement('script'); sc.src = 'https://unpkg.com/tesseract.js@5.1.1/dist/tesseract.min.js'; sc.onload = function () { ok(window.Tesseract); }; sc.onerror = function () { tess = null; bad(new Error('offline')); }; document.head.appendChild(sc); });
+    return tess;
   }
-  function closeScanner() {
-    if (scanStop) scanStop(); scanStop = null;
-    if (scanStream) scanStream.getTracks().forEach(function (t) { t.stop(); }); scanStream = null;
-    $('#x-scan').hidden = true;
+  function fieldsFromText(text) {
+    var t = text.replace(/[|]/g, 'I'), out = { lines: [] }, g = function (re) { var m = re.exec(t); return m ? m[1].trim() : ''; };
+    var toYmd = function (v) { var m = /^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})$/.exec(v || ''); if (!m) return /^\d{4}-\d{2}-\d{2}$/.test(v || '') ? v : ''; var y = m[3].length === 2 ? '20' + m[3] : m[3]; return y + '-' + String(m[1]).padStart(2, '0') + '-' + String(m[2]).padStart(2, '0'); };
+    out.invoice_number = g(/\binv(?:oice)?\.?\s*(?:#|no\.?|number)?\s*[:#]?\s*([A-Z0-9][A-Z0-9-]{2,})/i);
+    out.po_number = g(/\bP\.?O\.?\s*(?:#|no\.?|number)?\s*[:#]?\s*([A-Z0-9][A-Z0-9-]{2,})/i);
+    out.date = toYmd(g(/\b(?:date of (?:service|surgery|procedure)|surgery date|procedure date|service date|DOS)\s*[:#]?\s*(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}|\d{4}-\d{2}-\d{2})/i));
+    out.invoice_date = toYmd(g(/\b(?:invoice date|date)\s*[:#]?\s*(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}|\d{4}-\d{2}-\d{2})/i)) || toYmd(g(/\b(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{4})\b/));
+    var tot = g(/\b(?:total|amount due|balance due|invoice total)\b[^\d$\n]{0,20}\$?\s*([\d,]+\.\d{2})/i); out.total = tot ? Number(tot.replace(/,/g, '')) : null;
+    var line = { product: '', ref: g(/\bREF\s*[:#]?\s*([A-Z0-9][A-Z0-9-]{2,})/i), lot: g(/\bLOT\s*(?:#|no\.?)?\s*[:#]?\s*([A-Z0-9][A-Z0-9-]{2,})/i), expiration: toYmd(g(/\b(?:EXP|expir\w*)\.?\s*[:#]?\s*(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}|\d{4}-\d{2}-\d{2})/i)), units: null, unit_price: null, total: null };
+    var q = g(/\b(?:qty|quantity|units)\s*[:#]?\s*(\d{1,3})\b/i); if (q) line.units = Number(q);
+    var low = lc(t);
+    S.products.forEach(function (p) { if (line.product) return; [p.name].concat(p.case_names || []).forEach(function (n) { var core = lc(n).replace(/[®™]/g, '').split(/[ \/]/)[0]; if (!line.product && core.length > 3 && low.indexOf(core) >= 0) line.product = (p.case_names && p.case_names[0]) || p.name; }); });
+    if (line.product || line.ref || line.lot) out.lines.push(line);
+    var pick = function (listId) { var hit = ''; Array.prototype.forEach.call(document.querySelectorAll('#' + listId + ' option'), function (o) { var v = o.value; if (!hit && v.length > 3 && low.indexOf(lc(v)) >= 0) hit = v; }); return hit; };
+    out.surgeon = pick('dl-surgeons') || g(/\b(Dr\.?\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/);
+    out.facility = pick('dl-facilities');
+    return out;
+  }
+  function readOnDevice(file, msg) {
+    if (/pdf$/i.test(file.type)) { msg.textContent = 'Saved to the case. Reading a PDF needs the AI reader on the server (ANTHROPIC_API_KEY); a photo can be read here.'; return Promise.resolve([]); }
+    msg.textContent = 'Reading the photo on this device (first time takes a moment)…';
+    return loadTesseract().then(function (Tz) { return Tz.recognize(file, 'eng'); }).then(function (r) { return fillFromFields(fieldsFromText((r && r.data && r.data.text) || '')); });
+  }
+  function readDoc(file) {
+    var msg = $('#ce-scanmsg'), c = curCase(); if (!file) return;
+    if (!c) { msg.className = 'x-scanmsg bad'; msg.textContent = 'Start the case first (Log a case), then add the photo.'; return; }
+    msg.className = 'x-scanmsg'; msg.textContent = 'Saving ' + file.name + '…';
+    ['#ce-photo', '#ce-upload'].forEach(function (s) { $(s).disabled = true; });
+    var go = /pdf$/i.test(file.type) ? readPdf(file) : shrink(file);
+    go.then(function (data) { msg.textContent = 'Reading ' + file.name + '…'; return api('/api/read-doc', { data: data, rep: c.rep }); }).then(function (j) {
+      var cc = curCase() || c; setAtt(cc, (cc.attachments || []).concat([j.id])); drawAtt();
+      var done = function (filled, how) {
+        msg.className = 'x-scanmsg ' + (filled.length ? 'ok' : '');
+        var kept = filled.differs && filled.differs.length ? ' Left as you typed: ' + filled.differs.join(', ') + '.' : '';
+        msg.textContent = (filled.length ? 'Filled in from the ' + (j.kind === 'pdf' ? 'PDF' : 'photo') + ': ' + filled.join(', ') + '. Check them before you tap Done.' : 'Saved to the case; ' + (filled.any ? 'the case already has what is on it.' : 'nothing on it matched the case fields.')) + kept + (how ? ' (' + how + ')' : '');
+        T.editorChanged(0); T.render();
+      };
+      if (j.engine === 'ai' && j.fields) return done(fillFromFields(j.fields), '');
+      if (j.engine === 'ai' && j.error) { msg.className = 'x-scanmsg bad'; msg.textContent = 'Saved to the case, but the AI reader failed: ' + j.error; return; }
+      return readOnDevice(file, msg).then(function (filled) { done(filled, 'read on this device'); }, function () { msg.textContent = 'Saved to the case. It could not be read here (no connection to the reader); fill the fields in by hand.'; });
+    }, function (e) { msg.className = 'x-scanmsg bad'; msg.textContent = (e && e.error) || (navigator.onLine ? 'Could not save that file.' : 'Photos need a connection: try again when online.'); })
+      .then(function () { ['#ce-photo', '#ce-upload'].forEach(function (s) { $(s).disabled = false; }); });
   }
 
   /* ---------- attachments ---------- */
@@ -271,7 +308,9 @@
     attSig = c.id + ':' + (c.attachments || []).join(',');
     (c.attachments || []).forEach(function (id) {
       var w = el('div', 'x-thumb'), a = el('a'); a.href = '/img/' + encodeURIComponent(id); a.target = '_blank'; a.rel = 'noopener';
-      var im = el('img'); im.src = a.href; im.alt = 'Attachment'; a.appendChild(im); w.appendChild(a);
+      if (/^doc/.test(id)) { a.className = 'x-doc'; a.textContent = '📄 PDF'; a.title = 'Open the PDF'; }
+      else { var im = el('img'); im.src = a.href; im.alt = 'Attachment'; a.appendChild(im); }
+      w.appendChild(a);
       var x = el('button', '', '×'); x.type = 'button'; x.setAttribute('aria-label', 'Remove photo');
       x.addEventListener('click', function () { if (!confirm('Remove this photo from the case?')) return; var list = (c.attachments || []).filter(function (i) { return i !== id; }); setAtt(c, list); api('/api/upload/' + encodeURIComponent(id), null, 'DELETE').catch(function () {}); drawAtt(); });
       w.appendChild(x); box.appendChild(w);
@@ -414,7 +453,7 @@
     drawAtt(); invSig = ''; drawInv(); priceHint(); drawPrefHint(); drawChecks(c, c.id);
     addMic($('#ce-notes'));
   }
-  function closeEditor() { blockMsg = ''; closeScanner(); }
+  function closeEditor() { blockMsg = ''; }
 
   /* ---------- extra alerts ---------- */
   function alerts(M, tstatus, repFilter) {
@@ -1112,16 +1151,13 @@
 
   /* ---------- wiring ---------- */
   function shell() {
-    var m = el('div', 'x-modal'); m.id = 'x-scan'; m.hidden = true;
-    var box = el('div', 'x-scanbox'); box.appendChild(el('b', '', 'Scan the product label'));
-    var v = el('video'); v.id = 'x-video'; v.setAttribute('playsinline', ''); v.muted = true; box.appendChild(v);
-    var p = el('div', 'note'); p.id = 'x-scanmsg'; box.appendChild(p);
-    box.appendChild(btn('Cancel', '', closeScanner)); m.appendChild(box); document.body.appendChild(m);
     var st = el('div', 'x-stmt'); st.id = 'x-stmt'; st.hidden = true; var sh = el('div', 'x-sheet'); sh.id = 'x-sheet'; st.appendChild(sh); document.body.appendChild(st);
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { if (!$('#x-scan').hidden) closeScanner(); else if (!$('#x-stmt').hidden) closeStatement(); } });
-    $('#ce-scan').addEventListener('click', openScanner);
-    $('#ce-udi').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); handleCode(e.target.value); } });
-    $('#ce-udi').addEventListener('change', function (e) { handleCode(e.target.value); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { if (!$('#x-stmt').hidden) closeStatement(); } });
+    // a photo or an invoice: saved on the case and read into the fields
+    $('#ce-photo').addEventListener('click', function () { $('#ce-photo-in').click(); });
+    $('#ce-upload').addEventListener('click', function () { $('#ce-upload-in').click(); });
+    ['#ce-photo-in', '#ce-upload-in'].forEach(function (sel) { $(sel).addEventListener('change', function (e) { var f = e.target.files && e.target.files[0]; e.target.value = ''; readDoc(f); }); });
+    if (!(window.matchMedia && matchMedia('(pointer: coarse)').matches)) $('#ce-photo').hidden = true; // desktops have no camera to point at paper
     ['#ce-product', '#ce-facility', '#ce-units'].forEach(function (s) { $(s).addEventListener('input', autoPrice); $(s).addEventListener('change', autoPrice); });
     $('#ce-sales').addEventListener('input', priceHint);
     $('#ce-surgeon').addEventListener('change', function () { var c = curCase(); var p = c && prefFor($('#ce-rep').value || c.rep, $('#ce-surgeon').value); if (p && !$('#ce-product').value) applyPref(p, false); drawPrefHint(); });
