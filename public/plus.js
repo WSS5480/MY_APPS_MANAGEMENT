@@ -197,7 +197,20 @@
   }
   /* ---------- read a photo or invoice into the case ---------- */
   // The file is saved on the case, then read: on the server by the AI reader when the key is set; otherwise the phone reads the text itself.
-  function readPdf(file) { return new Promise(function (ok, bad) { if (file.size > 3e6) return bad({ error: 'That PDF is over 3 MB. Take a photo of it instead.' }); var r = new FileReader(); r.onload = function () { ok(r.result); }; r.onerror = bad; r.readAsDataURL(file); }); }
+  // a PDF of any size becomes page photos on the phone (first 8 pages, 1800 px, JPEG): read like photos, shown as thumbnails
+  var pdfLib = null;
+  function pdfToImages(file, onPage) {
+    if (!pdfLib) pdfLib = import('/vendor/pdf.min.mjs').then(function (m) { m.GlobalWorkerOptions.workerSrc = '/vendor/pdf.worker.min.mjs'; return m; });
+    return pdfLib.then(function (pdfjs) { return file.arrayBuffer().then(function (buf) { return pdfjs.getDocument({ data: buf }).promise; }); }).then(function (doc) {
+      var n = Math.min(doc.numPages, 8), out = [], chain = Promise.resolve();
+      for (var i = 1; i <= n; i++) (function (pg) { chain = chain.then(function () { return doc.getPage(pg); }).then(function (page) {
+        var v0 = page.getViewport({ scale: 1 }), sc = Math.min(3, 1800 / Math.max(v0.width, v0.height)), vp = page.getViewport({ scale: sc });
+        var c = document.createElement('canvas'); c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+        return page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise.then(function () { out.push(c.toDataURL('image/jpeg', 0.85)); if (onPage) onPage(pg, n); });
+      }); })(i);
+      return chain.then(function () { return out; });
+    }, function (e) { throw { error: 'That PDF could not be opened' + (e && e.message ? ' (' + e.message + ')' : '') + '. Take a photo of it instead.' }; });
+  }
   // fills an empty field (or a default: today's date, 1 unit); a value the rep typed stays, and the difference is pointed out
   function setIf(sel, v, filled, label, force, differs) { var i = $(sel); if (v === '' || v === null || v === undefined) return; if (i.value && !force) { if (differs && lc(i.value) !== lc(v)) differs.push(label + ' (document says ' + v + ')'); return; } i.value = v; filled.push(label); }
   function bestProduct(name, ref) {
@@ -265,28 +278,37 @@
     out.facility = pick('dl-facilities');
     return out;
   }
-  function readOnDevice(file, msg) {
-    if (/pdf$/i.test(file.type)) { msg.textContent = 'Saved to the case. Reading a PDF needs the AI reader on the server (ANTHROPIC_API_KEY); a photo can be read here.'; return Promise.resolve([]); }
-    msg.textContent = 'Reading the photo on this device (first time takes a moment)…';
-    return loadTesseract().then(function (Tz) { return Tz.recognize(file, 'eng'); }).then(function (r) { return fillFromFields(fieldsFromText((r && r.data && r.data.text) || '')); });
+  function readOnDevice(file, msg, firstPage) {
+    msg.textContent = 'Reading it on this device (first time takes a moment)…';
+    return loadTesseract().then(function (Tz) { return Tz.recognize(firstPage || file, 'eng'); }).then(function (r) { return fillFromFields(fieldsFromText((r && r.data && r.data.text) || '')); });
   }
   function readDoc(file) {
     var msg = $('#ce-scanmsg'), c = curCase(); if (!file) return;
     if (!c) { msg.className = 'x-scanmsg bad'; msg.textContent = 'Start the case first (Log a case), then add the photo.'; return; }
     msg.className = 'x-scanmsg'; msg.textContent = 'Saving ' + file.name + '…';
     ['#ce-photo', '#ce-upload'].forEach(function (s) { $(s).disabled = true; });
-    var go = /pdf$/i.test(file.type) ? readPdf(file) : shrink(file);
-    go.then(function (data) { msg.textContent = 'Reading ' + file.name + '…'; return api('/api/read-doc', { data: data, rep: c.rep }); }).then(function (j) {
-      var cc = curCase() || c; setAtt(cc, (cc.attachments || []).concat([j.id])); drawAtt();
+    var isPdf = /pdf$/i.test(file.type) || /\.pdf$/i.test(file.name);
+    var go = isPdf ? pdfToImages(file, function (pg, n) { msg.textContent = 'Preparing page ' + pg + ' of ' + n + '…'; }).then(function (pages) { return { pages: pages }; }) : shrink(file).then(function (data) { return { data: data }; });
+    var firstPage = null, extra = [];
+    go.then(function (body) { msg.textContent = 'Reading ' + file.name + '…'; body.rep = c.rep; firstPage = body.pages ? body.pages[0] : body.data;
+      if (body.pages && body.pages.length > 4) { extra = body.pages.slice(4); body.pages = body.pages.slice(0, 4); } // the first pages are read; the rest are saved after
+      return api('/api/read-doc', body);
+    }).then(function (j) { j.firstPage = firstPage;
+      var ids = j.ids || [j.id], chain = Promise.resolve();
+      extra.forEach(function (data) { chain = chain.then(function () { return api('/api/upload', { data: data, rep: c.rep }); }).then(function (u) { ids.push(u.id); }, function () {}); });
+      return chain.then(function () { j.pages = ids.length; j.allIds = ids; return j; });
+    }).then(function (j) {
+      var cc = curCase() || c; setAtt(cc, (cc.attachments || []).concat(j.allIds || j.ids || [j.id])); drawAtt();
       var done = function (filled, how) {
         msg.className = 'x-scanmsg ' + (filled.length ? 'ok' : '');
         var kept = filled.differs && filled.differs.length ? ' Left as you typed: ' + filled.differs.join(', ') + '.' : '';
-        msg.textContent = (filled.length ? 'Filled in from the ' + (j.kind === 'pdf' ? 'PDF' : 'photo') + ': ' + filled.join(', ') + '. Check them before you tap Done.' : 'Saved to the case; ' + (filled.any ? 'the case already has what is on it.' : 'nothing on it matched the case fields.')) + kept + (how ? ' (' + how + ')' : '');
+        var what = isPdf ? 'PDF' + (j.pages > 1 ? ' (' + j.pages + ' pages)' : '') : 'photo';
+        msg.textContent = (filled.length ? 'Filled in from the ' + what + ': ' + filled.join(', ') + '. Check them before you tap Done.' : 'Saved to the case; ' + (filled.any ? 'the case already has what is on it.' : 'nothing on it matched the case fields.')) + kept + (how ? ' (' + how + ')' : '');
         T.editorChanged(0); T.render();
       };
       if (j.engine === 'ai' && j.fields) return done(fillFromFields(j.fields), '');
       if (j.engine === 'ai' && j.error) { msg.className = 'x-scanmsg bad'; msg.textContent = 'Saved to the case, but the AI reader failed: ' + j.error; return; }
-      return readOnDevice(file, msg).then(function (filled) { done(filled, 'read on this device'); }, function () { msg.textContent = 'Saved to the case. It could not be read here (no connection to the reader); fill the fields in by hand.'; });
+      return readOnDevice(file, msg, j.firstPage).then(function (filled) { done(filled, 'read on this device'); }, function () { msg.textContent = 'Saved to the case. It could not be read here (no connection to the reader); fill the fields in by hand.'; });
     }, function (e) { msg.className = 'x-scanmsg bad'; msg.textContent = (e && e.error) || (navigator.onLine ? 'Could not save that file.' : 'Photos need a connection: try again when online.'); })
       .then(function () { ['#ce-photo', '#ce-upload'].forEach(function (s) { $(s).disabled = false; }); });
   }
@@ -359,8 +381,9 @@
         var inp = el('input'); inp.type = 'file'; inp.accept = o[1]; inp.hidden = true; if (o[2]) inp.setAttribute('capture', 'environment');
         var b = btn(o[0], 'small', function () { inp.click(); });
         inp.onchange = function () { var file = inp.files[0]; if (!file) return; b.textContent = 'Uploading…'; b.disabled = true;
-          var go = /pdf$/i.test(file.type) ? new Promise(function (ok, bad) { if (file.size > 3e6) return bad({ error: 'That PDF is over 3 MB. Take a photo of it instead.' }); var r = new FileReader(); r.onload = function () { ok(r.result); }; r.onerror = bad; r.readAsDataURL(file); }) : shrink(file);
-          go.then(function (data) { return api('/api/upload', { data: data, rep: c.rep }); }).then(function (j) { files.push(j.id); drawFiles(); }, function (e) { b.disabled = false; b.textContent = o[0]; msg.className = 'msg err'; msg.hidden = false; msg.textContent = (e && e.error) || 'Upload failed.'; }); };
+          var isPdf = /pdf$/i.test(file.type) || /\.pdf$/i.test(file.name);
+          var go = isPdf ? pdfToImages(file, function (pg, n) { b.textContent = 'Page ' + pg + ' of ' + n + '…'; }) : shrink(file).then(function (d) { return [d]; });
+          go.then(function (pages) { var chain = Promise.resolve(); pages.forEach(function (data) { chain = chain.then(function () { return api('/api/upload', { data: data, rep: c.rep }); }).then(function (j) { files.push(j.id); }); }); return chain; }).then(function () { drawFiles(); }, function (e) { b.disabled = false; b.textContent = o[0]; msg.className = 'msg err'; msg.hidden = false; msg.textContent = (e && e.error) || 'Upload failed.'; }); };
         fl.appendChild(b); fl.appendChild(inp);
       });
     }

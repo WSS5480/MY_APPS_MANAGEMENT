@@ -273,7 +273,7 @@ function clean(d) {
 /* ---------------- app ---------------- */
 const app = express();
 app.set('trust proxy', 1);
-app.use(express.json({ limit: '5mb' }));
+app.use(express.json({ limit: '12mb' })); // a few PDF pages as photos in one request
 require('./server/migrate')(app, () => pool); // moving workspaces: data copy + forwarding (off unless MIGRATE_SECRET / REDIRECT_TO are set)
 app.use((req, res, next) => { const hub = String(process.env.HUB_URL || '').replace(/\/$/, ''); if (hub && process.env.HUB_SECRET) res.setHeader('Content-Security-Policy', `frame-ancestors 'self' ${hub}`); else res.setHeader('X-Frame-Options', 'SAMEORIGIN'); res.setHeader('Referrer-Policy', 'same-origin'); res.setHeader('X-Robots-Tag', 'noindex'); next(); });
 
@@ -322,6 +322,7 @@ app.get('/media/:id', async (req, res) => {
   } catch (e) { res.status(500).end(); }
 });
 app.get(['/logo.png', '/logo-dark.png', '/collapse.js', '/d3.min.js', '/shim.js', '/plus.js', '/plus.css', '/addr.js', '/wcu.js', '/leader.js', '/uni.js', '/import.js', '/logins.js', '/admin-pages.js', '/admin-dash.js', '/exec.js', '/replist.js', '/visitcal.js', '/idle.js', '/zoom.js', '/spin.js', '/install.js', '/ptr.js', '/update.js', '/webauthn.js', '/qrious.min.js', '/app.css', '/theme-360.css', '/icon-admin-192.png', '/icon-admin-512.png', '/icon-admin-maskable-512.png', '/apple-touch-icon-admin.png', '/sw.js', '/favicon.png', '/icon-192.png', '/icon-512.png', '/icon-maskable-512.png', '/apple-touch-icon.png'], (req, res) => { if (req.path === '/sw.js') res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(pub, req.path)); });
+app.get(['/vendor/pdf.min.mjs', '/vendor/pdf.worker.min.mjs'], (req, res) => { res.type('text/javascript'); res.setHeader('Cache-Control', 'public, max-age=31536000, immutable'); res.sendFile(path.join(pub, req.path)); }); // pdf.js (Apache-2.0): turns an uploaded PDF into page photos on the phone
 app.get('/manifest.webmanifest', (req, res) => { res.type('application/manifest+json'); res.sendFile(path.join(pub, 'manifest.webmanifest')); });
 app.get('/admin.webmanifest', (req, res) => { res.type('application/manifest+json'); res.sendFile(path.join(pub, 'admin.webmanifest')); });
 
@@ -1045,8 +1046,8 @@ app.get('/api/audit/:id', needApi(), (req, res) => {
 
 /* ---------------- attachments (PO / sticker sheet photos) ---------------- */
 // a photo (JPG, PNG, WebP) or a PDF; PDFs get a "doc" id so the app shows them as a document, not a picture
-async function storeUpload(req) {
-  const m = /^data:(image\/(?:jpeg|png|webp)|application\/pdf);base64,([A-Za-z0-9+/=]+)$/.exec(String(req.body.data || ''));
+async function storeUpload(req, dataUrl) {
+  const m = /^data:(image\/(?:jpeg|png|webp)|application\/pdf);base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl !== undefined ? dataUrl : req.body.data || ''));
   if (!m) return { error: 'That file is not a JPG, PNG or WebP photo or a PDF.' };
   if (m[2].length > 4.2e6) return { error: 'That file is too large (3 MB max). Take a photo of it instead.' };
   const id = (m[1] === 'application/pdf' ? 'doc' : 'att') + crypto.randomBytes(9).toString('hex');
@@ -1087,7 +1088,7 @@ function cleanRead(o) {
   const lines = (Array.isArray(o.lines) ? o.lines : []).slice(0, 40).map((l) => ({ product: txt(l.product, 120), ref: txt(l.ref, 60), lot: txt(l.lot, 60), expiration: ymdOrBlank(l.expiration), units: numOrNull(l.units), unit_price: numOrNull(l.unit_price), total: numOrNull(l.total) })).filter((l) => l.product || l.ref || l.lot);
   return { doc_type: txt(o.doc_type, 30).toLowerCase(), date: ymdOrBlank(o.date), invoice_date: ymdOrBlank(o.invoice_date), surgeon: txt(o.surgeon, 120), facility: txt(o.facility, 160), po_number: txt(o.po_number, 60), invoice_number: txt(o.invoice_number, 60), total: numOrNull(o.total), notes: txt(o.notes, 600), lines };
 }
-async function readDocument(mediaType, b64) {
+async function readDocument(files) { // [{ type, b64 }]: one photo or PDF, or the pages of a PDF as photos
   const key = process.env.ANTHROPIC_API_KEY; if (!key) return { engine: 'none' };
   const names = knownNames();
   const system = 'You read photos and PDFs of surgical-case paperwork for a medical device distributor: invoices, purchase orders, packing slips, delivery tickets and implant sticker sheets (product labels with REF, LOT and expiration). You answer with one JSON object and nothing else. Compliance: never return patient names, MRNs, dates of birth, account numbers or any other patient identifier; leave them out entirely.';
@@ -1095,9 +1096,9 @@ async function readDocument(mediaType, b64) {
     '{"doc_type": "invoice" | "po" | "packing_slip" | "sticker_sheet" | "other",\n "date": "YYYY-MM-DD" (the surgery / date of service / delivery date if shown, else the document date; "" if none),\n "invoice_date": "YYYY-MM-DD" or "",\n "surgeon": "Dr. Lastname" style if a surgeon or physician is named, else "",\n "facility": the hospital, surgery center, clinic or ship-to / bill-to organisation, else "",\n "po_number": "", "invoice_number": "",\n "lines": [{"product": product name as printed, "ref": catalog/REF number, "lot": lot or batch, "expiration": "YYYY-MM-DD" or "", "units": number, "unit_price": number, "total": number}],\n "total": the document total as a number or null,\n "notes": one short line of anything else useful (terms, ship date), no patient details}\n' +
     'Match names to these known lists when they clearly refer to the same thing (use the list spelling), otherwise use what is printed.\n' +
     'Known products: ' + (names.products.join('; ') || '(none)') + '\nKnown surgeons: ' + (names.surgeons.join('; ') || '(none)') + '\nKnown facilities: ' + (names.facilities.join('; ') || '(none)') + '\nUse null for numbers you cannot read and "" for text you cannot read. JSON only.';
-  const file = mediaType === 'application/pdf' ? { type: 'document', source: { type: 'base64', media_type: mediaType, data: b64 } } : { type: 'image', source: { type: 'base64', media_type: mediaType, data: b64 } };
+  const blocks = files.slice(0, 6).map((f) => (f.type === 'application/pdf' ? { type: 'document', source: { type: 'base64', media_type: f.type, data: f.b64 } } : { type: 'image', source: { type: 'base64', media_type: f.type, data: f.b64 } }));
   const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({ model: READ_MODEL, max_tokens: 1500, system, messages: [{ role: 'user', content: [file, { type: 'text', text: prompt }] }] }) });
+    body: JSON.stringify({ model: READ_MODEL, max_tokens: 1500, system, messages: [{ role: 'user', content: blocks.concat([{ type: 'text', text: (blocks.length > 1 ? 'These are the pages of one document. ' : '') + prompt }]) }] }) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error((j.error && j.error.message) || ('the AI reader answered ' + r.status));
   const text = (j.content || []).map((c) => c.text || '').join('');
@@ -1106,10 +1107,12 @@ async function readDocument(mediaType, b64) {
   return { engine: 'ai', model: READ_MODEL, fields: cleanRead(out) };
 }
 app.post('/api/read-doc', needApi(), async (req, res) => {
-  const up = await storeUpload(req); if (up.error) return res.status(400).json({ error: up.error });
+  const list = Array.isArray(req.body.pages) && req.body.pages.length ? req.body.pages.slice(0, 12) : [req.body.data];
+  const ups = [];
+  for (const d of list) { const up = await storeUpload(req, d); if (up.error) return res.status(400).json({ error: up.error }); ups.push(up); }
   let read;
-  try { read = await readDocument(up.type, up.b64); } catch (e) { console.error('read-doc', e.message); read = { engine: 'ai', error: e.message }; }
-  res.json({ ok: true, id: up.id, kind: up.type === 'application/pdf' ? 'pdf' : 'image', ...read });
+  try { read = await readDocument(ups); } catch (e) { console.error('read-doc', e.message); read = { engine: 'ai', error: e.message }; }
+  res.json({ ok: true, id: ups[0].id, ids: ups.map((u) => u.id), kind: ups[0].type === 'application/pdf' ? 'pdf' : 'image', pages: ups.length, ...read });
 });
 
 /* ---------------- case invoices: the rep attaches the invoice (photo or PDF) with its details; it waits for the COO ---------------- */
