@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dev Billing — Estimates, SOW, Invoices &amp; Monthly</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f4f5f7;--card:#fff;--ink:#14171f;--mut:#667085;--line:#e3e6eb;--acc:#1f5eff;--acc2:#e8efff;--ok:#0f8a4f;--okb:#e5f6ee;--warn:#b25e00;--warnb:#fff3e0;--bad:#c62828;--badb:#fdecec;--r:12px}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:15px;-webkit-text-size-adjust:100%}
+button,input,select,textarea{font:inherit;color:inherit}
+.wrap{max-width:1100px;margin:0 auto;padding:12px 14px 120px}
+header{position:sticky;top:0;z-index:20;background:#101626;color:#fff}
+header .in{max-width:1100px;margin:0 auto;padding:10px 14px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.brand{font-weight:800;letter-spacing:.2px;font-size:16px;flex:1;min-width:150px}
+.brand small{display:block;font-weight:500;color:#9fb0d0;font-size:11px;letter-spacing:.4px;text-transform:uppercase}
+.nav button{background:transparent;border:1px solid #33405e;color:#dbe4ff;border-radius:8px;padding:7px 12px;cursor:pointer}
+.nav button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.sync{font-size:11px;color:#9fb0d0;width:100%;text-align:right}
+.sync.err{color:#ffb4b4}
+h1{font-size:20px;margin:6px 0 2px}
+h2{font-size:16px;margin:0 0 10px}
+h3{font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--mut);margin:16px 0 8px}
+.mut{color:var(--mut)}.sm{font-size:12.5px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin:10px 0}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:10px 0}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:12px}
+.kpi .l{font-size:11.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.4px}
+.kpi .v{font-size:21px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums}
+.kpi .s{font-size:11.5px;color:var(--mut)}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.grow{flex:1}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,135px),1fr));gap:10px}
+.grid.g2{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mut);font-weight:500;min-width:0}
+input,select,textarea{border:1px solid #cfd5de;border-radius:8px;padding:9px 10px;background:#fff;width:100%;min-width:0;font-size:15px}
+textarea{min-height:80px;resize:vertical;line-height:1.4}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--acc2);border-color:var(--acc)}
+input[type=checkbox],input[type=radio]{width:20px;height:20px;flex:none;margin:0}
+.chk{display:flex;gap:8px;align-items:center;font-size:14px;color:var(--ink)}
+.btn{border:1px solid #cfd5de;background:#fff;border-radius:9px;padding:9px 13px;cursor:pointer;font-weight:600;font-size:14px;white-space:nowrap}
+.btn:hover{border-color:var(--acc)}
+.btn.p{background:var(--acc);border-color:var(--acc);color:#fff}
+.btn.g{background:var(--ok);border-color:var(--ok);color:#fff}
+.btn.d{color:var(--bad);border-color:#efc4c4}
+.btn.sm{padding:6px 10px;font-size:12.5px}
+.x{border:none;background:var(--badb);color:var(--bad);border-radius:8px;width:34px;height:34px;cursor:pointer;font-size:18px;flex:none}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+.tabs button{flex:1 1 auto;border:1px solid var(--line);background:#fff;border-radius:9px;padding:9px 10px;cursor:pointer;font-weight:600;font-size:13.5px}
+.tabs button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+.badge{display:inline-block;font-size:11px;font-weight:700;padding:3px 8px;border-radius:20px;background:#eef0f4;color:#3b4252;text-transform:uppercase;letter-spacing:.3px}
+.b-Estimate{background:#eef0f4}.b-Sent{background:var(--acc2);color:var(--acc)}.b-Approved,.b-In\ Progress{background:var(--warnb);color:var(--warn)}.b-Invoiced{background:#f3e8ff;color:#7a2fb8}.b-Paid{background:var(--okb);color:var(--ok)}.b-Lost{background:var(--badb);color:var(--bad)}
+.pcard{cursor:pointer;transition:border-color .15s}
+.pcard:hover{border-color:var(--acc)}
+.pcard .nums{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:6px;margin-top:10px}
+.pcard .nums div{background:var(--bg);border-radius:8px;padding:7px 9px;font-size:12px;color:var(--mut)}
+.pcard .nums b{display:block;color:var(--ink);font-size:15px;font-variant-numeric:tabular-nums}
+.line{border:1px solid var(--line);border-radius:10px;padding:10px;margin:8px 0;background:#fcfcfd}
+.line.exp{background:#fffdf6}
+.line .top{display:flex;gap:8px;align-items:center}
+.line .amt{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.phase{font-weight:700;font-size:13px;color:var(--acc);margin:14px 0 2px;text-transform:uppercase;letter-spacing:.4px}
+.tot{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px dashed var(--line);font-variant-numeric:tabular-nums}
+.tot:last-child{border-bottom:none}
+.tot.big{font-size:18px;font-weight:800;border-bottom:none;padding-top:10px}
+.tot .neg{color:var(--bad)}
+.note{background:var(--warnb);color:#6b3a00;border-radius:9px;padding:9px 11px;font-size:13px;margin:8px 0}
+.note.ok{background:var(--okb);color:#0b5a34}
+.bar{position:fixed;left:0;right:0;bottom:0;z-index:15;background:#101626;color:#fff;box-shadow:0 -4px 16px rgba(0,0,0,.15)}
+.bar .in{max-width:1100px;margin:0 auto;padding:9px 14px;display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;font-size:12.5px;color:#9fb0d0}
+.bar b{color:#fff;font-size:15.5px;font-variant-numeric:tabular-nums;display:block}
+.empty{text-align:center;padding:30px 10px;color:var(--mut)}
+.ov{position:fixed;inset:0;z-index:50;background:rgba(10,14,25,.72);overflow:auto;padding:12px}
+.ov.hidden{display:none}
+.ovbar{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:8px;max-width:8.5in;margin:0 auto 10px;background:#101626;padding:10px;border-radius:12px}
+.ovbar .t{color:#fff;font-weight:700;flex:1;min-width:140px;align-self:center}
+#toast{position:fixed;left:50%;bottom:80px;transform:translateX(-50%);background:#14171f;color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;z-index:60;opacity:0;pointer-events:none;transition:opacity .2s;max-width:90vw;text-align:center}
+#toast.on{opacity:1}
+.chipx{display:inline-flex;align-items:center;gap:4px;background:var(--acc2);color:var(--acc);border-radius:20px;padding:4px 4px 4px 11px;font-size:13px;font-weight:600}.chipx button{border:none;background:#fff;color:var(--acc);border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:14px;line-height:1}
+.copybox{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;min-height:140px}
+/* ===== Paper documents ===== */
+.paper{background:#fff;color:#1a1d24;max-width:8.5in;margin:0 auto;padding:.55in .6in;font-family:Helvetica,Arial,sans-serif;font-size:12.5px;line-height:1.45;border-radius:4px}
+.paper h2{font-size:14px;margin:20px 0 6px;padding-bottom:4px;border-bottom:2px solid #1a1d24;text-transform:uppercase;letter-spacing:.5px}
+.paper .d-top{display:flex;flex-wrap:wrap;justify-content:space-between;gap:16px;border-bottom:3px solid #1f5eff;padding-bottom:12px}
+.paper .d-biz{font-size:20px;font-weight:800}
+.paper .d-title{font-size:22px;font-weight:800;color:#1f5eff;letter-spacing:1px}
+.paper .d-right{text-align:right}
+.paper .d-sm{font-size:11.5px;color:#555}
+.paper .d-to{margin:14px 0 4px}
+.paper .d-lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:#777;font-weight:700}
+.paper .d-row{display:flex;justify-content:space-between;gap:14px;padding:6px 0;border-bottom:1px solid #e5e5e5;page-break-inside:avoid}
+.paper .d-amt{white-space:nowrap;font-variant-numeric:tabular-nums;text-align:right}
+.paper .d-ph{font-weight:700;margin-top:10px;color:#1f5eff;font-size:11.5px;text-transform:uppercase;letter-spacing:.4px}
+.paper .d-tots{margin-left:auto;max-width:330px;margin-top:10px}
+.paper .d-tots .d-row{border-bottom:1px solid #eee}
+.paper .d-grand{font-size:16px;font-weight:800;border-top:2px solid #1a1d24;border-bottom:none!important;padding-top:8px}
+.paper .d-hl{background:#eef3ff;border-radius:6px;padding:8px 10px;margin-top:8px}
+.paper ul{margin:4px 0;padding-left:18px}
+.paper .d-sig{display:flex;flex-wrap:wrap;gap:30px;margin-top:30px;page-break-inside:avoid}
+.paper .d-sig>div{flex:1;min-width:220px}
+.paper .d-sigl{border-bottom:1px solid #333;height:34px}
+.paper .d-foot{margin-top:24px;font-size:10.5px;color:#777;text-align:center}
+@media (max-width:600px){.wrap{padding:10px 10px 130px}.paper{padding:.35in .3in}.paper .d-right{text-align:left}.kpi .v{font-size:18px}}
+</style>
+</head>
+<body>
+<header><div class="in">
+  <div class="brand"><span id="brandName">Dev Billing</span><small>Estimates · Scope · Final Bill · Monthly</small></div>
+  <div class="nav row">
+    <button data-act="home" id="navHome" class="on">Projects</button>
+    <button data-act="hist" id="navHist">Build History</button>
+    <button data-act="settings" id="navSet">Settings</button>
+  </div>
+  <div class="sync" id="sync">Loading…</div>
+</div></header>
+<div class="wrap" id="app"></div>
+<div class="bar" id="bar" style="display:none"><div class="in" id="barIn"></div></div>
+<div class="ov hidden" id="ov"></div>
+<div id="toast"></div>
+
+<script>
+/* ================= constants ================= */
+const STATUSES=['Estimate','Sent','Approved','In Progress','Invoiced','Paid','Lost'];
+const PHASES=['Discovery','Design','Build','Integrations','Launch','Other'];
+const CX=[[0.85,'Simple (×0.85)'],[1,'Standard (×1.0)'],[1.25,'Complex (×1.25)'],[1.5,'Rush / high-risk (×1.5)']];
+const MOD_CATS=['Hosting','Database','Domain','Email','Support','API / AI','Software','Other'];
+const MODS=[
+ ['Discovery','Discovery & requirements meetings',4,'pm'],
+ ['Discovery','Project plan & technical spec',6,'dev'],
+ ['Design','UI/UX wireframes & mockups',12,'des'],
+ ['Design','Branding / logo & color setup',4,'des'],
+ ['Design','Phone-first responsive layout',8,'des'],
+ ['Build','Database design & setup',6,'dev'],
+ ['Build','User login, roles & security',10,'dev'],
+ ['Build','Admin dashboard',16,'dev'],
+ ['Build','Customer / client portal',20,'dev'],
+ ['Build','Forms & data intake',8,'dev'],
+ ['Build','Search, filters & sorting',6,'dev'],
+ ['Build','Reports & dashboards',14,'dev'],
+ ['Build','PDF / document generation',8,'dev'],
+ ['Build','File & photo uploads',6,'dev'],
+ ['Build','Email notifications',6,'dev'],
+ ['Build','Calendar / scheduling',12,'dev'],
+ ['Build','Inventory / product catalog',16,'dev'],
+ ['Build','Data import / migration',8,'dev'],
+ ['Build','AI features (chat, summaries, OCR)',16,'dev'],
+ ['Build','Marketing website (up to 5 pages)',16,'dev'],
+ ['Integrations','Payments (Stripe / Square)',12,'dev'],
+ ['Integrations','Third-party API integration',12,'dev'],
+ ['Integrations','SMS / text alerts',6,'dev'],
+ ['Integrations','Email inbox parsing / import',10,'dev'],
+ ['Integrations','Google / Microsoft sign-in',6,'dev'],
+ ['Launch','Testing & QA (phone + desktop)',10,'dev'],
+ ['Launch','Hosting, deploy, domain & SSL setup',4,'dev'],
+ ['Launch','Training & user guide',4,'pm'],
+ ['Launch','Launch support (first 2 weeks)',6,'dev']
+];
+// [name, category, your cost, cycle, priceMode]  priceMode: 'mk' = cost+markup, number = fixed price, 'ret' = retainer hours×rate
+const MO_PRESETS=[
+ ['Web app hosting (Render Starter)','Hosting',7,'mo','mk'],
+ ['Web app hosting (Render Standard)','Hosting',25,'mo','mk'],
+ ['Database (Render Postgres Basic-256mb)','Database',6,'mo','mk'],
+ ['Database (Render Postgres Basic-1gb)','Database',19,'mo','mk'],
+ ['Domain name renewal','Domain',20,'yr','mk'],
+ ['Business email (per user)','Email',7,'mo','mk'],
+ ['Transactional email sending','Email',15,'mo','mk'],
+ ['SMS / text messaging usage','API / AI',20,'mo','mk'],
+ ['AI / API usage','API / AI',25,'mo','mk'],
+ ['Backups & uptime monitoring','Software',10,'mo','mk'],
+ ['Hosting management fee','Support',0,'mo',50],
+ ['Maintenance & support retainer (2 hrs/mo)','Support',0,'mo','ret2'],
+ ['Maintenance & support retainer (5 hrs/mo)','Support',0,'mo','ret5']
+];
+const DEF_OOS=`Content writing, photography and stock media (client provides)
+Third-party fees (hosting, domains, APIs, app-store accounts) unless listed under Monthly Services
+Features or screens not listed under Deliverables
+Native iOS / Android app-store apps (this is a web app that works on phones and computers)
+Ongoing maintenance after the warranty period (see Monthly Services)`;
+const DEF_ASSUME=`Client provides logins, branding and content within 5 business days of request
+One primary contact reviews and approves designs and milestones
+Up to 2 rounds of revisions per design screen
+Hour figures are good-faith estimates; the final bill follows the billing method in this agreement`;
+const DEF_RESP=`Provide timely feedback (within 3 business days) at each milestone
+Provide access to any existing systems, data or accounts needed for integrations
+Test and approve the app before launch`;
+
+/* ================= helpers ================= */
+const $=(s,r=document)=>r.querySelector(s);
+const clone=o=>JSON.parse(JSON.stringify(o));
+const uid=()=>Math.random().toString(36).slice(2,9)+Date.now().toString(36).slice(-4);
+const num=v=>{const n=parseFloat(v);return isFinite(n)?n:0};
+const r2=n=>Math.round(n*100)/100;
+const money=n=>(n<0?'-':'')+'$'+Math.abs(num(n)).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+const money0=n=>(n<0?'-':'')+'$'+Math.abs(Math.round(num(n))).toLocaleString('en-US');
+const fh=n=>{n=Math.round(num(n)*10)/10;return n.toLocaleString('en-US')};
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const escBr=s=>esc(s).replace(/\n/g,'<br>');
+const iso=(d=new Date())=>{const z=new Date(d.getTime()-d.getTimezoneOffset()*60000);return z.toISOString().slice(0,10)};
+const addDays=(s,n)=>{const d=s?new Date(s+'T12:00:00'):new Date();d.setDate(d.getDate()+num(n));return iso(d)};
+const fmtDate=s=>{if(!s)return '';const d=new Date(s+'T12:00:00');return isNaN(d)?s:d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})};
+const slug=s=>(String(s||'project').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'project').slice(0,50);
+const lines2list=s=>String(s||'').split('\n').map(x=>x.replace(/^\s*[-•*]\s*/,'').trim()).filter(Boolean);
+function setPath(o,path,v){const ks=path.split('.');let c=o;for(let i=0;i<ks.length-1;i++){if(c[ks[i]]==null)c[ks[i]]={};c=c[ks[i]]}c[ks[ks.length-1]]=v}
+function getPath(o,path){return path.split('.').reduce((c,k)=>c==null?undefined:c[k],o)}
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('on'),2400)}
+
+/* ================= state ================= */
+function defSettings(){return{biz:{name:'Stemo Enterprises',owner:'Steve Smith',email:'',phone:'',address:'',website:'',payInfo:'Checks payable to Stemo Enterprises. ACH / Zelle details provided on request.'},
+ rates:[{id:'dev',name:'Developer',rate:125},{id:'des',name:'UI/UX Design',rate:95},{id:'pm',name:'Project Management',rate:85}],
+ d:{contingency:10,deposit:50,tax:0,terms:15,markup:30,hpw:25,trackAllow:25,warranty:30,invPrefix:'INV-',nextInv:1001,estValid:30,cancelDays:30,lateFee:1.5,law:'Texas',venue:'Hidalgo County, Texas',licCap:5},
+ oos:DEF_OOS,assume:DEF_ASSUME,resp:DEF_RESP}}
+function mergeSettings(s){const d=defSettings();if(!s)return d;return{...d,...s,biz:{...d.biz,...(s.biz||{})},d:{...d.d,...(s.d||{})},rates:(s.rates&&s.rates.length)?s.rates:d.rates}}
+const S={settings:defSettings(),projects:{},hist:{},histMeta:null,view:'home',pid:null,tab:'client',q:'',f:'All',hq:'',hsort:'hours'};
+function cur(){return S.projects[S.pid]}
+function rate(id){const r=S.settings.rates.find(x=>x.id===id);return r?num(r.rate):num((S.settings.rates[0]||{}).rate)}
+function newProject(){const d=S.settings.d;return{id:uid(),created:Date.now(),updated:Date.now(),status:'Estimate',
+ client:{name:'',company:'',email:'',phone:'',address:''},name:'New App Build',desc:'',start:'',launch:'',
+ complexity:1,contingency:d.contingency,discount:0,depositPct:d.deposit,estDate:iso(),lines:[],
+ sow:{showLine:false,overview:'',timeline:[],schedule:[{label:'Deposit — due at signing',pct:d.deposit},{label:'Final payment — due at launch / acceptance',pct:100-d.deposit}],oos:S.settings.oos,assume:S.settings.assume,resp:S.settings.resp},
+ invoice:{number:'',date:iso(),due:'',mode:'fixed',changeOrders:[],payments:[],credit:0,tax:d.tax,notes:'Thank you for your business!'},
+ monthly:{active:false,start:'',term:12,markup:d.markup,items:[],invNo:'',period:'',notes:''},links:[],comps:[],lic:{model:'license',start:'',term:12,autoRenew:true,users:'',locations:'',territory:'United States',exclusive:false,sublicense:false,escrow:false,cap:S.settings.d.licCap,adminPct:0,items:[],invNo:'',notes:''}}}
+function fix(p){const n=newProject();p.client={...n.client,...(p.client||{})};p.sow={...n.sow,...(p.sow||{})};p.invoice={...n.invoice,...(p.invoice||{})};p.monthly={...n.monthly,...(p.monthly||{})};
+ ['lines'].forEach(k=>{if(!Array.isArray(p[k]))p[k]=[]});['timeline','schedule'].forEach(k=>{if(!Array.isArray(p.sow[k]))p.sow[k]=[]});['changeOrders','payments'].forEach(k=>{if(!Array.isArray(p.invoice[k]))p.invoice[k]=[]});if(!Array.isArray(p.monthly.items))p.monthly.items=[];if(!Array.isArray(p.links))p.links=[];if(!Array.isArray(p.comps))p.comps=[];p.lic={...n.lic,...(p.lic||{})};if(!Array.isArray(p.lic.items))p.lic.items=[];return p}
+
+/* ================= calculations ================= */
+function calcEst(p){let labor=0,hrs=0,exp=0;const cx=num(p.complexity)||1;
+ const lines=p.lines.map(l=>{let a;if(l.type==='exp'){a=num(l.qty)*num(l.cost);exp+=a}else{a=num(l.hours)*num(l.rate);labor+=a;hrs+=num(l.hours)}return a});
+ const laborAdj=labor*cx,cont=laborAdj*num(p.contingency)/100,sub=laborAdj+cont+exp,disc=sub*num(p.discount)/100,total=sub-disc;
+ const low=(laborAdj+exp)*(1-num(p.discount)/100);
+ return{lines,labor,hrs,hrsAdj:hrs*cx,cx,laborAdj,cxAdj:laborAdj-labor,cont,exp,sub,disc,total,low,deposit:total*num(p.depositPct)/100}}
+function actualHrs(l,cx){return (l.actual===''||l.actual==null)?r2(num(l.hours)*cx):num(l.actual)}
+function calcBill(p){const E=calcEst(p),inv=p.invoice;const rows=[];let base=0;
+ if(inv.mode==='actual'){p.lines.forEach(l=>{if(l.type==='exp'){const a=num(l.qty)*num(l.cost);rows.push({desc:l.desc,detail:`${fh(l.qty)} × ${money(l.cost)}`,amt:a});base+=a}else{const ah=actualHrs(l,E.cx),a=ah*num(l.rate);rows.push({desc:l.desc,detail:`${fh(ah)} hrs × ${money(l.rate)}/hr`,amt:a});base+=a}})}
+ else{rows.push({desc:`${p.name||'Project'} — complete build per approved estimate / SOW`,detail:'Fixed price',amt:E.total});base=E.total}
+ let co=0;const cos=inv.changeOrders.map(c=>{const a=num(c.hours)*num(c.rate);co+=a;return a});
+ const credit=num(inv.credit),pre=base+co-credit,tax=pre*num(inv.tax)/100,total=pre+tax,paid=inv.payments.reduce((s,x)=>s+num(x.amount),0);
+ const actHrs=p.lines.filter(l=>l.type!=='exp').reduce((s,l)=>s+actualHrs(l,E.cx),0);
+ return{E,rows,base,co,cos,credit,tax,total,paid,balance:total-paid,actHrs,variance:base-(inv.mode==='actual'?E.total:base)}}
+function calcMo(p){let price=0,cost=0;const items=p.monthly.items.map(it=>{const f=it.cycle==='yr'?1/12:1,pr=num(it.price)*f,c=num(it.cost)*f;price+=pr;cost+=c;return{pr,c,m:pr-c}});
+ const margin=price-cost;return{items,price,cost,margin,pct:price?margin/price*100:0,annual:price*12,contract:price*(num(p.monthly.term)||12)}}
+const LIC_TYPES=[['once','One-time'],['mo','Monthly'],['yr','Yearly'],['user','Per user / month'],['loc','Per location / month']];
+const LIC_PRESETS=[
+ ['Software license fee (one-time)','once',2500,1],['Annual license renewal','yr',600,1],['Monthly license fee','mo',99,1],
+ ['Per-user license','user',15,5],['Per-location license','loc',49,1],['Setup / onboarding fee','once',500,1],
+ ['Account administration fee','mo',25,1],['Data migration fee','once',750,1],['Training fee (per session)','once',150,1],
+ ['White-label / custom branding fee','once',1000,1],['Source code escrow fee (yearly)','yr',300,1],['Reinstatement fee (after suspension)','once',150,1]];
+function calcLic(p){const L=p.lic;let once=0,mo=0;const items=L.items.map(it=>{const a=num(it.amount)*(num(it.qty)||0);let m=0,o=0;
+  if(it.type==='once')o=a;else if(it.type==='yr')m=a/12;else m=a;once+=o;mo+=m;return{o,m,a}});
+ const admin=calcMo(p).cost*num(L.adminPct)/100;mo+=admin;const term=num(L.term)||12;
+ return{items,once,admin,mo,annual:mo*12,firstYear:once+mo*Math.min(12,term),termTotal:once+mo*term,term}}
+function calcMap(p){const E=calcEst(p),B=calcBill(p),M=calcMo(p),m={};
+ E.lines.forEach((a,i)=>m['line.'+i]=money(a));
+ Object.assign(m,{'est.labor':money(E.labor),'est.cxAdj':money(E.cxAdj),'est.cont':money(E.cont),'est.exp':money(E.exp),'est.disc':E.disc?'-'+money(E.disc):money(0),'est.total':money(E.total),'est.low':money(E.low),'est.hrs':fh(E.hrsAdj)+' hrs','est.deposit':money(E.deposit),'est.weeks':fh(E.hrsAdj/(num(S.settings.d.hpw)||25))+' wks'});
+ p.lines.forEach((l,i)=>{if(l.type!=='exp'){const ah=actualHrs(l,E.cx);m['act.'+i]=money(ah*num(l.rate));m['acth.'+i]=fh(ah)}});
+ B.cos.forEach((a,i)=>m['co.'+i]=money(a));
+ Object.assign(m,{'bill.base':money(B.base),'bill.co':money(B.co),'bill.credit':B.credit?'-'+money(B.credit):money(0),'bill.tax':money(B.tax),'bill.total':money(B.total),'bill.paid':B.paid?'-'+money(B.paid):money(0),'bill.balance':money(B.balance),'bill.acthrs':fh(B.actHrs)+' hrs','bill.var':(B.base-E.total>=0?'+':'')+money(B.base-E.total)});
+ M.items.forEach((x,i)=>{m['mo.pr.'+i]=money(x.pr)+'/mo';m['mo.m.'+i]=money(x.m)+'/mo'});
+ Object.assign(m,{'mo.price':money(M.price),'mo.cost':money(M.cost),'mo.margin':money(M.margin),'mo.pct':fh(M.pct)+'%','mo.annual':money(M.annual),'mo.contract':money(M.contract)});
+ const Lc=calcLic(p);Lc.items.forEach((x,i)=>m['lic.'+i]=x.o?money(x.o)+' one-time':money(x.m)+'/mo');Object.assign(m,{'lic.once':money(Lc.once),'lic.mo':money(Lc.mo),'lic.admin':money(Lc.admin),'lic.annual':money(Lc.annual),'lic.first':money(Lc.firstYear),'lic.termTotal':money(Lc.termTotal),'all.mo':money(Lc.mo+M.price)});
+ const sched=p.sow.schedule.reduce((s,x)=>s+num(x.pct),0);m['sched.sum']=fh(sched)+'%';p.sow.schedule.forEach((x,i)=>m['sched.'+i]=money(E.total*num(x.pct)/100));
+ return m}
+
+/* ================= persistence ================= */
+let DB=null,DL=null,readOnly=false,syncState='local',syncErr='';
+const dirty=new Set(),timers={},inflight={},again={};
+function persistLocal(){try{localStorage.setItem('devbill.v1',JSON.stringify({settings:S.settings,projects:S.projects}))}catch(e){}}
+function loadLocal(){try{const r=JSON.parse(localStorage.getItem('devbill.v1')||'null');if(r){S.settings=mergeSettings(r.settings);S.projects=r.projects||{};Object.values(S.projects).forEach(fix)}}catch(e){}}
+function queueSave(kind,id){persistLocal();const key=kind+':'+(id||'');dirty.add(key);clearTimeout(timers[key]);syncState='saving';setSync();timers[key]=setTimeout(()=>flush(kind,id),700)}
+async function flush(kind,id){const key=kind+':'+(id||'');
+ if(!DB){dirty.delete(key);syncState='local';setSync();return}
+ if(inflight[key]){again[key]=true;return}
+ inflight[key]=true;
+ try{if(kind==='set')await DB.doc('settings/main').set(clone(S.settings));
+  else if(kind==='del')await DB.doc('projects/'+id).delete();
+  else if(S.projects[id])await DB.doc('projects/'+id).set(clone(S.projects[id]));
+  syncState='cloud';syncErr=''}
+ catch(e){syncState='err';syncErr=(e&&e.code)==='quota_exceeded'?'Storage is full — delete old projects.':(e&&e.code)==='invalid_argument'?'You have view-only access; changes stay on this device.':'Could not reach the cloud; saved on this device.';if(e&&e.code==='invalid_argument')readOnly=true}
+ inflight[key]=false;
+ if(again[key]){again[key]=false;flush(kind,id);return}
+ dirty.delete(key);setSync()}
+function setSync(){const el=$('#sync');if(!el)return;el.className='sync';
+ if(syncState==='saving')el.textContent='Saving…';
+ else if(syncState==='err'){el.textContent=syncErr;el.classList.add('err')}
+ else if(syncState==='slow')el.textContent='Cloud not reachable yet — working from this device';
+ else if(DB)el.textContent='✓ Saved to your account (syncs across devices)';
+ else el.textContent='Saved on this device';}
+function softRender(){const a=document.activeElement;if(a&&a.closest&&a.closest('#app')&&/INPUT|TEXTAREA|SELECT/.test(a.tagName))return;if(!$('#ov').classList.contains('hidden'))return;render()}
+async function connect(){
+ try{if(!window.claude||typeof claude.use!=='function'){setSync();return}
+  claude.use('downloads').then(d=>{DL=d}).catch(()=>{});
+  DB=await claude.use('db');
+  if(!DB){setSync();return}
+  setSync();
+  let gotP=false;const timer=setTimeout(()=>{if(!gotP){syncState='slow';setSync()}},10000);
+  DB.doc('settings/main').onSnapshot(snap=>{
+    if(snap.metadata.hasPendingWrites||dirty.has('set:'))return;
+    if(snap.exists){S.settings=mergeSettings(snap.data());persistLocal();updateBrand();softRender()}
+    else if(!snap.metadata.fromCache){queueSave('set')}
+  },e=>{syncState='err';syncErr='Cloud sync stopped; saved on this device.';setSync()});
+  DB.collection('history').onSnapshot(snap=>{S.hist={};snap.docs.forEach(d=>{S.hist[d.id]=d.data()});softRender()},()=>{});
+  DB.doc('meta/sync').onSnapshot(snap=>{S.histMeta=snap.exists?snap.data():null;softRender()},()=>{});
+  DB.collection('projects').onSnapshot(snap=>{
+    if(!snap.metadata.fromCache){clearTimeout(timer);if(syncState==='slow')syncState='cloud'}
+    if(!gotP&&!snap.metadata.fromCache){gotP=true;
+      let migrated=false;try{migrated=localStorage.getItem('devbill.migrated')==='1'}catch(e){}
+      if(!migrated){const ids=new Set(snap.docs.map(d=>d.id));Object.keys(S.projects).forEach(id=>{if(!ids.has(id))queueSave('p',id)});try{localStorage.setItem('devbill.migrated','1')}catch(e){}}}
+    snap.docChanges().forEach(ch=>{const id=ch.doc.id;if(dirty.has('p:'+id)||dirty.has('del:'+id)||ch.doc.metadata.hasPendingWrites)return;
+      if(ch.type==='removed')delete S.projects[id];else S.projects[id]=fix(clone(ch.doc.data()))});
+    if(S.view==='project'&&!S.projects[S.pid])S.view='home';
+    persistLocal();setSync();softRender();
+  },e=>{syncState='err';syncErr='Cloud sync stopped; saved on this device.';setSync()});
+ }catch(e){setSync()}}
+
+/* ================= render: shell ================= */
+function updateBrand(){$('#brandName').textContent=(S.settings.biz.name||'Dev')+' — Dev Billing'}
+function render(){updateBrand();$('#navHome').classList.toggle('on',S.view==='home');$('#navSet').classList.toggle('on',S.view==='settings');$('#navHist').classList.toggle('on',S.view==='hist');
+ const app=$('#app');
+ if(S.view==='settings'){app.innerHTML=rSettings();$('#bar').style.display='none'}
+ else if(S.view==='hist'){app.innerHTML=rHist();$('#bar').style.display='none'}
+ else if(S.view==='project'&&cur()){app.innerHTML=rProject();renderBar()}
+ else{S.view='home';app.innerHTML=rHome();$('#bar').style.display='none'}
+ updateCalc()}
+function updateCalc(){const p=cur();if(S.view!=='project'||!p)return;const m=calcMap(p);document.querySelectorAll('[data-c]').forEach(el=>{const v=m[el.dataset.c];if(v!=null)el.textContent=v});
+ const w=$('#schedWarn');if(w){const s=p.sow.schedule.reduce((a,x)=>a+num(x.pct),0);w.style.display=Math.abs(s-100)>0.01?'block':'none'}}
+function renderBar(){$('#bar').style.display='block';
+ $('#barIn').innerHTML=`<div>Estimate<b data-c="est.total"></b></div><div>Hours<b data-c="est.hrs"></b></div><div>Final bill<b data-c="bill.total"></b></div><div>Balance due<b data-c="bill.balance"></b></div><div>Monthly + license<b data-c="all.mo"></b></div>`}
+
+/* ================= render: home ================= */
+function rHome(){const ps=Object.values(S.projects);let pipe=0,active=0,out=0,coll=0,mrr=0,mrrM=0,nP=0,nA=0,nO=0,nM=0;
+ ps.forEach(p=>{const E=calcEst(p),B=calcBill(p),M=calcMo(p);
+  if(p.status==='Estimate'||p.status==='Sent'){pipe+=E.total;nP++}
+  if(p.status==='Approved'||p.status==='In Progress'){active+=E.total;nA++}
+  if(p.status==='Invoiced'){out+=B.balance;nO++}
+  coll+=B.paid;
+  if(p.monthly.active&&p.status!=='Lost'){const Lc=calcLic(p);mrr+=M.price+Lc.mo;mrrM+=M.margin+Lc.mo;nM++}});
+ return `<div class="row" style="margin-top:6px"><h1 class="grow">Projects</h1><button class="btn p" data-act="new">+ New Project</button></div>
+ <div class="kpis">
+  <div class="kpi"><div class="l">Pipeline (quoted)</div><div class="v">${money0(pipe)}</div><div class="s">${nP} estimate${nP==1?'':'s'} out</div></div>
+  <div class="kpi"><div class="l">Active builds</div><div class="v">${money0(active)}</div><div class="s">${nA} approved / in progress</div></div>
+  <div class="kpi"><div class="l">Outstanding A/R</div><div class="v">${money0(out)}</div><div class="s">${nO} invoiced, unpaid</div></div>
+  <div class="kpi"><div class="l">Collected</div><div class="v">${money0(coll)}</div><div class="s">all payments logged</div></div>
+  <div class="kpi"><div class="l">Monthly recurring</div><div class="v">${money0(mrr)}/mo</div><div class="s">${nM} client${nM==1?'':'s'} · ${money0(mrrM)}/mo margin</div></div>
+ </div>
+ <div class="row"><input class="grow" style="max-width:none;flex:2 1 200px" placeholder="Search client or project…" data-ui="q" value="${esc(S.q)}">
+  <select data-ui="f" style="flex:1 1 140px">${['All',...STATUSES].map(s=>`<option ${S.f===s?'selected':''}>${s}</option>`).join('')}</select></div>
+ <div id="plist">${rList()}</div>`}
+function rList(){let ps=Object.values(S.projects).sort((a,b)=>(b.updated||0)-(a.updated||0));const q=S.q.toLowerCase();
+ if(q)ps=ps.filter(p=>[p.name,p.client.name,p.client.company].join(' ').toLowerCase().includes(q));
+ if(S.f!=='All')ps=ps.filter(p=>p.status===S.f);
+ if(!ps.length)return `<div class="card empty">${Object.keys(S.projects).length?'No projects match.':'No projects yet. Tap <b>+ New Project</b> to build your first estimate.'}</div>`;
+ return ps.map(p=>{const E=calcEst(p),B=calcBill(p),M=calcMo(p);return `<div class="card pcard" data-act="open" data-id="${p.id}">
+  <div class="row"><div class="grow"><b style="font-size:16px">${esc(p.name||'Untitled')}</b><div class="mut sm">${esc(p.client.company||p.client.name||'No client yet')}${p.launch?' · launch '+fmtDate(p.launch):''}</div></div><span class="badge b-${esc(p.status)}">${esc(p.status)}</span></div>
+  <div class="nums"><div>Estimate<b>${money0(E.total)}</b></div><div>Hours<b>${fh(E.hrsAdj)}</b></div><div>Balance due<b>${money0(B.balance)}</b></div><div>Monthly<b>${money0(M.price)}${p.monthly.active?'':' <span class="sm mut">(off)</span>'}</b></div></div></div>`}).join('')}
+
+/* ================= render: project ================= */
+const TABS=[['client','1 · Client'],['est','2 · Estimate'],['sow','3 · Scope of Work'],['bill','4 · Final Bill'],['mo','5 · Monthly'],['lic','6 · Licensing']];
+function rProject(){const p=cur();
+ return `<div class="row" style="margin-top:6px"><button class="btn sm" data-act="home">← Projects</button><div class="grow"></div>
+  <select data-k="status" data-rr style="width:auto">${STATUSES.map(s=>`<option ${p.status===s?'selected':''}>${s}</option>`).join('')}</select>
+  <button class="btn sm" data-act="dup">Duplicate</button><button class="btn sm d" data-act="del">Delete</button></div>
+ <h1>${esc(p.name||'Untitled')} <span class="badge b-${esc(p.status)}">${esc(p.status)}</span></h1><div class="mut sm">${esc(p.client.company||p.client.name||'')}</div>
+ <div class="tabs">${TABS.map(([k,l])=>`<button data-act="tab" data-t="${k}" class="${S.tab===k?'on':''}">${l}</button>`).join('')}</div>
+ ${S.tab==='client'?rClient(p):S.tab==='est'?rEst(p):S.tab==='sow'?rSow(p):S.tab==='bill'?rBill(p):S.tab==='lic'?rLic(p):rMo(p)}`}
+const F=(lbl,k,v,type='text',extra='')=>`<label class="f">${lbl}<input type="${type}" data-k="${k}" value="${esc(v)}" ${type==='number'?'inputmode="decimal" step="any"':''} ${extra}></label>`;
+const T=(lbl,k,v,rows=4)=>`<label class="f">${lbl}<textarea data-k="${k}" rows="${rows}">${esc(v)}</textarea></label>`;
+function rClient(p){return `<div class="card"><h2>Project</h2><div class="grid g2">${F('Project name','name',p.name)}${F('Estimate date','estDate',p.estDate,'date')}</div>
+ <div style="margin-top:10px">${T('What are we building? (short description — used in the estimate & SOW)','desc',p.desc,4)}</div>
+ <div class="grid" style="margin-top:10px">${F('Target start','start',p.start,'date')}${F('Target launch','launch',p.launch,'date')}</div></div>
+ <div class="card"><h2>Client</h2><div class="grid g2">${F('Contact name','client.name',p.client.name)}${F('Company','client.company',p.client.company)}${F('Email','client.email',p.client.email,'email')}${F('Phone','client.phone',p.client.phone,'tel')}</div>
+ <div style="margin-top:10px">${T('Billing address','client.address',p.client.address,3)}</div></div>
+ ${rLinkCard(p)}
+ <div class="row"><div class="grow"></div><button class="btn p" data-act="tab" data-t="est">Next: Build the estimate →</button></div>`}
+function roleOpts(sel){return S.settings.rates.map(r=>`<option value="${esc(r.id)}" ${r.id===sel?'selected':''}>${esc(r.name)} (${money0(r.rate)}/hr)</option>`).join('')}
+function rEst(p){const groups={};p.lines.forEach((l,i)=>{const ph=PHASES.includes(l.phase)?l.phase:'Other';(groups[ph]=groups[ph]||[]).push(i)});
+ const modOpts=PHASES.filter(ph=>MODS.some(m=>m[0]===ph)).map(ph=>`<optgroup label="${ph}">${MODS.map((m,i)=>m[0]===ph?`<option value="${i}">${esc(m[1])} — ${m[2]} hrs</option>`:'').join('')}</optgroup>`).join('');
+ const lineHtml=i=>{const l=p.lines[i];const phSel=`<select data-k="lines.${i}.phase" data-rr>${PHASES.map(x=>`<option ${l.phase===x?'selected':''}>${x}</option>`).join('')}</select>`;
+  if(l.type==='exp')return `<div class="line exp"><div class="top"><input data-k="lines.${i}.desc" value="${esc(l.desc)}" placeholder="Expense / pass-through (license, domain purchase…)"><button class="x" data-act="rmLine" data-i="${i}" title="Remove">×</button></div>
+   <div class="grid" style="margin-top:8px"><label class="f">Phase${phSel}</label>${F('Qty',`lines.${i}.qty`,l.qty,'number')}${F('Cost each ($)',`lines.${i}.cost`,l.cost,'number')}<label class="f">Amount<div class="amt" style="padding:9px 0" data-c="line.${i}"></div></label></div></div>`;
+  return `<div class="line"><div class="top"><input data-k="lines.${i}.desc" value="${esc(l.desc)}" placeholder="Feature / task"><button class="x" data-act="rmLine" data-i="${i}" title="Remove">×</button></div>
+   <div class="grid" style="margin-top:8px"><label class="f">Phase${phSel}</label><label class="f">Role<select data-k="lines.${i}.rateId" data-role="${i}">${roleOpts(l.rateId)}</select></label>${F('Hours',`lines.${i}.hours`,l.hours,'number')}${F('Rate ($/hr)',`lines.${i}.rate`,l.rate,'number')}<label class="f">Amount<div class="amt" style="padding:9px 0" data-c="line.${i}"></div></label></div></div>`};
+ return `<div class="card"><h2>Pricing settings</h2><div class="grid">
+  <label class="f">Complexity<select data-k="complexity" data-num>${CX.map(([v,l])=>`<option value="${v}" ${num(p.complexity)===v?'selected':''}>${l}</option>`).join('')}</select></label>
+  ${F('Contingency %','contingency',p.contingency,'number')}${F('Discount %','discount',p.discount,'number')}${F('Deposit to start %','depositPct',p.depositPct,'number')}</div>
+  <div class="sm mut" style="margin-top:8px">Complexity multiplies labor hours. Contingency is a buffer for unknowns, shown to the client as its own line.</div></div>
+ <div class="card"><div class="row"><h2 class="grow" style="margin:0">Work breakdown</h2></div>
+  <div class="grid g2" style="margin-top:10px"><label class="f">Quick-add a common module<select data-add="module"><option value="">+ Choose a module…</option>${modOpts}</select></label>
+  <label class="f">Or add your own<div class="row"><button class="btn" data-act="addLabor">+ Labor item</button><button class="btn" data-act="addExp">+ Expense</button></div></label></div>
+  ${p.lines.length?PHASES.filter(ph=>groups[ph]).map(ph=>`<div class="phase">${ph}</div>${groups[ph].map(lineHtml).join('')}`).join(''):'<div class="empty">No line items yet — quick-add modules above.</div>'}
+ </div>
+ ${rReality(p)}
+ <div class="card"><h2>Estimate total</h2>
+  <div class="tot"><span>Labor (base rates)</span><span data-c="est.labor"></span></div>
+  <div class="tot"><span>Complexity adjustment</span><span data-c="est.cxAdj"></span></div>
+  <div class="tot"><span>Contingency (${fh(p.contingency)}%)</span><span data-c="est.cont"></span></div>
+  <div class="tot"><span>Expenses / pass-through</span><span data-c="est.exp"></span></div>
+  <div class="tot"><span>Discount</span><span class="neg" data-c="est.disc"></span></div>
+  <div class="tot big"><span>Total estimate</span><span data-c="est.total"></span></div>
+  <div class="tot"><span>Range (without contingency → with)</span><span><span data-c="est.low"></span> – <span data-c="est.total"></span></span></div>
+  <div class="tot"><span>Estimated hours / duration</span><span><span data-c="est.hrs"></span> · ~<span data-c="est.weeks"></span></span></div>
+  <div class="tot"><span>Deposit to start (${fh(p.depositPct)}%)</span><b data-c="est.deposit"></b></div>
+  <div class="row" style="margin-top:12px"><button class="btn p" data-act="doc" data-kind="estimate">📄 Client estimate</button><button class="btn" data-act="tab" data-t="sow">Next: Scope of Work →</button></div></div>`}
+function rSow(p){const s=p.sow;
+ return `<div class="card"><h2>Overview</h2>${T('Project overview (leave blank to use the project description)','sow.overview',s.overview,4)}
+  <label class="chk" style="margin-top:10px"><input type="checkbox" data-k="sow.showLine" ${s.showLine?'checked':''}> Show hours &amp; price for each deliverable in the SOW</label>
+  <div class="sm mut" style="margin-top:6px">Deliverables come from your estimate line items automatically (${p.lines.length} items).</div></div>
+ <div class="card"><div class="row"><h2 class="grow" style="margin:0">Timeline / milestones</h2><button class="btn sm" data-act="autoTl">Auto-build from estimate</button><button class="btn sm" data-act="addTl">+ Milestone</button></div>
+  ${s.timeline.length?s.timeline.map((t,i)=>`<div class="line"><div class="top"><input data-k="sow.timeline.${i}.label" value="${esc(t.label)}" placeholder="Milestone"><button class="x" data-act="rmTl" data-i="${i}">×</button></div><div class="grid" style="margin-top:8px">${F('Weeks',`sow.timeline.${i}.weeks`,t.weeks,'number')}</div></div>`).join(''):'<div class="sm mut" style="margin-top:8px">No milestones yet. Auto-build uses your hours ÷ '+fh(S.settings.d.hpw)+' hrs/week capacity (change it in Settings).</div>'}</div>
+ <div class="card"><div class="row"><h2 class="grow" style="margin:0">Payment schedule</h2><button class="btn sm" data-act="sched3">Use 3-part (40/30/30)</button><button class="btn sm" data-act="addSched">+ Payment</button></div>
+  ${s.schedule.map((x,i)=>`<div class="line"><div class="top"><input data-k="sow.schedule.${i}.label" value="${esc(x.label)}"><button class="x" data-act="rmSched" data-i="${i}">×</button></div><div class="grid" style="margin-top:8px">${F('% of total',`sow.schedule.${i}.pct`,x.pct,'number')}<label class="f">Amount<div class="amt" style="padding:9px 0" data-c="sched.${i}"></div></label></div></div>`).join('')}
+  <div class="tot"><span>Schedule adds up to</span><b data-c="sched.sum"></b></div><div class="note" id="schedWarn" style="display:none">Payment schedule should add up to 100%.</div></div>
+ <div class="card"><h2>Terms</h2><div class="sm mut" style="margin-bottom:8px">One item per line. Defaults come from Settings.</div>
+  <div class="grid g2">${T('Assumptions','sow.assume',s.assume,5)}${T('Client responsibilities','sow.resp',s.resp,5)}</div>
+  <div style="margin-top:10px">${T('Out of scope','sow.oos',s.oos,5)}</div>
+  <div class="row" style="margin-top:12px"><button class="btn p" data-act="doc" data-kind="sow">📄 Scope of Work</button><button class="btn" data-act="tab" data-t="bill">Next: Final Bill →</button></div></div>`}
+function rBill(p){const inv=p.invoice,E=calcEst(p);const dueAuto=addDays(inv.date,S.settings.d.terms);
+ return `<div class="card"><h2>Invoice details</h2><div class="grid">
+  <label class="f">Invoice #<div class="row" style="flex-wrap:nowrap"><input data-k="invoice.number" value="${esc(inv.number)}" placeholder="Not assigned">${inv.number?'':`<button class="btn sm" data-act="assignInv">Assign</button>`}</div></label>
+  ${F('Invoice date','invoice.date',inv.date,'date')}${F('Due date','invoice.due',inv.due||dueAuto,'date')}${F('Sales tax %','invoice.tax',inv.tax,'number')}</div>
+  <h3>Billing method</h3><div class="grid g2">
+  <label class="chk card" style="margin:0;cursor:pointer"><input type="radio" name="bm" data-k="invoice.mode" value="fixed" data-rr ${inv.mode!=='actual'?'checked':''}><span><b>Fixed price</b><br><span class="sm mut">Bill the approved estimate total (${money(E.total)})</span></span></label>
+  <label class="chk card" style="margin:0;cursor:pointer"><input type="radio" name="bm" data-k="invoice.mode" value="actual" data-rr ${inv.mode==='actual'?'checked':''}><span><b>Actual hours</b><br><span class="sm mut">Bill real hours worked per line item</span></span></label></div></div>
+ ${inv.mode==='actual'?`<div class="card"><h2>Actual hours</h2><div class="sm mut">Blank = estimated hours (with complexity). Enter real hours to override.</div>
+  ${p.lines.map((l,i)=>l.type==='exp'?`<div class="line exp"><div class="row"><span class="grow">${esc(l.desc||'Expense')}</span><span class="amt" data-c="line.${i}"></span></div></div>`:`<div class="line"><div class="row"><b class="grow">${esc(l.desc||'Item')}</b><span class="amt" data-c="act.${i}"></span></div>
+   <div class="grid" style="margin-top:8px"><label class="f">Est. hours<div style="padding:9px 0">${fh(num(l.hours)*E.cx)}</div></label>${F('Actual hours',`lines.${i}.actual`,l.actual==null?'':l.actual,'number','placeholder="'+fh(num(l.hours)*E.cx)+'"')}${F('Rate ($/hr)',`lines.${i}.rate`,l.rate,'number')}</div></div>`).join('')||'<div class="empty">No line items in the estimate.</div>'}
+  <div class="tot"><span>Actual hours total</span><b data-c="bill.acthrs"></b></div><div class="tot"><span>vs. estimate</span><b data-c="bill.var"></b></div></div>`:''}
+ ${rTracked(p)}
+ <div class="card"><div class="row"><h2 class="grow" style="margin:0">Change orders / extra work</h2><button class="btn sm" data-act="addCO">+ Change order</button></div>
+  ${inv.changeOrders.map((c,i)=>`<div class="line"><div class="top"><input data-k="invoice.changeOrders.${i}.desc" value="${esc(c.desc)}" placeholder="What was added"><button class="x" data-act="rmCO" data-i="${i}">×</button></div>
+   <div class="grid" style="margin-top:8px">${F('Hours',`invoice.changeOrders.${i}.hours`,c.hours,'number')}${F('Rate ($/hr)',`invoice.changeOrders.${i}.rate`,c.rate,'number')}<label class="f">Amount<div class="amt" style="padding:9px 0" data-c="co.${i}"></div></label></div></div>`).join('')||'<div class="sm mut" style="margin-top:8px">None. Add anything the client asked for beyond the SOW.</div>'}</div>
+ <div class="card"><div class="row"><h2 class="grow" style="margin:0">Payments received</h2><button class="btn sm" data-act="addDep">+ Deposit (${money0(E.deposit)})</button><button class="btn sm" data-act="addPay">+ Payment</button></div>
+  ${inv.payments.map((x,i)=>`<div class="line"><div class="top"><input data-k="invoice.payments.${i}.label" value="${esc(x.label)}" placeholder="Check #, Zelle, ACH…"><button class="x" data-act="rmPay" data-i="${i}">×</button></div>
+   <div class="grid" style="margin-top:8px">${F('Date',`invoice.payments.${i}.date`,x.date,'date')}${F('Amount ($)',`invoice.payments.${i}.amount`,x.amount,'number')}</div></div>`).join('')||'<div class="sm mut" style="margin-top:8px">No payments logged yet.</div>'}</div>
+ <div class="card"><h2>Final bill</h2>
+  <div class="tot"><span>Project ${inv.mode==='actual'?'(actual hours + expenses)':'(fixed price)'}</span><span data-c="bill.base"></span></div>
+  <div class="tot"><span>Change orders</span><span data-c="bill.co"></span></div>
+  <div class="grid" style="margin:8px 0">${F('Credit / discount ($)','invoice.credit',inv.credit,'number')}</div>
+  <div class="tot"><span>Credit</span><span class="neg" data-c="bill.credit"></span></div>
+  <div class="tot"><span>Tax (${fh(inv.tax)}%)</span><span data-c="bill.tax"></span></div>
+  <div class="tot big"><span>Invoice total</span><span data-c="bill.total"></span></div>
+  <div class="tot"><span>Payments received</span><span class="neg" data-c="bill.paid"></span></div>
+  <div class="tot big"><span>Balance due</span><span data-c="bill.balance"></span></div>
+  <div style="margin-top:10px">${T('Notes on invoice','invoice.notes',inv.notes,2)}</div>
+  <div class="row" style="margin-top:12px"><button class="btn p" data-act="doc" data-kind="invoice">📄 Final invoice</button><button class="btn" data-act="tab" data-t="mo">Next: Monthly →</button></div></div>`}
+function rMo(p){const m=p.monthly;
+ const presets=MO_PRESETS.map((x,i)=>`<option value="${i}">${esc(x[0])}${x[2]?` — your cost ${money0(x[2])}/${x[3]}`:''}</option>`).join('');
+ return `<div class="card"><h2>Monthly service plan</h2>
+  <label class="chk"><input type="checkbox" data-k="monthly.active" ${m.active?'checked':''}> Active — count this client in monthly recurring revenue</label>
+  <div class="grid" style="margin-top:10px">${F('Service start','monthly.start',m.start,'date')}${F('Term (months)','monthly.term',m.term,'number')}${F('Default markup %','monthly.markup',m.markup,'number')}</div></div>
+ <div class="card"><h2>Recurring items</h2>
+  <div class="grid g2"><label class="f">Quick-add<select data-add="mo"><option value="">+ Choose a service…</option>${presets}</select></label>
+  <label class="f">&nbsp;<div class="row">${p.links.length?'<button class="btn" data-act="importRender">⬇ Import Render hosting</button>':''}<button class="btn" data-act="addMo">+ Custom item</button><button class="btn" data-act="markupAll">Apply ${fh(m.markup)}% markup to all</button></div></label></div>
+  <div class="sm mut" style="margin-top:6px">Preset costs are starting points — check current vendor pricing and edit.</div>
+  ${m.items.map((it,i)=>`<div class="line"><div class="top"><input data-k="monthly.items.${i}.name" value="${esc(it.name)}" placeholder="Service"><button class="x" data-act="rmMo" data-i="${i}">×</button></div>
+   <div class="grid" style="margin-top:8px"><label class="f">Category<select data-k="monthly.items.${i}.cat">${MOD_CATS.map(c=>`<option ${it.cat===c?'selected':''}>${c}</option>`).join('')}</select></label>
+   <label class="f">Billed<select data-k="monthly.items.${i}.cycle"><option value="mo" ${it.cycle!=='yr'?'selected':''}>Monthly</option><option value="yr" ${it.cycle==='yr'?'selected':''}>Yearly</option></select></label>
+   ${F('Your cost ($)',`monthly.items.${i}.cost`,it.cost,'number')}${F('Client price ($)',`monthly.items.${i}.price`,it.price,'number')}
+   <label class="f">Per month<div style="padding:9px 0" data-c="mo.pr.${i}"></div></label><label class="f">Your margin<div style="padding:9px 0" data-c="mo.m.${i}"></div></label></div></div>`).join('')||'<div class="empty">No recurring items yet.</div>'}</div>
+ <div class="card"><h2>Monthly totals</h2>
+  <div class="tot big"><span>Client pays / month</span><span data-c="mo.price"></span></div>
+  <div class="tot"><span>Your cost / month</span><span data-c="mo.cost"></span></div>
+  <div class="tot"><span>Your margin / month</span><b><span data-c="mo.margin"></span> (<span data-c="mo.pct"></span>)</b></div>
+  <div class="tot"><span>Annual recurring</span><span data-c="mo.annual"></span></div>
+  <div class="tot"><span>Contract value (${fh(m.term)} mo)</span><span data-c="mo.contract"></span></div>
+  <div class="grid" style="margin-top:10px">${F('Monthly invoice #','monthly.invNo',m.invNo)}${F('Billing period (e.g. December 2026)','monthly.period',m.period)}</div>
+  <div style="margin-top:10px">${T('Notes (what support includes, response times, etc.)','monthly.notes',m.notes,3)}</div>
+  <div class="row" style="margin-top:12px"><button class="btn p" data-act="doc" data-kind="moAgree">📄 Monthly services agreement</button><button class="btn" data-act="doc" data-kind="moInv">📄 Monthly invoice</button><button class="btn" data-act="tab" data-t="lic">Next: Licensing →</button></div></div>`}
+
+
+/* ================= licensing ================= */
+const MODELS=[['license','Licensed — you keep ownership, client gets a license to use it'],['saas','SaaS subscription — you host it, client subscribes'],['own','Client buys it — code transfers on final payment']];
+function rLic(p){const L=p.lic;const presets=LIC_PRESETS.map((x,i)=>`<option value="${i}">${esc(x[0])} — ${money0(x[2])} ${esc(LIC_TYPES.find(t=>t[0]===x[1])[1].toLowerCase())}</option>`).join('');
+ return `<div class="card"><h2>License model</h2>
+  <label class="f">Who owns the software?<select data-k="lic.model" data-rr>${MODELS.map(([v,l])=>`<option value="${v}" ${L.model===v?'selected':''}>${l}</option>`).join('')}</select></label>
+  ${L.model==='own'?'<div class="note">With "client buys it," the SOW transfers ownership on final payment. License fees here are optional (support, admin, hosting management).</div>':'<div class="note ok">You keep the code and IP. The client pays to use it. The SOW and agreement will say so.</div>'}
+  <div class="grid" style="margin-top:10px">${F('License start','lic.start',L.start,'date')}${F('Term (months)','lic.term',L.term,'number')}${F('Users allowed (blank = unlimited)','lic.users',L.users,'number')}${F('Locations allowed (blank = unlimited)','lic.locations',L.locations,'number')}${F('Territory','lic.territory',L.territory)}${F('Max yearly price increase %','lic.cap',L.cap,'number')}</div>
+  <div class="grid g2" style="margin-top:10px"><label class="chk"><input type="checkbox" data-k="lic.autoRenew" ${L.autoRenew?'checked':''}> Auto-renews each term</label><label class="chk"><input type="checkbox" data-k="lic.exclusive" ${L.exclusive?'checked':''}> Exclusive (you won't license it to their competitors)</label><label class="chk"><input type="checkbox" data-k="lic.sublicense" ${L.sublicense?'checked':''}> Client may sublicense / resell</label><label class="chk"><input type="checkbox" data-k="lic.escrow" ${L.escrow?'checked':''}> Source code escrow</label></div></div>
+ <div class="card"><h2>License &amp; admin fees</h2>
+  <div class="grid g2"><label class="f">Quick-add<select data-add="lic"><option value="">+ Choose a fee…</option>${presets}</select></label><label class="f">&nbsp;<div class="row"><button class="btn" data-act="addLic">+ Custom fee</button></div></label></div>
+  ${L.items.map((it,i)=>`<div class="line"><div class="top"><input data-k="lic.items.${i}.name" value="${esc(it.name)}" placeholder="Fee name"><button class="x" data-act="rmLic" data-i="${i}">×</button></div>
+   <div class="grid" style="margin-top:8px"><label class="f">Billed<select data-k="lic.items.${i}.type">${LIC_TYPES.map(([v,l])=>`<option value="${v}" ${it.type===v?'selected':''}>${l}</option>`).join('')}</select></label>${F('Amount ($)',`lic.items.${i}.amount`,it.amount,'number')}${F('Qty',`lic.items.${i}.qty`,it.qty,'number')}<label class="f">Comes to<div style="padding:9px 0" data-c="lic.${i}"></div></label></div></div>`).join('')||'<div class="empty">No fees yet — quick-add a license fee, setup fee or admin fee.</div>'}
+  <div class="grid" style="margin-top:10px">${F('Admin fee % on pass-through costs (hosting, APIs)','lic.adminPct',L.adminPct,'number')}<label class="f">Admin fee / month<div style="padding:9px 0" data-c="lic.admin"></div></label></div></div>
+ <div class="card"><h2>License totals</h2>
+  <div class="tot"><span>One-time fees</span><span data-c="lic.once"></span></div>
+  <div class="tot big"><span>Recurring license / admin</span><span><span data-c="lic.mo"></span>/mo</span></div>
+  <div class="tot"><span>Annual recurring</span><span data-c="lic.annual"></span></div>
+  <div class="tot"><span>First-year total</span><span data-c="lic.first"></span></div>
+  <div class="tot"><span>Total over term (${fh(L.term)} mo)</span><b data-c="lic.termTotal"></b></div>
+  <div class="tot"><span>Client's total monthly (services + license)</span><b data-c="all.mo"></b></div>
+  <div class="grid" style="margin-top:10px">${F('License invoice #','lic.invNo',L.invNo)}</div>
+  <div style="margin-top:10px">${T('Extra terms / notes for the agreement','lic.notes',L.notes,3)}</div>
+  <div class="row" style="margin-top:12px"><button class="btn p" data-act="doc" data-kind="licAgree">📄 Software License Agreement</button><button class="btn" data-act="doc" data-kind="licInv">📄 License invoice</button></div>
+  <div class="sm mut" style="margin-top:8px">The agreement is a template. Have an attorney review it before you sign with a client.</div></div>`}
+
+/* ================= build history (GitHub + Render) ================= */
+const PLAN_COST={free:0,starter:7,standard:25,pro:85,'0.5c-512mb':7,'1c-2g':25,'2c-4g':85};
+function svcCost(sv){if(sv.cost!=null)return num(sv.cost);if(sv.type==='static_site')return 0;if(sv.type==='cron_job')return 1;const c=PLAN_COST[String(sv.plan||'').toLowerCase()];return c==null?0:c}
+function planLabel(sv){if(sv.type==='postgres')return 'Postgres '+(sv.plan==='free'?'free':sv.plan==='0.1c-256mb'?'basic-256mb':String(sv.plan).replace('_','-'))+(sv.diskGB?` · ${sv.diskGB} GB`:'');if(sv.type==='static_site')return 'static site';const m={'0.5c-512mb':'Starter','1c-2g':'Standard','2c-4g':'Pro'};return (m[sv.plan]||String(sv.plan||'?').replace(/^./,c=>c.toUpperCase()))+(sv.type==='cron_job'?' cron':'')}
+const histList=()=>Object.entries(S.hist).map(([id,h])=>({id,...h}));
+function histLabel(h){return `${h.name} — ${fh(h.hours)} hrs`}
+function histOpts(exclude){return histList().filter(h=>!exclude.includes(h.id)).sort((a,b)=>a.name.localeCompare(b.name)).map(h=>`<option value="${esc(h.id)}">${esc(histLabel(h))}</option>`).join('')}
+function linkedServices(p){const out=[],seen=new Set();p.links.forEach(id=>{const h=S.hist[id];(h&&h.services||[]).forEach(sv=>{if(!seen.has(sv.id)){seen.add(sv.id);out.push(sv)}})});return out}
+function trackStats(p){const hs=p.links.map(id=>S.hist[id]).filter(Boolean);if(!hs.length)return null;
+ const hours=hs.reduce((a,h)=>a+num(h.hours),0),allow=num(S.settings.d.trackAllow);const svs=linkedServices(p);
+ return{hs,hours,allow,billable:r2(hours*(1+allow/100)),commits:hs.reduce((a,h)=>a+num(h.commits),0),sessions:hs.reduce((a,h)=>a+num(h.sessions),0),days:hs.reduce((a,h)=>a+num(h.activeDays),0),
+  deploys:svs.reduce((a,s)=>a+num(s.deployCount),0),svs,last:hs.map(h=>h.last).sort().pop()}}
+function compStats(p){const hs=p.comps.map(id=>S.hist[id]).filter(Boolean);if(!hs.length)return null;const allow=num(S.settings.d.trackAllow);
+ const v=hs.map(h=>num(h.hours)*(1+allow/100));return{hs,avg:v.reduce((a,b)=>a+b,0)/v.length,min:Math.min(...v),max:Math.max(...v)}}
+const chip=(txt,act,id)=>`<span class="chipx">${esc(txt)}<button data-act="${act}" data-id="${esc(id)}" title="Remove">×</button></span>`;
+function syncLine(){const m=S.histMeta;if(!m)return '<span class="mut sm">Not synced yet.</span>';return `<span class="mut sm">Last synced ${esc(new Date(m.at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}))} · ${esc(m.source||'GitHub + Render')}</span>`}
+function noHist(){return `<div class="note">Build history hasn't loaded yet. It syncs from GitHub and Render into your account; ask Claude to "sync my build history" if it's empty.</div>`}
+function rLinkCard(p){const has=Object.keys(S.hist).length;const t=trackStats(p);
+ return `<div class="card"><h2>🔗 GitHub &amp; Render link</h2><div class="sm mut" style="margin-bottom:8px">Link this project to its repo(s). Tracked build time then flows into the Final Bill, and Render services into Monthly costs.</div>
+ ${has?`<label class="f">Add a repo / app<select data-add="link"><option value="">+ Choose from your GitHub repos…</option>${histOpts(p.links)}</select></label>`:noHist()}
+ <div class="row" style="margin-top:8px">${p.links.map(id=>chip(S.hist[id]?S.hist[id].name:id,'rmLink',id)).join('')}</div>
+ ${t?`<div class="kpis" style="margin-top:10px"><div class="kpi"><div class="l">Tracked hours</div><div class="v">${fh(t.hours)}</div><div class="s">${t.sessions} sessions · ${t.commits} commits</div></div><div class="kpi"><div class="l">Billable (+${fh(t.allow)}%)</div><div class="v">${fh(t.billable)}</div><div class="s">${money0(t.billable*rate('dev'))} at dev rate</div></div><div class="kpi"><div class="l">Render</div><div class="v">${t.deploys}</div><div class="s">deploys · ${t.svs.length} service${t.svs.length==1?'':'s'}</div></div></div><div>${syncLine()}</div>`:''}</div>`}
+function rReality(p){const E=calcEst(p),c=compStats(p),t=trackStats(p),has=Object.keys(S.hist).length;if(!has&&!p.comps.length)return '';
+ let body='';
+ if(c){const diff=E.hrsAdj?(E.hrsAdj-c.avg)/c.avg*100:0;const cls=Math.abs(diff)<=20?'ok':'';
+  body+=`<div class="tot"><span>Your estimate</span><b>${fh(E.hrsAdj)} hrs</b></div><div class="tot"><span>Comparable builds (actual, incl. +${fh(S.settings.d.trackAllow)}%)</span><b>${fh(c.avg)} hrs avg</b></div><div class="tot"><span>Range of comparables</span><span>${fh(c.min)} – ${fh(c.max)} hrs</span></div>
+  <div class="note ${cls}">${E.hrsAdj?(Math.abs(diff)<=20?`On target — within ${fh(Math.abs(diff))}% of what similar builds actually took.`:diff<0?`You're estimating ${fh(-diff)}% <b>under</b> what similar builds actually took. Consider raising hours or complexity.`:`You're estimating ${fh(diff)}% <b>over</b> similar builds. Fine if this one is bigger — otherwise you may be priced high.`):'Add labor items to compare.'}</div>
+  <div class="row"><button class="btn sm" data-act="matchComps">Scale my hours to match (${fh(c.avg)} hrs)</button></div>`}
+ if(t){const used=E.hrsAdj?t.billable/E.hrsAdj*100:0;body+=`<h3>This build so far (from GitHub)</h3><div class="tot"><span>Tracked + allowance</span><b>${fh(t.billable)} of ${fh(E.hrsAdj)} est. hrs (${fh(used)}%)</b></div>${used>100?'<div class="note">Over the estimate — consider a change order.</div>':''}`}
+ return `<div class="card"><h2>📊 Reality check — from your GitHub history</h2>
+  ${has?`<label class="f">Compare to past builds<select data-add="comp"><option value="">+ Pick a similar past app…</option>${histOpts(p.comps)}</select></label>`:noHist()}
+  <div class="row" style="margin:8px 0">${p.comps.map(id=>chip(S.hist[id]?`${S.hist[id].name} (${fh(S.hist[id].hours)}h)`:id,'rmComp',id)).join('')}</div>${body}</div>`}
+function rTracked(p){const t=trackStats(p);if(!t)return Object.keys(S.hist).length?`<div class="card"><h2>⏱ Tracked build time</h2><div class="sm mut">Link this project to its GitHub repo on the Client tab to bill from real build time.</div></div>`:'';
+ return `<div class="card"><h2>⏱ Tracked build time (GitHub + Render)</h2>
+  <div class="tot"><span>Hours from commit sessions</span><b>${fh(t.hours)} hrs</b></div>
+  <div class="tot"><span>Off-commit allowance (+${fh(t.allow)}%: planning, testing, calls)</span><span>${fh(t.billable-t.hours)} hrs</span></div>
+  <div class="tot big"><span>Billable tracked hours</span><span>${fh(t.billable)} hrs</span></div>
+  <div class="tot"><span>Activity</span><span>${t.sessions} sessions · ${t.days} days · ${t.commits} commits · ${t.deploys} deploys</span></div>
+  <div class="row" style="margin-top:10px"><button class="btn g" data-act="fillTracked">Fill actual hours from GitHub</button>${syncLine()}</div></div>`}
+function rHist(){const hs=histList();if(!hs.length)return `<h1 style="margin-top:6px">Build History</h1>${noHist()}`;
+ const allow=num(S.settings.d.trackAllow),dr=rate('dev');let H=0,D=0,M=0,C=0;hs.forEach(h=>{H+=num(h.hours);C+=num(h.commits);(h.services||[]).forEach(s=>{D+=num(s.deployCount);M+=svcCost(s)})});
+ const band=[['Small','< 10 hrs',0,10],['Medium','10–40 hrs',10,40],['Large','40–100 hrs',40,100],['XL','100+ hrs',100,1e9]].map(([n,l,a,b])=>{const g=hs.filter(h=>h.hours>=a&&h.hours<b);return{n,l,c:g.length,avg:g.length?g.reduce((s,h)=>s+h.hours,0)/g.length:0}});
+ const cal=Object.values(S.projects).map(p=>{const t=trackStats(p),E=calcEst(p);return t&&E.hrsAdj?{p,ratio:t.billable/E.hrsAdj}:null}).filter(Boolean);
+ return `<div class="row" style="margin-top:6px"><h1 class="grow">Build History</h1>${syncLine()}</div>
+ <div class="sm mut">Real build time from your GitHub commits (work sessions: commits less than 2 hrs apart, +30 min lead-in each) and Render deploys. Use it to price new builds and bill finished ones.</div>
+ <div class="kpis"><div class="kpi"><div class="l">Apps tracked</div><div class="v">${hs.length}</div><div class="s">${C.toLocaleString()} commits</div></div>
+ <div class="kpi"><div class="l">Build hours</div><div class="v">${fh(H)}</div><div class="s">${fh(H*(1+allow/100))} with +${fh(allow)}% allowance</div></div>
+ <div class="kpi"><div class="l">Value at ${money0(dr)}/hr</div><div class="v">${money0(H*(1+allow/100)*dr)}</div><div class="s">if billed to a client</div></div>
+ <div class="kpi"><div class="l">Render deploys</div><div class="v">${D.toLocaleString()}</div><div class="s">across all services</div></div>
+ <div class="kpi"><div class="l">Render hosting</div><div class="v">${money0(M)}/mo</div><div class="s">web services, crons &amp; databases</div></div></div>
+ <div class="card"><h2>What builds really take</h2><div class="grid">${band.map(b=>`<div class="kpi"><div class="l">${b.n} · ${b.l}</div><div class="v">${b.c?fh(b.avg)+' hrs':'—'}</div><div class="s">${b.c} app${b.c==1?'':'s'} · avg ${money0(b.avg*(1+allow/100)*dr)}</div></div>`).join('')}</div>
+ ${cal.length?`<h3>Estimate accuracy (linked projects)</h3>${cal.map(x=>`<div class="tot"><span>${esc(x.p.name)}</span><b>${x.ratio>=1?'+':''}${fh((x.ratio-1)*100)}% vs estimate</b></div>`).join('')}`:''}</div>
+ <div class="row"><input class="grow" style="flex:2 1 200px" placeholder="Search apps or repos…" data-ui="hq" value="${esc(S.hq)}"><select data-ui="hsort" style="flex:1 1 140px">${[['hours','Most hours'],['recent','Most recent'],['name','Name']].map(([v,l])=>`<option value="${v}" ${S.hsort===v?'selected':''}>${l}</option>`).join('')}</select></div>
+ <div id="hlist">${rHistList()}</div>`}
+function rHistList(){const allow=num(S.settings.d.trackAllow),dr=rate('dev');let hs=histList();const q=S.hq.toLowerCase();
+ if(q)hs=hs.filter(h=>[h.name,h.repo,h.branch,...(h.services||[]).map(s=>s.name)].join(' ').toLowerCase().includes(q));
+ hs.sort(S.hsort==='name'?(a,b)=>a.name.localeCompare(b.name):S.hsort==='recent'?(a,b)=>String(b.last).localeCompare(String(a.last)):(a,b)=>b.hours-a.hours);
+ if(!hs.length)return '<div class="card empty">No matches.</div>';
+ return hs.map(h=>{const svs=h.services||[],dep=svs.reduce((a,s)=>a+num(s.deployCount),0),mo=svs.reduce((a,s)=>a+svcCost(s),0);const used=Object.values(S.projects).filter(p=>p.links.includes(h.id)).map(p=>p.name);
+ return `<div class="card pcard" data-act="histOpen" data-id="${esc(h.id)}"><div class="row"><div class="grow"><b style="font-size:16px">${esc(h.name)}</b><div class="mut sm">${esc(h.repo)}${h.branch&&h.branch!=='all'&&h.branch!=='default'?' · '+esc(h.branch)+' branch':''} · ${fmtDate(String(h.first).slice(0,10))} → ${fmtDate(String(h.last).slice(0,10))}</div></div>${used.length?`<span class="badge b-Sent">Linked</span>`:''}</div>
+ <div class="nums"><div>Build hours<b>${fh(h.hours)}</b></div><div>Sessions / days<b>${h.sessions} / ${h.activeDays}</b></div><div>Commits<b>${h.commits}</b></div><div>Deploys<b>${dep}</b></div><div>Value<b>${money0(h.hours*(1+allow/100)*dr)}</b></div><div>Hosting<b>${money(mo)}/mo</b></div></div>
+ <div id="hd-${esc(h.id)}" style="display:none;margin-top:10px">${svs.length?svs.map(s=>`<div class="line"><div class="row"><b class="grow">${esc(s.name)}</b><span class="badge">${esc(planLabel(s))}</span></div><div class="sm mut" style="margin-top:4px">${esc(s.workspace||'')} workspace · ${s.type==='postgres'?esc(s.status||''):`${num(s.deployCount)} deploys${s.failedCount?` (${s.failedCount} failed)`:''} ${num(s.buildMinutes)?` · ${fh(s.buildMinutes)} build min`:''}`} · ${money(svcCost(s))}/mo${s.firstDeploy?` · first deploy ${fmtDate(String(s.firstDeploy).slice(0,10))}`:''}</div>${s.expires?`<div class="note" style="margin:6px 0 0">Free database ${s.status&&s.status.startsWith('suspended')?'expired':'expires'} ${fmtDate(s.expires)} — upgrade to keep the data.</div>`:''}${s.url?`<div class="sm" style="margin-top:4px"><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.url.replace('https://',''))}</a></div>`:''}</div>`).join(''):'<div class="sm mut">No Render service found for this repo.</div>'}
+ ${used.length?`<div class="sm mut">Linked to: ${used.map(esc).join(', ')}</div>`:''}</div></div>`}).join('')}
+
+/* ================= render: settings ================= */
+const SF=(lbl,k,v,type='text')=>`<label class="f">${lbl}<input type="${type}" data-s="${k}" value="${esc(v)}" ${type==='number'?'inputmode="decimal" step="any"':''}></label>`;
+const ST=(lbl,k,v,rows=4)=>`<label class="f">${lbl}<textarea data-s="${k}" rows="${rows}">${esc(v)}</textarea></label>`;
+function rSettings(){const s=S.settings,b=s.biz,d=s.d;
+ return `<h1 style="margin-top:6px">Settings</h1>
+ <div class="card"><h2>Your business (shows on every document)</h2><div class="grid g2">${SF('Business name','biz.name',b.name)}${SF('Your name','biz.owner',b.owner)}${SF('Email','biz.email',b.email,'email')}${SF('Phone','biz.phone',b.phone,'tel')}${SF('Website','biz.website',b.website)}</div>
+  <div class="grid g2" style="margin-top:10px">${ST('Address','biz.address',b.address,3)}${ST('How to pay you (printed on invoices)','biz.payInfo',b.payInfo,3)}</div></div>
+ <div class="card"><div class="row"><h2 class="grow" style="margin:0">Hourly rates</h2><button class="btn sm" data-act="addRate">+ Role</button></div>
+  ${s.rates.map((r,i)=>`<div class="line"><div class="top"><input data-s="rates.${i}.name" value="${esc(r.name)}"><button class="x" data-act="rmRate" data-i="${i}">×</button></div><div class="grid" style="margin-top:8px">${SF('Rate ($/hr)',`rates.${i}.rate`,r.rate,'number')}</div></div>`).join('')}
+  <div class="sm mut">New line items use these rates. Existing estimates keep the rate they were built with.</div></div>
+ <div class="card"><h2>Defaults</h2><div class="grid">
+  ${SF('Contingency %','d.contingency',d.contingency,'number')}${SF('Deposit %','d.deposit',d.deposit,'number')}${SF('Sales tax %','d.tax',d.tax,'number')}${SF('Payment terms (days)','d.terms',d.terms,'number')}
+  ${SF('Monthly markup %','d.markup',d.markup,'number')}${SF('Build capacity (hrs/week)','d.hpw',d.hpw,'number')}${SF('Off-commit time allowance %','d.trackAllow',d.trackAllow,'number')}${SF('Warranty (days)','d.warranty',d.warranty,'number')}${SF('Estimate valid (days)','d.estValid',d.estValid,'number')}
+  ${SF('Monthly cancel notice (days)','d.cancelDays',d.cancelDays,'number')}${SF('Governing law (state)','d.law',d.law)}${SF('Venue (county, state)','d.venue',d.venue)}${SF('Default max license increase %','d.licCap',d.licCap,'number')}${SF('Late fee % / month','d.lateFee',d.lateFee,'number')}${SF('Invoice prefix','d.invPrefix',d.invPrefix)}${SF('Next invoice #','d.nextInv',d.nextInv,'number')}</div></div>
+ <div class="card"><h2>Default SOW terms (for new projects)</h2><div class="sm mut" style="margin-bottom:8px">One item per line.</div>
+  <div class="grid g2">${ST('Assumptions','assume',s.assume,5)}${ST('Client responsibilities','resp',s.resp,5)}</div><div style="margin-top:10px">${ST('Out of scope','oos',s.oos,5)}</div></div>
+ <div class="card"><h2>Backup</h2><div class="sm mut">Copy a backup of all projects and settings, or paste one in to restore.</div>
+  <div class="row" style="margin-top:8px"><button class="btn" data-act="export">Copy backup</button><button class="btn" data-act="importShow">Restore from backup</button></div><div id="impBox"></div></div>`}
+
+/* ================= documents ================= */
+function clientBlock(p){const c=p.client;return `<b>${esc(c.company||c.name||'—')}</b><div class="d-sm">${[c.company&&c.name?esc(c.name):'',escBr(c.address),esc(c.phone),esc(c.email)].filter(Boolean).join('<br>')}</div>`}
+function dHead(title,meta,p,lbl='Prepared for'){const b=S.settings.biz;
+ return `<div class="d-top"><div><div class="d-biz">${esc(b.name)}</div><div class="d-sm">${[esc(b.owner),escBr(b.address),esc(b.phone),esc(b.email),esc(b.website)].filter(Boolean).join('<br>')}</div></div>
+ <div class="d-right"><div class="d-title">${title}</div>${meta.filter(x=>x[1]).map(([k,v])=>`<div class="d-sm"><b>${k}:</b> ${esc(v)}</div>`).join('')}</div></div>
+ <div class="d-to"><div class="d-lbl">${lbl}</div>${clientBlock(p)}</div>`}
+const dRow=(desc,amt,detail='',cls='')=>`<div class="d-row ${cls}"><div>${desc}${detail?`<div class="d-sm">${detail}</div>`:''}</div><div class="d-amt">${amt}</div></div>`;
+const ul=arr=>arr.length?`<ul>${arr.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:'<div class="d-sm">None.</div>';
+function estNo(p){return 'EST-'+p.id.slice(0,6).toUpperCase()}
+function breakdown(p,showAmt=true){const E=calcEst(p);return PHASES.map(ph=>{const ls=p.lines.map((l,i)=>[l,i]).filter(([l])=>(PHASES.includes(l.phase)?l.phase:'Other')===ph);if(!ls.length)return '';
+ return `<div class="d-ph">${ph}</div>`+ls.map(([l,i])=>l.type==='exp'?dRow(esc(l.desc||'Expense'),showAmt?money(E.lines[i]):'',showAmt?`${fh(l.qty)} × ${money(l.cost)}`:''):dRow(esc(l.desc||'Item'),showAmt?money(E.lines[i]*E.cx):'',showAmt?`${fh(num(l.hours)*E.cx)} hrs`:'')).join('')}).join('')}
+function moBlock(p,title='Ongoing Monthly Services'){const M=calcMo(p);if(!p.monthly.items.length)return '';
+ return `<h2>${title}</h2>${p.monthly.items.map((it,i)=>dRow(esc(it.name||'Service'),money(M.items[i].pr)+'/mo',it.cycle==='yr'?`${money(it.price)} billed yearly`:'')).join('')}
+ <div class="d-tots">${dRow('<b>Monthly total</b>','<b>'+money(M.price)+'/mo</b>','','d-grand')}</div>`}
+function timelineHtml(p){let wk=0;const tl=p.sow.timeline.filter(t=>t.label||num(t.weeks));if(!tl.length)return '<div class="d-sm">Timeline to be confirmed at kickoff.</div>';
+ return tl.map(t=>{const w=num(t.weeks)||0,a=Math.floor(wk)+1,b=Math.max(a,Math.ceil(wk+w));wk+=w;return dRow(esc(t.label),w?`Week ${a}${b>a?'–'+b:''}`:'')}).join('')+`<div class="d-sm" style="margin-top:4px">Estimated duration: about ${fh(wk)} weeks${p.start?' starting '+fmtDate(p.start):' from kickoff'}${p.launch?' · target launch '+fmtDate(p.launch):''}.</div>`}
+function buildDoc(kind,p){const s=S.settings,d=s.d,E=calcEst(p),B=calcBill(p),M=calcMo(p);let t,h,fn;
+ if(kind==='estimate'){t='Estimate';fn=slug(p.name)+'-estimate';
+  h=dHead('ESTIMATE',[['Estimate #',estNo(p)],['Date',fmtDate(p.estDate||iso())],['Valid until',fmtDate(addDays(p.estDate||iso(),d.estValid))]],p)+
+  `<h2>${esc(p.name)}</h2>${p.desc?`<div>${escBr(p.desc)}</div>`:''}
+  <h2>Work Breakdown</h2>${breakdown(p)||'<div class="d-sm">No items.</div>'}
+  <div class="d-tots">${dRow('Development & design',money(E.laborAdj))}${E.cont?dRow(`Contingency (${fh(p.contingency)}%)`,money(E.cont)):''}${E.exp?dRow('Expenses / pass-through',money(E.exp)):''}${E.disc?dRow(`Discount (${fh(p.discount)}%)`,'-'+money(E.disc)):''}
+  ${dRow('<b>Total estimate</b>','<b>'+money(E.total)+'</b>','','d-grand')}
+  <div class="d-hl">${dRow('Deposit to start ('+fh(p.depositPct)+'%)','<b>'+money(E.deposit)+'</b>')}<div class="d-sm">Estimated ${fh(E.hrsAdj)} hours · about ${fh(E.hrsAdj/(num(d.hpw)||25))} weeks${E.cont?` · likely range ${money0(E.low)} – ${money0(E.total)}`:''}</div></div></div>
+  ${moBlock(p,'Ongoing Monthly Costs (after launch)')}
+  <div class="d-foot">This is an estimate, not a final bill. A Scope of Work will confirm deliverables, timeline and payment schedule before work begins.</div>`}
+ else if(kind==='sow'){t='Scope of Work';fn=slug(p.name)+'-scope-of-work';let n=0;const H=x=>`<h2>${++n}. ${x}</h2>`;
+  h=dHead('SCOPE OF WORK',[['Ref',estNo(p)],['Date',fmtDate(iso())]],p,'Client')+
+  H('Project Overview')+`<div><b>${esc(p.name)}</b></div><div>${escBr(p.sow.overview||p.desc||'')}</div>`+
+  H('Deliverables')+(breakdown(p,p.sow.showLine)||'<div class="d-sm">To be listed.</div>')+
+  H('Timeline')+timelineHtml(p)+
+  H('Investment')+`<div class="d-tots" style="max-width:none">${dRow('<b>Total project price</b>','<b>'+money(E.total)+'</b>','','d-grand')}</div>
+   <div class="d-lbl" style="margin-top:10px">Payment schedule</div>${p.sow.schedule.map(x=>dRow(esc(x.label)+` (${fh(x.pct)}%)`,money(E.total*num(x.pct)/100))).join('')}
+   <div class="d-sm" style="margin-top:4px">Invoices are due within ${fh(d.terms)} days. Late balances may accrue ${fh(d.lateFee)}% per month.</div>`+
+  (p.monthly.items.length?H('Ongoing Monthly Services')+moBlock(p,'').replace('<h2></h2>','')+`<div class="d-sm">Monthly services begin at launch${p.monthly.term?' for an initial term of '+fh(p.monthly.term)+' months':''}; either party may cancel with ${fh(d.cancelDays)} days' written notice after the initial term.</div>`:'')+
+  H('Assumptions')+ul(lines2list(p.sow.assume))+H('Client Responsibilities')+ul(lines2list(p.sow.resp))+H('Out of Scope')+ul(lines2list(p.sow.oos))+
+  H('Changes to Scope')+`<div>Requests outside this scope will be quoted as a written change order at ${money0(rate('dev'))}/hr (or a fixed price) and require approval before work begins. Change orders may adjust the timeline.</div>`+
+  H('Acceptance & Warranty')+`<div>The client has 5 business days after delivery to report defects against this scope. Bugs reported within ${fh(d.warranty)} days of launch are fixed at no charge. New features and changes are billed as change orders. ${p.lic.model==='own'?'Upon final payment the client owns the custom code and data created for this project; third-party services remain under their own terms.':`${esc(s.biz.name)} retains all ownership of the software, code and intellectual property. The client owns its own data and receives the right to use the software under the separate Software License Agreement.`}</div>`+
+  `<div class="d-sig"><div><div class="d-sigl"></div><b>${esc(s.biz.owner||'')}</b><div class="d-sm">${esc(s.biz.name)} · Date</div></div><div><div class="d-sigl"></div><b>${esc(p.client.name||'Client')}</b><div class="d-sm">${esc(p.client.company||'')} · Date</div></div></div>`}
+ else if(kind==='invoice'){const inv=p.invoice;t='Invoice';fn=slug(p.name)+'-invoice'+(inv.number?'-'+slug(inv.number):'');
+  h=dHead('INVOICE',[['Invoice #',inv.number||'—'],['Date',fmtDate(inv.date)],['Due',fmtDate(inv.due||addDays(inv.date,d.terms))],['Project',p.name]],p,'Bill to')+
+  `<h2>Services</h2>${B.rows.map(r=>dRow(esc(r.desc),money(r.amt),r.detail)).join('')}
+  ${inv.changeOrders.length?`<h2>Change Orders</h2>${inv.changeOrders.map((c,i)=>dRow(esc(c.desc||'Change order'),money(B.cos[i]),`${fh(c.hours)} hrs × ${money(c.rate)}/hr`)).join('')}`:''}
+  <div class="d-tots">${dRow('Subtotal',money(B.base+B.co))}${B.credit?dRow('Credit / discount','-'+money(B.credit)):''}${B.tax?dRow(`Tax (${fh(inv.tax)}%)`,money(B.tax)):''}
+  ${dRow('<b>Invoice total</b>','<b>'+money(B.total)+'</b>','','d-grand')}
+  ${inv.payments.map(x=>dRow('Payment received'+(x.label?' — '+esc(x.label):''),'-'+money(x.amount),fmtDate(x.date))).join('')}
+  <div class="d-hl">${dRow('<b>BALANCE DUE</b>','<b style="font-size:16px">'+money(B.balance)+'</b>')}</div></div>
+  ${inv.notes?`<h2>Notes</h2><div>${escBr(inv.notes)}</div>`:''}
+  ${s.biz.payInfo?`<h2>How to Pay</h2><div>${escBr(s.biz.payInfo)}</div>`:''}
+  <div class="d-foot">Payment due within ${fh(d.terms)} days. Late balances may accrue ${fh(d.lateFee)}% per month. Thank you!</div>`}
+ else if(kind==='moAgree'){t='Monthly Services Agreement';fn=slug(p.name)+'-monthly-services';
+  h=dHead('MONTHLY SERVICES',[['Ref',estNo(p)],['Date',fmtDate(iso())],['Start',fmtDate(p.monthly.start)],['Term',fh(p.monthly.term)+' months']],p,'Client')+
+  `<h2>Services Included</h2>${p.monthly.items.map((it,i)=>dRow(esc(it.name),money(M.items[i].pr)+'/mo',esc(it.cat)+(it.cycle==='yr'?` · ${money(it.price)} billed yearly`:''))).join('')||'<div class="d-sm">None.</div>'}
+  <div class="d-tots">${dRow('<b>Monthly total</b>','<b>'+money(M.price)+'/mo</b>','','d-grand')}${dRow('Annual',money(M.annual))}</div>
+  ${p.monthly.notes?`<h2>Details</h2><div>${escBr(p.monthly.notes)}</div>`:''}
+  <h2>Terms</h2><ul><li>Billed monthly in advance${p.monthly.start?' starting '+fmtDate(p.monthly.start):''}; due within ${fh(d.terms)} days of invoice.</li><li>Initial term of ${fh(p.monthly.term)} months, then month-to-month. Either party may cancel with ${fh(d.cancelDays)} days' written notice after the initial term.</li><li>Third-party prices (hosting, domains, APIs) may change; changes will be communicated before the next billing cycle.</li><li>Services may be paused if an invoice is more than 30 days past due.</li><li>Work outside the included services is billed at ${money0(rate('dev'))}/hr with prior approval.</li></ul>
+  <div class="d-sig"><div><div class="d-sigl"></div><b>${esc(s.biz.owner||'')}</b><div class="d-sm">${esc(s.biz.name)} · Date</div></div><div><div class="d-sigl"></div><b>${esc(p.client.name||'Client')}</b><div class="d-sm">${esc(p.client.company||'')} · Date</div></div></div>`}
+ else if(kind==='licAgree'){const L=p.lic,Lc=calcLic(p),own=L.model==='own',saas=L.model==='saas';t='Software License Agreement';fn=slug(p.name)+'-license-agreement';let n=0;const H=x=>`<h2>${++n}. ${x}</h2>`;
+  const svUrls=linkedServices(p).filter(x=>x.url&&x.type!=='postgres').map(x=>x.url);const lic=esc(s.biz.name),cl=esc(p.client.company||p.client.name||'Client');
+  const typeLbl=it=>({once:'one-time',mo:'per month',yr:'per year',user:'per user / month',loc:'per location / month'})[it.type]||'';
+  h=dHead(saas?'SUBSCRIPTION AGREEMENT':'LICENSE AGREEMENT',[['Ref',estNo(p)],['Date',fmtDate(iso())],['Effective',fmtDate(L.start||iso())],['Term',fh(L.term)+' months']],p,'Licensee')+
+  `<div style="margin-top:10px">This ${saas?'Software Subscription':'Software License'} Agreement is between <b>${lic}</b> ("Licensor") and <b>${cl}</b> ("Licensee").</div>`+
+  H('The Software')+`<div><b>${esc(p.name)}</b>${p.desc?' — '+escBr(p.desc):''}${svUrls.length?`<div class="d-sm">Accessed at: ${svUrls.map(esc).join(', ')}</div>`:''}</div>`+
+  H(saas?'Subscription Grant':'Grant of License')+`<div>Licensor grants Licensee a ${L.exclusive?'exclusive':'non-exclusive'}, non-transferable ${saas?'subscription to access and use the hosted Software':'license to use the Software'} for its internal business purposes during the Term${L.territory?`, within ${esc(L.territory)}`:''}.</div><ul><li>Users: ${L.users?fh(L.users)+' named users':'unlimited users at Licensee'}</li><li>Locations: ${L.locations?fh(L.locations):'unlimited Licensee locations'}</li><li>Sublicensing or resale: ${L.sublicense?'permitted with written notice to Licensor':'not permitted'}</li>${L.exclusive?'<li>Exclusivity: Licensor will not license the Software to Licensee’s direct competitors in the Territory during the Term.</li>':''}</ul>`+
+  H('Ownership')+`<div>${own?`Upon full payment of all project fees, Licensor assigns to Licensee ownership of the custom code written for this project. Licensor keeps ownership of its pre-existing tools, libraries and know-how and grants Licensee a perpetual license to use them as part of the Software.`:`Licensor owns the Software, its code, design and all intellectual property, including improvements made at Licensee’s request. No ownership transfers under this Agreement. Licensee owns all data it enters into the Software.`}</div>`+
+  H('Fees')+(L.items.length?L.items.map((it,i)=>dRow(esc(it.name)+(num(it.qty)>1?` × ${fh(it.qty)}`:''),money(Lc.items[i].a)+' '+typeLbl(it))).join(''):'<div class="d-sm">As listed on the invoice.</div>')+(Lc.admin?dRow(`Administrative fee (${fh(L.adminPct)}% of third-party pass-through costs)`,money(Lc.admin)+' per month'):'')+
+   `<div class="d-tots">${dRow('One-time fees',money(Lc.once))}${dRow('<b>Recurring</b>','<b>'+money(Lc.mo)+'/mo</b>','','d-grand')}</div>`+
+  H('Payment')+`<div>Recurring fees are billed in advance and due within ${fh(d.terms)} days of invoice. One-time fees are due at signing. Late balances may accrue ${fh(d.lateFee)}% per month. If any invoice is more than 30 days past due, Licensor may suspend access until paid; a reinstatement fee may apply. Fees may increase at renewal by no more than ${fh(L.cap)}% per year, with 30 days’ written notice.</div>`+
+  H('Term & Renewal')+`<div>This Agreement starts on ${fmtDate(L.start||iso())} and runs for ${fh(L.term)} months.${L.autoRenew?` It renews automatically for successive ${fh(L.term)}-month terms unless either party gives ${fh(d.cancelDays)} days’ written notice before the renewal date.`:' It ends at the end of the term unless renewed in writing.'}</div>`+
+  H('Support & Updates')+`<div>${p.monthly.items.length?'Hosting, maintenance and support are provided as described in the Monthly Services Agreement.':'Licensor will fix reported defects within a reasonable time. New features are quoted separately.'} Licensor may update the Software from time to time; updates are covered by this license.</div>`+
+  H('Restrictions')+`<ul><li>No copying, reverse engineering, decompiling or creating derivative products from the Software${own?' (except custom code assigned to Licensee)':''}.</li><li>No sharing logins outside Licensee’s authorized users.</li><li>No use of the Software for unlawful purposes.</li></ul>`+
+  H('Data & Confidentiality')+`<div>Licensee owns its data. Licensor will use Licensee’s data only to provide the Software, will protect it with reasonable security, and will not sell it. Each party keeps the other’s confidential information private. On termination, Licensee may export its data within 30 days, after which Licensor may delete it.</div>`+
+  (L.escrow?H('Source Code Escrow')+`<div>Licensor will keep a current copy of the source code in escrow. Licensee may obtain it only if Licensor stops doing business or stops supporting the Software without a successor, solely to maintain the Software for its own use.</div>`:'')+
+  H('Warranty & Liability')+`<div>The Software is provided “as is” except as stated in the Scope of Work. Neither party is liable for indirect or consequential damages. Licensor’s total liability is limited to the fees Licensee paid in the 12 months before the claim.</div>`+
+  H('Termination')+`<div>Either party may terminate for a material breach not fixed within 30 days of written notice. Licensor may terminate for non-payment after suspension. Fees already paid are non-refundable unless Licensor is in breach.</div>`+
+  H('Governing Law')+`<div>This Agreement is governed by the laws of the State of ${esc(d.law)}, with venue in ${esc(d.venue)}.</div>`+
+  (L.notes?H('Additional Terms')+`<div>${escBr(L.notes)}</div>`:'')+
+  `<div class="d-sig"><div><div class="d-sigl"></div><b>${esc(s.biz.owner||'')}</b><div class="d-sm">${lic} (Licensor) · Date</div></div><div><div class="d-sigl"></div><b>${esc(p.client.name||'Authorized signer')}</b><div class="d-sm">${cl} (Licensee) · Date</div></div></div>
+  <div class="d-foot">Template agreement. Have an attorney review before signing.</div>`}
+ else if(kind==='licInv'){const L=p.lic,Lc=calcLic(p);t='License Invoice';fn=slug(p.name)+'-license-invoice';const dt=iso();
+  h=dHead('INVOICE',[['Invoice #',L.invNo||'—'],['Date',fmtDate(dt)],['Due',fmtDate(addDays(dt,d.terms))],['Software',p.name]],p,'Bill to')+
+  `<h2>License &amp; Fees</h2>${L.items.map((it,i)=>dRow(esc(it.name),money(it.type==='yr'?Lc.items[i].a:Lc.items[i].o||Lc.items[i].m),`${num(it.qty)>1?fh(it.qty)+' × '+money(it.amount)+' · ':''}${({once:'one-time',mo:'first month',yr:'first year',user:'first month',loc:'first month'})[it.type]}`)).join('')||'<div class="d-sm">None.</div>'}
+  ${Lc.admin?dRow('Administrative fee (first month)',money(Lc.admin)):''}`;
+  const due=L.items.reduce((a,it,i)=>a+(it.type==='yr'?Lc.items[i].a:Lc.items[i].o||Lc.items[i].m),0)+Lc.admin;
+  h+=`<div class="d-tots"><div class="d-hl">${dRow('<b>AMOUNT DUE</b>','<b style="font-size:16px">'+money(due)+'</b>')}</div></div>${s.biz.payInfo?`<h2>How to Pay</h2><div>${escBr(s.biz.payInfo)}</div>`:''}<div class="d-foot">Thank you for your business!</div>`}
+ else{t='Monthly Invoice';fn=slug(p.name)+'-monthly-invoice'+(p.monthly.period?'-'+slug(p.monthly.period):'');const dt=iso();
+  h=dHead('INVOICE',[['Invoice #',p.monthly.invNo||'—'],['Date',fmtDate(dt)],['Due',fmtDate(addDays(dt,d.terms))],['Period',p.monthly.period||'']],p,'Bill to')+
+  `<h2>Monthly Services${p.monthly.period?' — '+esc(p.monthly.period):''}</h2>${p.monthly.items.map((it,i)=>dRow(esc(it.name),money(M.items[i].pr))).join('')||'<div class="d-sm">None.</div>'}
+  <div class="d-tots"><div class="d-hl">${dRow('<b>AMOUNT DUE</b>','<b style="font-size:16px">'+money(M.price)+'</b>')}</div></div>
+  ${s.biz.payInfo?`<h2>How to Pay</h2><div>${escBr(s.biz.payInfo)}</div>`:''}<div class="d-foot">Thank you for your business!</div>`}
+ return{t,h,fn}}
+let curDoc=null;
+function openDoc(kind){const p=cur();curDoc={...buildDoc(kind,p)};const ov=$('#ov');
+ ov.innerHTML=`<div class="ovbar"><div class="t">${esc(curDoc.t)}</div><button class="btn sm p" data-act="pdf">⬇ PDF</button><button class="btn sm" data-act="html">⬇ Printable HTML</button><button class="btn sm" data-act="copyTxt">Copy text</button><button class="btn sm" data-act="closeOv">Close</button></div><div class="paper" id="paper">${curDoc.h}</div>`;
+ ov.classList.remove('hidden');ov.scrollTop=0;document.body.style.overflow='hidden'}
+function closeOv(){$('#ov').classList.add('hidden');document.body.style.overflow=''}
+function fullHtml(){const css=[...document.querySelectorAll('style')].map(s=>s.textContent).join('\n').split('/* ===== Paper documents ===== */')[1]||'';
+ return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(curDoc.t)} — ${esc(cur().name)}</title><style>body{margin:0;background:#e9ebef;padding:16px}${css}.pb{max-width:8.5in;margin:0 auto 10px;text-align:right}.pb button{font:600 14px Arial;padding:9px 14px;border-radius:8px;border:none;background:#1f5eff;color:#fff;cursor:pointer}@media print{body{background:#fff;padding:0}.pb{display:none}.paper{max-width:none;padding:0}}</style></head><body><div class="pb"><button onclick="window.print()">Print / Save as PDF</button></div><div class="paper">${curDoc.h}</div></body></html>`}
+async function saveFile(filename,data){if(!DL){toast('Downloads aren’t available here — use Copy text.');return}
+ try{await DL.save({filename,data});toast('Saved '+filename)}catch(e){if(e&&e.code==='declined')return;toast(e&&e.code==='rate_limited'?'A download prompt is already open.':'Download not available here — use Copy text.')}}
+let h2pP=null;
+function loadH2P(){if(window.html2pdf)return Promise.resolve();if(h2pP)return h2pP;h2pP=new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';s.onload=res;s.onerror=()=>{h2pP=null;rej()};document.head.appendChild(s)});return h2pP}
+async function makePdf(){if(!DL){toast('Downloads aren’t available here — use Printable HTML or Copy text.');return}
+ toast('Building PDF…');
+ try{await loadH2P();const el=$('#paper');
+  const blob=await html2pdf().set({margin:[0.3,0.3,0.4,0.3],image:{type:'jpeg',quality:0.96},html2canvas:{scale:2,backgroundColor:'#ffffff',windowWidth:900},jsPDF:{unit:'in',format:'letter',orientation:'portrait'},pagebreak:{mode:['css','legacy'],avoid:['.d-row','.d-sig','h2']}}).from(el).outputPdf('blob');
+  await saveFile(curDoc.fn+'.pdf',blob)}catch(e){toast('PDF builder couldn’t load — use Printable HTML instead.')}}
+
+/* ================= actions ================= */
+function touch(p){p.updated=Date.now();queueSave('p',p.id)}
+function addLine(p,l){p.lines.push(l);touch(p);render()}
+const ACT={
+ home(){S.view='home';closeOv();render();scrollTo(0,0)},
+ settings(){S.view='settings';render();scrollTo(0,0)},
+ hist(){S.view='hist';render();scrollTo(0,0)},
+ addLic(){const p=cur();p.lic.items.push({name:'',type:'mo',amount:'',qty:1});touch(p);render()},
+ rmLic(t){const p=cur();p.lic.items.splice(+t.dataset.i,1);touch(p);render()},
+ rmLink(t){const p=cur();p.links=p.links.filter(x=>x!==t.dataset.id);touch(p);render()},
+ rmComp(t){const p=cur();p.comps=p.comps.filter(x=>x!==t.dataset.id);touch(p);render()},
+ matchComps(){const p=cur(),E=calcEst(p),c=compStats(p);if(!c||!E.hrsAdj){toast('Pick comparables and add labor items first');return}
+  const f=c.avg/E.hrsAdj;p.lines.forEach(l=>{if(l.type!=='exp')l.hours=r2(num(l.hours)*f)});touch(p);render();toast('Hours scaled ×'+fh(f)+' to match comparables')},
+ fillTracked(){const p=cur(),E=calcEst(p),t=trackStats(p);if(!t){toast('Link a GitHub repo on the Client tab first');return}
+  const lab=p.lines.filter(l=>l.type!=='exp');const base=lab.reduce((a,l)=>a+num(l.hours),0);if(!lab.length||!base){toast('Add labor items to the estimate first');return}
+  lab.forEach(l=>{l.actual=r2(t.billable*num(l.hours)/base)});p.invoice.mode='actual';touch(p);render();toast(fh(t.billable)+' tracked hrs spread across '+lab.length+' items')},
+ importRender(){const p=cur(),mk=num(p.monthly.markup);let n=0;linkedServices(p).forEach(sv=>{if(p.monthly.items.some(i=>i.renderId===sv.id))return;if(svcCost(sv)===0&&sv.type!=='web_service')return;
+  const c=svcCost(sv);p.monthly.items.push({name:`${sv.name} (Render ${planLabel(sv)})`,cat:sv.type==='postgres'?'Database':sv.type==='cron_job'?'Software':'Hosting',cycle:'mo',cost:c,price:r2(c*(1+mk/100)),renderId:sv.id});n++});
+  touch(p);render();toast(n?`Added ${n} Render service${n==1?'':'s'}`:'Render services already imported')},
+ histOpen(t){const id=t.dataset.id;const el=document.getElementById('hd-'+id);if(el)el.style.display=el.style.display==='none'?'block':'none'},
+ new(){const p=newProject();S.projects[p.id]=p;S.pid=p.id;S.view='project';S.tab='client';touch(p);render();scrollTo(0,0)},
+ open(t){S.pid=t.dataset.id;S.view='project';S.tab='client';render();scrollTo(0,0)},
+ tab(t){S.tab=t.dataset.t;render();scrollTo(0,0)},
+ dup(){const p=clone(cur());p.id=uid();p.name+=' (copy)';p.status='Estimate';p.created=Date.now();p.invoice.number='';p.invoice.payments=[];p.invoice.date=iso();p.invoice.due='';p.estDate=iso();S.projects[p.id]=p;S.pid=p.id;touch(p);render();toast('Duplicated')},
+ del(t){if(t.dataset.arm!=='1'){t.dataset.arm='1';t.textContent='Tap again to delete';setTimeout(()=>{if(t.isConnected){t.dataset.arm='';t.textContent='Delete'}},3500);return}
+  const id=S.pid;delete S.projects[id];clearTimeout(timers['p:'+id]);dirty.delete('p:'+id);queueSave('del',id);S.view='home';render();toast('Project deleted')},
+ addLabor(){const p=cur(),r=S.settings.rates[0]||{id:'dev',rate:125};addLine(p,{id:uid(),type:'labor',phase:'Build',desc:'',rateId:r.id,rate:num(r.rate),hours:''})},
+ addExp(){addLine(cur(),{id:uid(),type:'exp',phase:'Other',desc:'',qty:1,cost:''})},
+ rmLine(t){const p=cur();p.lines.splice(+t.dataset.i,1);touch(p);render()},
+ addTl(){const p=cur();p.sow.timeline.push({label:'',weeks:1});touch(p);render()},
+ rmTl(t){const p=cur();p.sow.timeline.splice(+t.dataset.i,1);touch(p);render()},
+ autoTl(){const p=cur(),E=calcEst(p),hpw=num(S.settings.d.hpw)||25;
+  p.sow.timeline=PHASES.map(ph=>{const h=p.lines.filter(l=>l.type!=='exp'&&(PHASES.includes(l.phase)?l.phase:'Other')===ph).reduce((s,l)=>s+num(l.hours)*E.cx,0);return h?{label:ph+(ph==='Launch'?' — testing, deploy & training':ph==='Build'?' — core features':ph==='Design'?' — mockups & approval':ph==='Discovery'?' — requirements & plan':''),weeks:Math.max(0.5,Math.ceil(h/hpw*2)/2)}:null}).filter(Boolean);
+  if(!p.sow.timeline.length){toast('Add labor items to the estimate first');return}touch(p);render()},
+ addSched(){const p=cur();p.sow.schedule.push({label:'Milestone payment',pct:0});touch(p);render()},
+ rmSched(t){const p=cur();p.sow.schedule.splice(+t.dataset.i,1);touch(p);render()},
+ sched3(){const p=cur();p.sow.schedule=[{label:'Deposit — due at signing',pct:40},{label:'Design approval / mid-build',pct:30},{label:'Final payment — due at launch / acceptance',pct:30}];p.depositPct=40;touch(p);render()},
+ assignInv(){const p=cur(),d=S.settings.d;p.invoice.number=(d.invPrefix||'')+num(d.nextInv);d.nextInv=num(d.nextInv)+1;queueSave('set');touch(p);render()},
+ addCO(){const p=cur();p.invoice.changeOrders.push({desc:'',hours:'',rate:rate('dev')});touch(p);render()},
+ rmCO(t){const p=cur();p.invoice.changeOrders.splice(+t.dataset.i,1);touch(p);render()},
+ addPay(){const p=cur();p.invoice.payments.push({date:iso(),label:'',amount:''});touch(p);render()},
+ addDep(){const p=cur();p.invoice.payments.push({date:iso(),label:'Deposit',amount:r2(calcEst(p).deposit)});touch(p);render()},
+ rmPay(t){const p=cur();p.invoice.payments.splice(+t.dataset.i,1);touch(p);render()},
+ addMo(){const p=cur();p.monthly.items.push({name:'',cat:'Other',cycle:'mo',cost:'',price:''});touch(p);render()},
+ rmMo(t){const p=cur();p.monthly.items.splice(+t.dataset.i,1);touch(p);render()},
+ markupAll(){const p=cur(),mk=num(p.monthly.markup);p.monthly.items.forEach(it=>{if(num(it.cost))it.price=r2(num(it.cost)*(1+mk/100))});touch(p);render();toast('Markup applied to items with a cost')},
+ doc(t){openDoc(t.dataset.kind)},
+ closeOv(){closeOv()},
+ pdf(){makePdf()},
+ html(){saveFile(curDoc.fn+'.html',fullHtml())},
+ async copyTxt(){const txt=$('#paper').innerText;try{await navigator.clipboard.writeText(txt);toast('Copied')}catch(e){const ta=document.createElement('textarea');ta.value=txt;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');toast('Copied')}catch(_){toast('Copy blocked')}ta.remove()}},
+ addRate(){S.settings.rates.push({id:uid(),name:'New role',rate:100});queueSave('set');render()},
+ rmRate(t){if(S.settings.rates.length<=1){toast('Keep at least one rate');return}S.settings.rates.splice(+t.dataset.i,1);queueSave('set');render()},
+ async export(){const txt=JSON.stringify({app:'devbill',v:1,at:new Date().toISOString(),settings:S.settings,projects:S.projects});
+  $('#impBox').innerHTML=`<textarea class="copybox" readonly style="margin-top:8px">${esc(txt)}</textarea>`;
+  try{await navigator.clipboard.writeText(txt);toast('Backup copied — paste it somewhere safe')}catch(e){$('#impBox textarea').select();toast('Select the text above and copy it')}},
+ importShow(){$('#impBox').innerHTML=`<textarea class="copybox" id="impTxt" placeholder="Paste backup here" style="margin-top:8px"></textarea><div class="row" style="margin-top:8px"><button class="btn p" data-act="importGo">Restore (merges projects)</button></div>`},
+ importGo(){try{const o=JSON.parse($('#impTxt').value);if(!o||o.app!=='devbill')throw 0;if(o.settings){S.settings=mergeSettings(o.settings);queueSave('set')}
+  Object.values(o.projects||{}).forEach(p=>{S.projects[p.id]=fix(p);queueSave('p',p.id)});render();toast('Restored')}catch(e){toast('That doesn’t look like a Dev Billing backup')}}
+};
+document.addEventListener('click',e=>{if(e.target.closest('a[href]'))return;const t=e.target.closest('[data-act]');if(!t)return;const a=ACT[t.dataset.act];if(a){e.preventDefault();a(t)}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#ov').classList.contains('hidden'))closeOv()});
+function readVal(t){if(t.type==='checkbox')return t.checked;if(t.type==='number'||t.dataset.num!==undefined)return t.value===''?'':parseFloat(t.value);return t.value}
+const app=$('#app');
+app.addEventListener('input',e=>{const t=e.target;
+ if(t.dataset.ui){S[t.dataset.ui]=t.value;if(t.dataset.ui==='hq'||t.dataset.ui==='hsort'){$('#hlist').innerHTML=rHistList()}else $('#plist').innerHTML=rList();return}
+ if(t.dataset.k){if(t.type==='radio'&&!t.checked)return;const p=cur();setPath(p,t.dataset.k,readVal(t));touch(p);updateCalc()}
+ else if(t.dataset.s){setPath(S.settings,t.dataset.s,readVal(t));queueSave('set');if(t.dataset.s==='biz.name')updateBrand()}});
+app.addEventListener('change',e=>{const t=e.target;
+ if(t.dataset.role!==undefined){const p=cur(),l=p.lines[+t.dataset.role];l.rateId=t.value;l.rate=rate(t.value);touch(p);render()}
+ else if(t.dataset.add==='module'&&t.value!==''){const m=MODS[+t.value];addLine(cur(),{id:uid(),type:'labor',phase:m[0],desc:m[1],hours:m[2],rateId:m[3],rate:rate(m[3])});toast('Added: '+m[1])}
+ else if(t.dataset.add==='mo'&&t.value!==''){const x=MO_PRESETS[+t.value],p=cur(),mk=num(p.monthly.markup);let price;
+  if(x[4]==='mk')price=r2(x[2]*(1+mk/100));else if(x[4]==='ret2')price=2*rate('dev');else if(x[4]==='ret5')price=5*rate('dev');else price=x[4];
+  p.monthly.items.push({name:x[0],cat:x[1],cycle:x[3],cost:x[2],price});touch(p);render();toast('Added: '+x[0])}
+ else if(t.dataset.add==='lic'&&t.value!==''){const x=LIC_PRESETS[+t.value],p=cur();p.lic.items.push({name:x[0],type:x[1],amount:x[2],qty:x[3]});touch(p);render();toast('Added: '+x[0])}
+ else if(t.dataset.add==='link'&&t.value){const p=cur();if(!p.links.includes(t.value))p.links.push(t.value);touch(p);render()}
+ else if(t.dataset.add==='comp'&&t.value){const p=cur();if(!p.comps.includes(t.value))p.comps.push(t.value);touch(p);render()}
+ else if(t.dataset.rr!==undefined){render()}
+ else if(t.dataset.k&&t.type==='number'){updateCalc()}});
+
+/* ================= boot ================= */
+loadLocal();render();setSync();connect();
+</script>
+</body>
+</html>
