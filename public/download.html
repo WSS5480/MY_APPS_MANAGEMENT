@@ -3,7 +3,7 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Download · 360 MEDICAL PORTAL</title>
 <link rel="manifest" href="/manifest.webmanifest"><link rel="icon" href="/favicon.png"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<meta name="theme-color" content="#0f1b33"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="360 Portal">
+<meta name="theme-color" content="#0f1b33"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Surgical Case Log">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="/app.css">
 <style>
@@ -28,7 +28,7 @@ ol{margin:0;padding-left:1.2rem;font-size:.875rem;display:flex;flex-direction:co
   <section class="card hero">
     <img class="ic" src="/icon-192.png" alt="">
     <div style="flex:1 1 14rem">
-      <h2>360 Portal</h2>
+      <h2>Surgical Case Log</h2>
       <p class="note" style="margin-bottom:0" id="state">One tap install where your browser supports it.</p>
     </div>
     <button class="btn primary" id="install" type="button" hidden>Install now</button>
@@ -84,8 +84,8 @@ var st = document.getElementById('state'), btn = document.getElementById('instal
 if (standalone) st.textContent = 'The app is installed and running.';
 else if (ios) st.textContent = 'On iPhone, use Share → Add to Home Screen (steps below).';
 window.addEventListener('beforeinstallprompt', function (e) { e.preventDefault(); prompt = e; btn.hidden = false; });
-btn.addEventListener('click', function () { if (!prompt) return; prompt.prompt(); prompt.userChoice.then(function (c) { if (c.outcome === 'accepted') { btn.hidden = true; st.textContent = 'Installed. Look for 360 Portal on your home screen or Start menu.'; } prompt = null; }); });
-window.addEventListener('appinstalled', function () { btn.hidden = true; st.textContent = 'Installed. Look for 360 Portal on your home screen or Start menu.'; });
+btn.addEventListener('click', function () { if (!prompt) return; prompt.prompt(); prompt.userChoice.then(function (c) { if (c.outcome === 'accepted') { btn.hidden = true; st.textContent = 'Installed. Look for Surgical Case Log on your home screen or Start menu.'; } prompt = null; }); });
+window.addEventListener('appinstalled', function () { btn.hidden = true; st.textContent = 'Installed. Look for Surgical Case Log on your home screen or Start menu.'; });
 </script>
 <script src="/ptr.js"></script>
 </body></html>

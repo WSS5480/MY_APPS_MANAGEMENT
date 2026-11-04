@@ -1273,7 +1273,7 @@ app.get('/cal/:tok', (req, res) => {
     if (col === 'visits' && d.date && d.date >= lo && d.date <= hi && d.status !== 'cancelled') {
       const fac = facilityFor(d.facility), g = geoSet(), st = d.check ? (d.check.ok === true ? (d.check.left_at ? 'Left early' : 'Verified at facility') : d.check.ok === null ? "Can't verify (no address)" : d.check.missed ? 'Missed check-in' : 'Not verified') : 'Planned';
       ev(k.replace('/', '-') + '-visit', d.date, d.time, Number(d.duration) || 60, 'Visit: ' + (d.surgeon || 'Target surgeon') + (d.facility ? ' @ ' + d.facility : ''),
-        [s.role === 'owner' ? 'Rep: ' + d.rep : '', d.type ? 'Type: ' + d.type : '', d.purpose ? 'Purpose: ' + d.purpose : '', d.time ? 'Check in from the 360 Portal app between ' + g.early + ' min before and ' + g.late + ' min after the visit.' : '', 'Status: ' + st].filter(Boolean).join('\n'),
+        [s.role === 'owner' ? 'Rep: ' + d.rep : '', d.type ? 'Type: ' + d.type : '', d.purpose ? 'Purpose: ' + d.purpose : '', d.time ? 'Check in from the Surgical Case Log app between ' + g.early + ' min before and ' + g.late + ' min after the visit.' : '', 'Status: ' + st].filter(Boolean).join('\n'),
         d.status === 'planned' && !d.check && d.time ? g.early : null, fac && fac.address ? fac.address : (d.facility || ''));
     }
     if (col === 'visits' && d.next_date && d.next_date >= lo && d.next_date <= hi)
