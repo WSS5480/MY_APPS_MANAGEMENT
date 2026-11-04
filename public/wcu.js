@@ -57,7 +57,7 @@
     return {
       week: WEEK, win_ids: (R && R.win_ids) || [], wins: g('#wcu-wins').split('\n'), projected: g('#wcu-proj'), notes: g('#wcu-notes'),
       pod: [].slice.call(sec.querySelectorAll('#wcu-pod .wcu-podc')).map(function (tr) { var v = function (k) { return tr.querySelector('[data-p="' + k + '"]').value; }; return { surgeon: v('surgeon'), hospital: v('hospital'), specialty: v('specialty'), products: v('products'), next: v('next') }; }),
-      plan: DAYS.map(function (d) { return { day: d, items: g('[data-plan="' + d + '"]').split('\n') }; })
+      plan: DAYS.map(function (d) { return { day: d, items: [].slice.call(sec.querySelectorAll('[data-plan="' + d + '"]')).map(function (i) { return i.value; }) }; })
     };
   }
   var PODF = [['surgeon', 'Surgeon name'], ['hospital', 'Hospital'], ['specialty', 'Specialty'], ['products', 'Product(s)'], ['next', 'Next step']];
@@ -72,16 +72,17 @@
   function drawRep(j) {
     R = j.report; var st = j.state, sec = $('#sec-wcu'); repBanner(WEEK === mondayOf(chiToday()) ? st : { sent: true });
     sec.innerHTML = '<div class="cardhead"><h2>WCU <small class="note">Weekly Clinical Update</small></h2><div class="tools"><select class="field" id="wcu-week" style="width:auto">' + weekOptions() + '</select>' + statusPill(st) + '</div></div>' +
-      '<p class="note">Built from your week in the portal: cases from your case log, wins from the visits you flag <b>⭐ Win</b> in the Visit log, targets from your pathway, next week from your planned visits and scheduled cases. Review it, edit anything, then submit. Due every <b>Thursday by 5:00 PM</b>; the COO sees it here in the app.</p>' +
+      '<p class="note">Built from your week in the portal: cases from your case log, wins from the visits you flag <b>⭐ Win</b> in the Visit log, targets from your pathway, next week from your planned visits and scheduled cases — then add your sales activities (3 per day). Review it, edit anything, then submit. Due every <b>Thursday by 5:00 PM</b>; the COO sees it here in the app.</p>' +
       '<div class="tools" style="margin:6px 0 12px"><button class="btn small" type="button" id="wcu-rebuild">↻ Rebuild from my activity</button><a class="btn small" id="wcu-print" target="_blank" rel="noopener" href="/api/wcu/view?week=' + WEEK + '">Print / PDF</a><span class="note" id="wcu-saved">' + (j.saved ? 'Draft saved' : 'Not saved yet') + '</span></div>' +
       '<label class="f"><b>Top wins for the week</b> <span class="note">· one per line · flag a visit ⭐ Win to add it here</span><textarea class="field" id="wcu-wins" rows="6">' + esc(lines(R.wins)) + '</textarea></label>' +
       '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,13rem),1fr));gap:10px;margin-top:14px;align-items:end">' +
       '<div style="display:flex;flex-direction:column;gap:2px"><b>Cases this week</b><div style="font-size:2rem;font-weight:700;line-height:1.1">' + R.cases_count + '</div><span class="note">from your case log</span></div>' +
       '<label style="display:flex;flex-direction:column;gap:2px;margin:0"><b>Cases next week</b><input class="field" id="wcu-proj" type="number" min="0" value="' + esc(R.projected) + '" style="font-size:1.6rem;font-weight:700;max-width:8rem;padding:4px 10px"><span class="note">scheduled so far · change it if you expect more</span></label></div>' +
       '<h3 style="margin:16px 0 6px">Pod surgeon targets</h3><div id="wcu-pod" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr));gap:10px"></div><button class="btn small" type="button" id="wcu-addpod" style="margin-top:6px">+ Add surgeon</button>' +
-      '<h3 style="margin:16px 0 6px">Next week plan <span class="note">· one item per line</span></h3><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr));gap:10px">' +
-        DAYS.map(function (d) { var p = (R.plan || []).find(function (x) { return x.day === d; }) || { items: [] }; return '<label class="f"><b>' + d + '</b><textarea class="field" rows="4" data-plan="' + d + '">' + esc(lines(p.items)) + '</textarea></label>'; }).join('') + '</div>' +
-      '<label class="f" style="margin-top:12px"><b>Comments / additional notes</b><textarea class="field" id="wcu-notes" rows="3">' + esc(R.notes || '') + '</textarea></label>' +
+      '<h3 style="margin:16px 0 6px">Next week plan <span class="note">· 3 sales activities per day</span></h3><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,15rem),1fr));gap:10px">' +
+        DAYS.map(function (d) { var p = (R.plan || []).find(function (x) { return x.day === d; }) || { items: [] }, items = (p.items || []).slice(); while (items.length < 3) items.push('');
+          return '<div class="f wcu-day" data-day="' + d + '"><b>' + d + '</b>' + items.map(function (it, i) { return '<input class="field" data-plan="' + d + '" placeholder="Sales activity ' + (i + 1) + '" value="' + esc(it) + '">'; }).join('') + '<button class="btn small" type="button" data-more="' + d + '" style="justify-self:start">+ Another</button></div>'; }).join('') + '</div>' +
+      '<label class="f" style="margin-top:12px"><b>Comments / additional notes / (any events)</b><textarea class="field" id="wcu-notes" rows="3">' + esc(R.notes || '') + '</textarea></label>' +
       '<div class="tools" style="margin-top:14px"><button class="btn primary" type="button" id="wcu-send">' + (st.sent ? 'Submit an update to the COO' : 'Submit to the COO') + '</button><span class="note">Submitting shares it with the COO in the app.</span></div><div class="msg" id="wcu-msg" hidden></div><div id="wcu-arch" style="margin-top:16px"></div>';
     if (FLASH) { var fm = $('#wcu-msg'); fm.className = 'msg ok'; fm.hidden = false; fm.textContent = FLASH; FLASH = ''; }
     repArchive();
@@ -89,12 +90,16 @@
     sec.oninput = function (e) { if (e.target.closest('#wcu-week')) return; queueSave(); };
     $('#wcu-week').onchange = function (e) { WEEK = e.target.value; loadRep(); };
     $('#wcu-addpod').onclick = function () { tb.appendChild(podRow({})); };
+    sec.onclick = function (e) { var m = e.target.closest('[data-more]'); if (!m) return; var day = m.dataset.day || m.getAttribute('data-more'), box = m.parentNode, n = box.querySelectorAll('[data-plan]').length; var i = el('input', 'field'); i.dataset.plan = day; i.placeholder = 'Sales activity ' + (n + 1); box.insertBefore(i, m); i.focus(); };
     $('#wcu-rebuild').onclick = function () {
       if (!confirm('Rebuild wins, targets and next week\'s plan from your activity? Your edits to those parts are replaced (comments stay).')) return;
       var f = j.fresh, notes = $('#wcu-notes').value; drawRep({ report: Object.assign({}, f, { notes: notes }), state: st, saved: j.saved, fresh: f }); queueSave();
     };
     $('#wcu-send').onclick = function () {
-      var b = $('#wcu-send'), m = $('#wcu-msg'); b.disabled = true; clearTimeout(saveT);
+      var b = $('#wcu-send'), m = $('#wcu-msg');
+      var short = DAYS.filter(function (d) { return [].slice.call(sec.querySelectorAll('[data-plan="' + d + '"]')).filter(function (i) { return i.value.trim(); }).length < 3; });
+      if (short.length) { m.className = 'msg err'; m.hidden = false; m.textContent = 'Next week plan needs 3 sales activities for every day — ' + short.join(', ') + ' ' + (short.length === 1 ? 'has' : 'have') + ' fewer.'; var first = sec.querySelector('[data-plan="' + short[0] + '"]'); if (first) first.focus(); return; }
+      b.disabled = true; clearTimeout(saveT);
       api('/api/wcu/send', readForm()).then(function (r) { FLASH = 'Submitted to the COO' + (r.state.late ? ' (after the Thursday 5:00 PM deadline).' : ' — on time. Thank you.'); loadRep(); },
         function (e) { b.disabled = false; m.className = 'msg err'; m.hidden = false; m.textContent = (e && e.error) || 'Could not submit. Check your connection.'; });
     };

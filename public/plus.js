@@ -621,7 +621,7 @@
     var sec = $('#sec-visits'), targets = S.targets.filter(inView);
     if (!X.built.visits) {
       X.built.visits = true; sec.replaceChildren();
-      sec.appendChild(el('h2', '', 'Pathway activity · visit log'));
+      sec.appendChild(el('h2', '', 'Surgeon Pathway Activity · Visit Log'));
       sec.appendChild(el('p', 'note', 'Log every touch with a target surgeon: visits, case observations, in-services. Set the next step and a date so nothing goes quiet. Moving the pathway step here updates the target table.'));
       var f = el('div', 'x-form'); f.id = 'x-vform';
       var lab = function (t, node, cls) { var l = el('label', cls || '', t); l.appendChild(node); f.appendChild(l); return node; };

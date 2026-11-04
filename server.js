@@ -1249,8 +1249,8 @@ function wcuHtml(r, base) {
   ${h(`Projected Cases Next Week: ${r.projected}`)}
   ${h('Pod Surgeon Targets')}<table style="width:100%;border-collapse:collapse;margin-top:6px"><tr>${['Surgeon Name', 'Hospital', 'Specialty', 'Product/Products', 'Next Step'].map((x) => `<th style="text-align:left;font:600 12px Arial;color:#444;border-bottom:1px solid #ccc;padding:4px">${x}</th>`).join('')}</tr>
     ${(r.pod || []).map((p) => `<tr>${[p.surgeon, p.hospital, p.specialty, p.products, p.next].map((x) => `<td style="padding:4px;border-bottom:1px solid #eee;vertical-align:top">${e(x)}</td>`).join('')}</tr>`).join('') || '<tr><td colspan="5" style="color:#999;padding:4px">—</td></tr>'}</table>
-  ${h('Next Week Plan')}${(r.plan || []).map((d) => `<div style="margin-top:8px"><b>${e(d.day)}:</b>${li(d.items)}</div>`).join('')}
-  ${h('Comments/Additional Notes')}<div style="white-space:pre-line">${e(r.notes) || '<span style="color:#999">—</span>'}</div>
+  ${h('Next Week Plan · 3 sales activities per day')}${(r.plan || []).map((d) => `<div style="margin-top:8px"><b>${e(d.day)}:</b>${li(d.items)}</div>`).join('')}
+  ${h('Comments / Additional Notes / (Any Events)')}<div style="white-space:pre-line">${e(r.notes) || '<span style="color:#999">—</span>'}</div>
   ${base ? `<p style="margin-top:22px"><a href="${e(base)}/#sec-wcu" style="background:#0f1b33;color:#fff;padding:9px 16px;border-radius:8px;text-decoration:none;font-weight:600">Open in the portal</a></p>` : ''}</div>`;
 }
 app.post('/api/wcu/send', needApi(), async (req, res) => {
@@ -1259,6 +1259,8 @@ app.post('/api/wcu/send', needApi(), async (req, res) => {
   const prev = docs.get(k) || wcuBuild(rep, wk), fresh = wcuBuild(rep, wk);
   const doc = wcuClean(req.body || {}, Object.assign({}, prev, { days: fresh.days, cases_count: fresh.cases_count }));
   if (!doc.wins.length) return res.status(400).json({ error: 'Add at least one win for the week before sending.' });
+  const thin = (doc.plan || []).filter((d) => (d.items || []).length < 3).map((d) => d.day);
+  if (thin.length) return res.status(400).json({ error: 'Next week plan needs 3 sales activities for every day: ' + thin.join(', ') + '.' });
   const first = prev.status !== 'sent';
   Object.assign(doc, { status: 'sent', sent_at: new Date().toISOString(), late: first ? Date.now() > wcuDueAt(wk).getTime() : !!prev.late, resent: !first });
   await put(k, doc);

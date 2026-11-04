@@ -67,3 +67,5 @@
   .x-paper{border:none;padding:0}
 }
 .x-sheet .bar{position:sticky;top:0;z-index:2;background:var(--bg);padding:8px 0}
+
+.wcu-day{display:flex;flex-direction:column;gap:5px;min-width:0}.wcu-day>b{font-size:.6875rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}.wcu-day .field{width:100%}
