@@ -20,7 +20,7 @@
     ['units', 'Units', ['units', 'qty', 'quantity', 'count']],
     ['net_sales', 'Net sales $', ['net sales', 'sales', 'amount', 'revenue', 'total', 'price', 'net', 'invoice amount', 'extended']],
     ['status', 'Status', ['status', 'stage']],
-    ['surgeon_type', 'New / Legacy', ['surgeon type', 'type', 'new/legacy', 'new or legacy', 'new', 'legacy']],
+    ['surgeon_type', 'New / Existing', ['surgeon type', 'type', 'new/existing', 'new or existing', 'new/legacy', 'new or legacy', 'new', 'existing', 'legacy']],
     ['service_line', 'Service line', ['service line', 'line', 'specialty', 'category']],
     ['po', 'PO #', ['po', 'po #', 'po number', 'purchase order']],
     ['lot', 'Lot #', ['lot', 'lot #', 'lot number']],
@@ -78,14 +78,14 @@
   $('#im-usepaste').onclick = function () { take(parseText($('#im-paste').value || ''), 'pasted rows'); };
   $('#im-tpl').onclick = function (e) {
     e.preventDefault();
-    var csv = 'Date,Rep,Surgeon,Facility,Product,Units,Net sales,Status,New/Legacy,Service line,PO #,Lot #,Notes\n2025-03-14,Brandon Schafer,Dr. Smith,Doctors Hospital at Renaissance,Example plate,2,12000,Paid,New,Trauma,PO-1234,,\n';
+    var csv = 'Date,Rep,Surgeon,Facility,Product,Units,Net sales,Status,New/Existing,Service line,PO #,Lot #,Notes\n2025-03-14,Brandon Schafer,Dr. Smith,Doctors Hospital at Renaissance,Example plate,2,12000,Paid,New,Trauma,PO-1234,,\n';
     var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = 'case-import-template.csv'; a.click();
   };
   function drawMap() {
     var opts = function (cur) { return '<option value="">— not in file —</option>' + HEAD.map(function (h, i) { return '<option value="' + i + '"' + (cur === i ? ' selected' : '') + '>' + esc(h || ('Column ' + (i + 1))) + '</option>'; }).join(''); };
     $('#im-map').innerHTML = '<h3 style="margin:0 0 6px">Match the columns</h3><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,12rem),1fr));gap:8px 12px">' +
       FIELDS.map(function (f) { return '<label class="f" style="margin:0;min-width:0"><b>' + esc(f[1]) + '</b><select class="field" data-map="' + f[0] + '">' + opts(MAP[f[0]]) + '</select></label>'; }).join('') + '</div>' +
-      '<p class="note" style="margin-top:6px">Missing status = Completed. Missing New/Legacy = New. Missing units = 1. Rep names are matched to the portal\'s reps (full name or first + last); anything else stays as written.</p>';
+      '<p class="note" style="margin-top:6px">Missing status = Completed. Missing New/Existing = New (existing or legacy both mean an existing surgeon). Missing units = 1. Rep names are matched to the portal\'s reps (full name or first + last); anything else stays as written.</p>';
     [].forEach.call(box.querySelectorAll('[data-map]'), function (s) { s.onchange = function () { MAP[s.dataset.map] = s.value === '' ? undefined : Number(s.value); dry(); }; });
   }
   function rowsOut() { return DATA.map(function (r) { var o = {}; FIELDS.forEach(function (f) { if (MAP[f[0]] !== undefined) o[f[0]] = r[MAP[f[0]]]; }); return o; }); }

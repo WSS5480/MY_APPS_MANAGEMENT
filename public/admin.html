@@ -89,7 +89,7 @@ header.head.has-who{padding-top:58px}
       <div class="tools"><button class="btn" id="add-rep" type="button">+ Add rep</button><button class="btn" id="add-team" type="button">+ Add team quota</button><button class="btn primary" id="save" type="button" disabled>Save changes</button></div>
     </div>
     <p class="note" id="hub-reps-note" hidden>Reps are added, renamed, given PINs and switched on or off under <b>Team logins</b> (the table above this card, one roster for both apps). Set each rep's plan here.</p>
-    <p class="note">Quota and commission rules drive the scorecard, pace alerts and commission estimates. <b>Counts</b> limits quota to new or legacy surgeons; <b>Product</b> limits it to one product line. <b>Carry</b> adds a month's shortfall to the next month's target within the quarter. A <b>Team</b> row sets a quota for a whole territory. Turning access off signs the rep out right away.</p>
+    <p class="note">Quota and commission rules drive the scorecard, pace alerts and commission estimates. <b>Counts</b> limits quota to new or existing surgeons; <b>Product</b> limits it to one product line. <b>Carry</b> adds a month's shortfall to the next month's target within the quarter. A <b>Team</b> row sets a quota for a whole territory. Turning access off signs the rep out right away.</p>
     <label class="f" style="max-width:28rem;margin:4px 0 10px"><b>Rep</b><select class="field" id="rep-pick"></select></label>
     <div id="reps"></div>
     <div class="msg" id="save-msg" hidden style="margin-top:12px"></div>
@@ -407,7 +407,7 @@ header.head.has-who{padding-top:58px}
 <script src="/visitcal.js"></script>
 <script src="/wcu.js?v=10"></script>
 <script src="/addr.js"></script>
-<script src="/import.js?v=1"></script>
+<script src="/import.js?v=2"></script>
 <script src="/logins.js?v=1"></script>
 <script src="/exec.js?v=1"></script><script src="/replist.js?v=2"></script><script src="/admin-dash.js?v=4"></script>
 <script src="/admin-pages.js?v=10"></script>
@@ -475,7 +475,7 @@ header.head.has-who{padding-top:58px}
       td(input(r, 'territory', 'text', 'w-m', r.rep));
       td(select(r, 'metric', [['Revenue', 'Revenue $'], ['Cases', 'Cases']]));
       td(input(r, 'quota', 'number', 'w-m', r.metric === 'Cases' ? 'cases' : '$'));
-      td(select(r, 'counts', [['All', 'All'], ['New only', 'New only'], ['Legacy only', 'Legacy only']]));
+      td(select(r, 'counts', [['All', 'All'], ['New only', 'New only'], ['Legacy only', 'Existing only']]));
       td(input(r, 'product_filter', 'text', 'w-l', 'All products'));
       var cb = el('input'); cb.type = 'checkbox'; cb.checked = !!r.carry; cb.addEventListener('change', function () { r.carry = cb.checked; setDirty(true); }); cb.setAttribute('aria-label', 'Carry shortfall'); td(cb);
       if (team) { for (var k = 0; k < 4; k++) td(el('span', 'note', '—')); }

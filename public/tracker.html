@@ -321,7 +321,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
             <label>Expiration<input class="field" id="ce-exp" type="date"></label>
             <label>Units<input class="field" id="ce-units" type="number" min="0" step="1" inputmode="numeric"></label>
             <label>Net sales ($)<input class="field" id="ce-sales" type="number" min="0" step="0.01" inputmode="decimal"><span class="x-price" id="ce-price"></span></label>
-            <label>Surgeon type<select class="field" id="ce-type"><option>New</option><option>Legacy</option></select></label>
+            <label>Surgeon type<select class="field" id="ce-type"><option value="New">New</option><option value="Legacy">Existing</option></select></label>
             <label>Status<select class="field" id="ce-status"><option>Scheduled</option><option>Completed</option><option>PO received</option><option>Invoiced</option><option>Paid</option><option>Cancelled</option></select></label>
             <label>PO / Invoice #<input class="field" id="ce-po" autocomplete="off"></label>
             <label class="full">Notes (no patient identifiers)<textarea class="field" id="ce-notes"></textarea></label>
@@ -341,7 +341,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
       </section>
 
       <footer class="foot">
-        <strong>How the numbers work.</strong> Completed, PO received, Invoiced and Paid cases count toward quota; Scheduled cases show as booked ahead; Cancelled cases count nowhere. Run rate = month-to-date actual ÷ business days elapsed × business days in the month (Monday to Friday, holidays not removed, today counted as elapsed). New-business-only, legacy-only and product-specific quotas only count matching cases. Draw plan (Brandon, Felipe): $3,000 monthly draw against a $20,000 monthly quota; a month that finishes under quota carries the shortfall into the next month's target for the rest of the quarter, and a month over quota banks nothing. Commission plans: Brandon 15% and Felipe 10% on new-business sales above a $20,000 monthly floor (the floor rises by any carried shortfall), with a $3,000 monthly draw; Abraham 10% on all sales above a $35,000 monthly floor, with a $5,417 monthly base salary; Preston 12% on Skeletal Dynamics sales from the first dollar, with a $6,000 monthly base salary and a SIM360 quota of 2 SIM Lab events per quarter. Commission figures are month-to-date estimates. Company quota is the team quotas plus rep quotas in territories with no team quota.<br>
+        <strong>How the numbers work.</strong> Completed, PO received, Invoiced and Paid cases count toward quota; Scheduled cases show as booked ahead; Cancelled cases count nowhere. Run rate = month-to-date actual ÷ business days elapsed × business days in the month (Monday to Friday, holidays not removed, today counted as elapsed). New-business-only, existing-surgeon-only and product-specific quotas only count matching cases. Draw plan (Brandon, Felipe): $3,000 monthly draw against a $20,000 monthly quota; a month that finishes under quota carries the shortfall into the next month's target for the rest of the quarter, and a month over quota banks nothing. Commission plans: Brandon 15% and Felipe 10% on new-business sales above a $20,000 monthly floor (the floor rises by any carried shortfall), with a $3,000 monthly draw; Abraham 10% on all sales above a $35,000 monthly floor, with a $5,417 monthly base salary; Preston 12% on Skeletal Dynamics sales from the first dollar, with a $6,000 monthly base salary and a SIM360 quota of 2 SIM Lab events per quarter. Commission figures are month-to-date estimates. Company quota is the team quotas plus rep quotas in territories with no team quota.<br>
         <strong>Compliance.</strong> Never enter patient names, MRNs, dates of birth or other patient identifiers. Confidential: 360 Medical internal sales data, not for distribution outside the company.
       </footer>
     </div>
@@ -897,13 +897,14 @@ section[id^="sec-"]{scroll-margin-top:62px}
       .filter(function (c) { return !q || c.id === S.editId || [c.rep, c.surgeon, c.procedure, c.facility, c.product, c.status, c.surgeon_type, c.service_line, c.notes].join(' ').toLowerCase().indexOf(q) >= 0; })
       .sort(function (a, b) { return (a.date || '') < (b.date || '') ? 1 : (a.date || '') > (b.date || '') ? -1 : (a.created_at || '') < (b.created_at || '') ? 1 : -1; });
   }
+  function typeLabel(t) { return t === 'Legacy' ? 'Existing' : (t || ''); } // saved as "Legacy" (older data and quota rules), shown as "Existing"
   function drawLog() {
     var body = $('#log tbody'); body.replaceChildren();
     var rows = visibleCases();
     rows.forEach(function (c) {
       var tr = el('tr', (S.canWrite ? 'click ' : '') + (c.id === S.editId ? 'on' : '')); tr.dataset.caseId = c.id; if (S.canWrite) tr.tabIndex = 0;
       var note = c.notes || '';
-      [dayName(c.date), c.rep || 'No rep yet', c.surgeon, c.procedure || '', c.facility, c.product, count(c.units), money(c.net_sales), c.surgeon_type, c.status, note.length > 40 ? note.slice(0, 40) + '…' : note].forEach(function (t, i) { tr.appendChild(el('td', i === 1 ? 'col-rep' : i === 6 || i === 7 ? 'r' : '', t || '—')); });
+      [dayName(c.date), c.rep || 'No rep yet', c.surgeon, c.procedure || '', c.facility, c.product, count(c.units), money(c.net_sales), typeLabel(c.surgeon_type), c.status, note.length > 40 ? note.slice(0, 40) + '…' : note].forEach(function (t, i) { tr.appendChild(el('td', i === 1 ? 'col-rep' : i === 6 || i === 7 ? 'r' : '', t || '—')); });
       if (c.invoice) { var ip = { pending: ['warn', '🧾 Invoice awaiting approval'], approved: ['ok', '🧾 Invoice approved'], rejected: ['bad', '🧾 Invoice sent back'] }[c.invoice.status]; if (ip) { var st = tr.children[9]; st.appendChild(document.createElement('br')); st.appendChild(el('span', 'pill ' + ip[0], ip[1])); } }
       body.appendChild(tr);
     });
@@ -1094,7 +1095,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
     var esc = function (v) { v = v == null ? '' : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
     var rows = visibleCases().slice().reverse();
     if (!rows.length) { setStatus('err', 'Nothing to export for this view'); return; }
-    var csv = [cols.join(',')].concat(rows.map(function (c) { return cols.map(function (k) { return esc(c[k]); }).join(','); })).join('\n');
+    var csv = [cols.join(',')].concat(rows.map(function (c) { return cols.map(function (k) { return esc(k === 'surgeon_type' ? typeLabel(c[k]) : c[k]); }).join(','); })).join('\n');
     S.downloads.save({ filename: '360-medical-cases-' + S.month + '.csv', data: csv }).catch(function () {});
   });
   var rz; window.addEventListener('resize', function () { clearTimeout(rz); rz = setTimeout(render, 150); });
