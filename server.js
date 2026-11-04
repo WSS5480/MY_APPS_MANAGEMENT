@@ -391,7 +391,7 @@ async function syncPeople(force, wait) {
       if (cur.hubActive !== storeActive) { changes.hubActive = storeActive; changes.active = storeActive; } // only a store-side change flips access
       if (Object.keys(changes).length) { Object.assign(cur, changes); pinsChanged = true; }
     }
-    if (!rows.some(r => r.rep === name && r.role !== 'Team')) { rows.push({ rep: name, role: 'Sales Rep', territory: name, metric: 'Revenue', quota: null, counts: 'All', product_filter: '', carry: false, draw: null, comm_rate: null, comm_floor: 0, pay_kind: '', pay_amount: null, hub: u.id }); rowsChanged = true; }
+    if (!rows.some(r => r.rep === name && r.role !== 'Team')) { rows.push({ rep: name, role: 'Sales Rep', territory: name, metric: 'Revenue', quota: null, counts: 'New + Existing', product_filter: '', carry: false, draw: null, comm_rate: null, comm_floor: 0, pay_kind: '', pay_amount: null, hub: u.id }); rowsChanged = true; }
   }
   // a rep whose 360 Medical Portal box was unticked in the store is switched off here (their records stay)
   for (const [name, rec] of Object.entries(p.reps)) if (rec.hub && rec.hubActive !== false && !people.some(u => u.role === 'rep' && u.id === rec.hub && u.active !== false)) { rec.active = false; rec.hubActive = false; pinsChanged = true; }
@@ -454,7 +454,7 @@ app.get('/api/hub/commissions', hubAuth, (req, res) => {
     const c = surgicalComm(r, ym, cases);
     let qtd = 0; for (let mm = q0; mm <= m; mm++) qtd += surgicalComm(r, y + '-' + String(mm).padStart(2, '0'), cases).commission;
     const mine = cases.filter(x => x.rep === r.rep && x.date.slice(0, 7) === ym && String(x.status || '').toLowerCase() !== 'cancelled').sort((a, b) => a.date.localeCompare(b.date));
-    const counts = (x) => isDone(x.status) && (r.counts === 'New only' ? x.surgeon_type === 'New' : r.counts === 'Legacy only' ? x.surgeon_type === 'Legacy' : true) && prodMatch(r.product_filter, x.product);
+    const counts = (x) => isDone(x.status) && typeCounts(r.counts, x.surgeon_type) && prodMatch(r.product_filter, x.product);
     const payKind = r.pay_kind === 'draw' ? 'Draw' : r.pay_kind === 'salary' ? 'Base salary' : r.draw && !r.pay_kind ? 'Draw' : '', pay = Number(r.pay_amount) || Number(r.draw) || null;
     return { rep: r.rep, role: r.role, metric: r.metric, counts: r.counts || 'All', product_filter: r.product_filter || '', actual: Math.round(c.actual), quota: r.quota, target: c.target, carried: c.carried,
       cases: mine.filter(isDoneCase).length, comm_rate: Math.round(c.rate * 10000) / 100, comm_floor_base: c.floorBase, comm_floor: c.floor, commission: c.commission, projected: c.projected, comm_proj: c.comm_proj, comm_qtd: qtd,
@@ -663,7 +663,7 @@ app.post('/api/admin/reps', needApi('owner'), async (req, res) => {
     if (names.has(rep.toLowerCase())) return res.status(400).json({ error: `"${rep}" is listed twice.` });
     names.add(rep.toLowerCase());
     const team = r.role === 'Team';
-    rows.push({ rep, role: team ? 'Team' : String(r.role || 'Sales Rep').slice(0, 40), territory: String(r.territory || rep).slice(0, 60), metric: r.metric === 'Cases' ? 'Cases' : 'Revenue', quota: num(r.quota), counts: ['New only', 'Legacy only'].includes(r.counts) ? r.counts : 'All', product_filter: String(r.product_filter || '').slice(0, 80), carry: !!r.carry, draw: r.pay_kind === 'draw' ? num(r.pay_amount) : null, comm_rate: num(r.comm_rate) != null ? num(r.comm_rate) / 100 : null, comm_floor: num(r.comm_floor), pay_kind: team ? null : (r.pay_kind === 'draw' ? 'draw' : r.pay_kind === 'salary' ? 'salary' : null), pay_amount: team ? null : num(r.pay_amount), sim_quota: num(r.sim_quota) });
+    rows.push({ rep, role: team ? 'Team' : String(r.role || 'Sales Rep').slice(0, 40), territory: String(r.territory || rep).slice(0, 60), metric: r.metric === 'Cases' ? 'Cases' : 'Revenue', quota: num(r.quota), counts: COUNTS.includes(r.counts) ? r.counts : 'All', product_filter: String(r.product_filter || '').slice(0, 80), carry: !!r.carry, draw: r.pay_kind === 'draw' ? num(r.pay_amount) : null, comm_rate: num(r.comm_rate) != null ? num(r.comm_rate) / 100 : null, comm_floor: num(r.comm_floor), pay_kind: team ? null : (r.pay_kind === 'draw' ? 'draw' : r.pay_kind === 'salary' ? 'salary' : null), pay_amount: team ? null : num(r.pay_amount), sim_quota: num(r.sim_quota) });
   }
   const p = JSON.parse(JSON.stringify(pins()));
   // reps that come from the store's Team logins can't be dropped here: their row (quota, plan) and PIN record stay, or the next sync would re-add them blank
@@ -739,7 +739,7 @@ app.post('/api/admin/import-cases', needApi('owner'), async (req, res) => {
     if (!isFinite(units) || units < 0) why.push('units not a number');
     if (why.length) { out.bad++; if (out.errors.length < 50) out.errors.push({ line, why: why.join('; ') }); return; }
     const stRaw = String(r.status || '').trim().toLowerCase(), status = IMP_STATUS[stRaw] || (stRaw ? String(r.status).trim().slice(0, 30) : 'Completed');
-    const ty = String(r.surgeon_type || '').trim().toLowerCase(), surgeon_type = /^l|^e/.test(ty) ? 'Legacy' : 'New';
+    const ty = String(r.surgeon_type || '').trim().toLowerCase(), surgeon_type = /^l/.test(ty) ? 'Legacy' : /^e/.test(ty) ? 'Existing' : 'New';
     const c = { date, rep, surgeon: String(r.surgeon || '').trim().slice(0, 120), facility: String(r.facility || '').trim().slice(0, 160), service_line: String(r.service_line || '').trim().slice(0, 60),
       product: String(r.product || '').trim().slice(0, 160), units: units || 1, net_sales: ns, surgeon_type, status, po: String(r.po || '').trim().slice(0, 60), lot: String(r.lot || '').trim().slice(0, 60),
       notes: String(r.notes || '').trim().slice(0, 1000), time: '', procedure: String(r.procedure || '').trim().slice(0, 160), created_by: uidOf(req.s), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), imported: batch };
@@ -1400,11 +1400,15 @@ const fmt$ = v => '$' + Math.round(v).toLocaleString('en-US');
 function allCases() { return [...docs].filter(([k]) => k.startsWith('cases/')).map(([, d]) => d).filter(c => c && c.date && c.rep); }
 // a product filter can list several names: "Skeletal Dynamics|Geminus|KinematX" counts any of them
 const prodMatch = (filter, product) => { const f = String(filter || '').trim(); if (!f) return true; const p = String(product || '').toLowerCase(); return f.split('|').map((x) => x.trim().toLowerCase()).filter(Boolean).some((x) => p.includes(x)); };
+// Surgeon types: New (a surgeon the rep brought in), Existing (one the rep already works with), Legacy (a surgeon the company brought
+// to the table — reps are not paid on those). A plan's "counts" says which types count toward its quota and commission.
+const COUNTS = ['All', 'New only', 'New + Existing', 'Legacy only'];
+const typeCounts = (counts, t) => counts === 'New only' ? t === 'New' : counts === 'New + Existing' ? t !== 'Legacy' : counts === 'Legacy only' ? t === 'Legacy' : true;
 function rowActual(row, ym, cases) {
   const terr = {}; quotaRows().forEach(r => { if (r.role !== 'Team') terr[r.rep] = r.territory; });
   return cases.filter(c => c.date.slice(0, 7) === ym && isDone(c.status)).filter(c => {
     const who = row.role === 'Team' ? terr[c.rep] === row.territory : c.rep === row.rep;
-    const type = row.counts === 'New only' ? c.surgeon_type === 'New' : row.counts === 'Legacy only' ? c.surgeon_type === 'Legacy' : true;
+    const type = typeCounts(row.counts, c.surgeon_type);
     const prod = prodMatch(row.product_filter, c.product);
     return who && type && prod;
   }).reduce((t, c) => t + (row.metric === 'Cases' ? 1 : (c.net_sales || 0)), 0);
@@ -2382,6 +2386,11 @@ function diagDump() {
   console.log('DIAG settings', JSON.stringify(docs.get('config/settings') || {}), 'now', new Date().toISOString());
 }
 initStore().then(async () => {
+  if (!docs.has('_seed/counts-v2')) { // Nov 2026: three surgeon types; reps' plans no longer pay on Legacy
+    const q = docs.get('config/quotas'); let n = 0;
+    if (q && Array.isArray(q.rows)) { const rows = q.rows.map((r) => (r.role !== 'Team' && (!r.counts || r.counts === 'All') ? (n++, Object.assign({}, r, { counts: 'New + Existing' })) : r)); if (n) await put('config/quotas', Object.assign({}, q, { rows })); }
+    await put('_seed/counts-v2', { at: new Date().toISOString(), changed: n }); if (n) console.log(`Quota plans: ${n} rep plan(s) now count New + Existing surgeons (not Legacy)`);
+  }
   if (!SECRET) { const d = docs.get('_auth/secret'); if (d && d.v) SECRET = d.v; else { SECRET = crypto.randomBytes(32).toString('hex'); await put('_auth/secret', { v: SECRET, at: new Date().toISOString() }); console.log('Session secret made and saved (set SESSION_SECRET to use your own).'); } }
 }).then(() => { diagDump(); app.listen(PORT, () => console.log(`360 Medical Portal on :${PORT} (storage: ${dbMode})`)); })
   .catch(e => { console.error('startup failed', e); process.exit(1); });
