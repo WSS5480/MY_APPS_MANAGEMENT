@@ -9,7 +9,9 @@ const fs = require('fs');
 const path = require('path');
 
 const PORT = process.env.PORT || 10000;
-const SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+// Sessions, approval links and calendar links are signed with this. With no SESSION_SECRET in the environment it is made once
+// and kept in the data store, so a deploy or restart no longer signs everyone out.
+let SECRET = process.env.SESSION_SECRET || '';
 const ENV_ADMIN_PIN = String(process.env.ADMIN_PIN || '360360');
 const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, 'data.json');
 const PROD = process.env.NODE_ENV === 'production' || !!process.env.RENDER;
@@ -2372,5 +2374,7 @@ function diagDump() {
   const m = (docs.get('_auth/managers') || {}).m || {}; Object.values(m).forEach(a => { if (q.some(x => (a.rep || a.name || '').toLowerCase().includes(x))) console.log('DIAG account', JSON.stringify({ kind: a.kind, rep: a.rep, name: a.name, active: a.active, totp_on: a.totp_on, passkeys: (a.passkeys || []).length })); });
   console.log('DIAG settings', JSON.stringify(docs.get('config/settings') || {}), 'now', new Date().toISOString());
 }
-initStore().then(() => { diagDump(); app.listen(PORT, () => console.log(`360 Medical Portal on :${PORT} (storage: ${dbMode})`)); })
+initStore().then(async () => {
+  if (!SECRET) { const d = docs.get('_auth/secret'); if (d && d.v) SECRET = d.v; else { SECRET = crypto.randomBytes(32).toString('hex'); await put('_auth/secret', { v: SECRET, at: new Date().toISOString() }); console.log('Session secret made and saved (set SESSION_SECRET to use your own).'); } }
+}).then(() => { diagDump(); app.listen(PORT, () => console.log(`360 Medical Portal on :${PORT} (storage: ${dbMode})`)); })
   .catch(e => { console.error('startup failed', e); process.exit(1); });
