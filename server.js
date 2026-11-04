@@ -742,7 +742,7 @@ app.post('/api/admin/import-cases', needApi('owner'), async (req, res) => {
     const ty = String(r.surgeon_type || '').trim().toLowerCase(), surgeon_type = /^l|^e/.test(ty) ? 'Legacy' : 'New';
     const c = { date, rep, surgeon: String(r.surgeon || '').trim().slice(0, 120), facility: String(r.facility || '').trim().slice(0, 160), service_line: String(r.service_line || '').trim().slice(0, 60),
       product: String(r.product || '').trim().slice(0, 160), units: units || 1, net_sales: ns, surgeon_type, status, po: String(r.po || '').trim().slice(0, 60), lot: String(r.lot || '').trim().slice(0, 60),
-      notes: String(r.notes || '').trim().slice(0, 1000), time: '', created_by: uidOf(req.s), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), imported: batch };
+      notes: String(r.notes || '').trim().slice(0, 1000), time: '', procedure: String(r.procedure || '').trim().slice(0, 160), created_by: uidOf(req.s), created_at: new Date().toISOString(), updated_at: new Date().toISOString(), imported: batch };
     const src = String(r.src_id || r._id || '').trim().slice(0, 60); if (src) c.src_id = src;
     if (src ? seenSrc.has(src) : seen.has(impKey(c))) { out.dup++; return; } if (src) seenSrc.add(src);
     if (!roster.includes(rep)) out.unknownReps[rep] = (out.unknownReps[rep] || 0) + 1;
@@ -1200,7 +1200,7 @@ function wcuBuild(rep, wk) {
   const live = (c) => String(c.status || '').toLowerCase() !== 'cancelled';
   const done = (c) => /completed|po received|invoiced|paid/i.test(c.status || '');
   const week = cases.filter((c) => live(c) && c.date >= wk && c.date <= end).sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')));
-  const caseLine = (c) => [c.surgeon || 'Surgeon TBD', [c.product, c.units ? '×' + c.units : ''].filter(Boolean).join(' '), c.facility ? '@ ' + c.facility : ''].filter(Boolean).join(' · ');
+  const caseLine = (c) => [c.surgeon || 'Surgeon TBD', c.procedure || '', [c.product, c.units ? '×' + c.units : ''].filter(Boolean).join(' '), c.facility ? '@ ' + c.facility : ''].filter(Boolean).join(' · ');
   const days = DAYN.map((name, i) => ({ day: name, date: wAdd(wk, i), cases: week.filter((c) => c.date === wAdd(wk, i)).map(caseLine) }));
   // Top wins: the visits the rep flagged as a win (⭐ on the visit), in date order
   const winVisits = visits.filter((v) => v.win === true && v.date >= wk && v.date <= end && v.status !== 'cancelled').sort((a, b) => a.date.localeCompare(b.date));

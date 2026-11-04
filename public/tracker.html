@@ -298,7 +298,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
         <div class="cardhead">
           <h2>Surgical Case Log · <span class="mname"></span> · <span class="vname"></span></h2>
           <div class="tools">
-            <input class="field search" id="search" type="search" placeholder="Search surgeon, facility, product" aria-label="Search cases">
+            <input class="field search" id="search" type="search" placeholder="Search surgeon, procedure, facility, product" aria-label="Search cases">
             <button class="btn" id="btn-export" type="button" hidden>Export CSV</button>
             <button class="btn primary" id="btn-add" type="button" hidden>+ Log a case</button>
           </div>
@@ -309,7 +309,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
           <div class="form">
             <div class="full x-lock" id="ce-lock" hidden></div>
             <label>Date<input class="field" id="ce-date" type="date"></label>
-            <label>Time (optional)<input class="field" id="ce-time" type="time"></label>
+            <label>Procedure<input class="field" id="ce-procedure" list="dl-procedures" autocomplete="off" placeholder="e.g. Rotator cuff repair"><input type="hidden" id="ce-time"></label>
             <label>Rep<select class="field" id="ce-rep"></select></label>
             <label>Surgeon<input class="field" id="ce-surgeon" list="dl-surgeons" placeholder="Dr. Last name" autocomplete="off"></label>
             <label>Facility<input class="field" id="ce-facility" list="dl-facilities" autocomplete="off"></label>
@@ -335,9 +335,9 @@ section[id^="sec-"]{scroll-margin-top:62px}
           </div>
         </div>
         <div class="x-history" id="ed-hist" hidden></div>
-        <div class="scroll"><table id="log"><thead><tr><th>Date</th><th class="col-rep">Rep</th><th>Surgeon</th><th>Facility</th><th>Product</th><th class="r">Units</th><th class="r">Net sales</th><th>Type</th><th>Status</th><th>Notes</th></tr></thead><tbody></tbody></table></div>
+        <div class="scroll"><table id="log"><thead><tr><th>Date</th><th class="col-rep">Rep</th><th>Surgeon</th><th>Procedure</th><th>Facility</th><th>Product</th><th class="r">Units</th><th class="r">Net sales</th><th>Type</th><th>Status</th><th>Notes</th></tr></thead><tbody></tbody></table></div>
         <div class="empty" id="log-empty" hidden></div>
-        <datalist id="dl-surgeons"></datalist><datalist id="dl-facilities"></datalist><datalist id="dl-products"></datalist>
+        <datalist id="dl-surgeons"></datalist><datalist id="dl-facilities"></datalist><datalist id="dl-products"></datalist><datalist id="dl-procedures"></datalist>
       </section>
 
       <footer class="foot">
@@ -884,6 +884,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
     S.products.forEach(function (p) { (p.case_names && p.case_names.length ? p.case_names : [p.name]).forEach(function (n) { if (p.available === false) offNames[n.toLowerCase()] = 1; else onNames.push(n); }); });
     onNames.forEach(function (n) { delete offNames[n.toLowerCase()]; });
     fillList('#dl-products', (S.products.length ? onNames : PRODUCTS).concat(S.cases.map(function (c) { return c.product; })).filter(function (n) { return n && !offNames[String(n).toLowerCase()]; }));
+    fillList('#dl-procedures', S.cases.map(function (c) { return c.procedure; }).filter(Boolean));
 
     if (window.SCTX) SCTX.render(M, { viewRep: viewRep, month: month, lead: lead, tstatus: tstatus, loaded: loaded });
     if (S.editId && !pendingNew[S.editId] && !timers['case:' + S.editId] && !S.cases.some(function (c) { return c.id === S.editId; })) closeEditor();
@@ -893,7 +894,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
     var viewRep = currentViewRep();
     var q = $('#search').value.trim().toLowerCase();
     return S.cases.filter(function (c) { return (!c.date || c.date.slice(0, 7) === S.month || c.id === S.editId) && (!viewRep || c.rep === viewRep || c.id === S.editId); })
-      .filter(function (c) { return !q || c.id === S.editId || [c.rep, c.surgeon, c.facility, c.product, c.status, c.surgeon_type, c.service_line, c.notes].join(' ').toLowerCase().indexOf(q) >= 0; })
+      .filter(function (c) { return !q || c.id === S.editId || [c.rep, c.surgeon, c.procedure, c.facility, c.product, c.status, c.surgeon_type, c.service_line, c.notes].join(' ').toLowerCase().indexOf(q) >= 0; })
       .sort(function (a, b) { return (a.date || '') < (b.date || '') ? 1 : (a.date || '') > (b.date || '') ? -1 : (a.created_at || '') < (b.created_at || '') ? 1 : -1; });
   }
   function drawLog() {
@@ -902,8 +903,8 @@ section[id^="sec-"]{scroll-margin-top:62px}
     rows.forEach(function (c) {
       var tr = el('tr', (S.canWrite ? 'click ' : '') + (c.id === S.editId ? 'on' : '')); tr.dataset.caseId = c.id; if (S.canWrite) tr.tabIndex = 0;
       var note = c.notes || '';
-      [dayName(c.date), c.rep || 'No rep yet', c.surgeon, c.facility, c.product, count(c.units), money(c.net_sales), c.surgeon_type, c.status, note.length > 40 ? note.slice(0, 40) + '…' : note].forEach(function (t, i) { tr.appendChild(el('td', i === 1 ? 'col-rep' : i === 5 || i === 6 ? 'r' : '', t || '—')); });
-      if (c.invoice) { var ip = { pending: ['warn', '🧾 Invoice awaiting approval'], approved: ['ok', '🧾 Invoice approved'], rejected: ['bad', '🧾 Invoice sent back'] }[c.invoice.status]; if (ip) { var st = tr.children[8]; st.appendChild(document.createElement('br')); st.appendChild(el('span', 'pill ' + ip[0], ip[1])); } }
+      [dayName(c.date), c.rep || 'No rep yet', c.surgeon, c.procedure || '', c.facility, c.product, count(c.units), money(c.net_sales), c.surgeon_type, c.status, note.length > 40 ? note.slice(0, 40) + '…' : note].forEach(function (t, i) { tr.appendChild(el('td', i === 1 ? 'col-rep' : i === 6 || i === 7 ? 'r' : '', t || '—')); });
+      if (c.invoice) { var ip = { pending: ['warn', '🧾 Invoice awaiting approval'], approved: ['ok', '🧾 Invoice approved'], rejected: ['bad', '🧾 Invoice sent back'] }[c.invoice.status]; if (ip) { var st = tr.children[9]; st.appendChild(document.createElement('br')); st.appendChild(el('span', 'pill ' + ip[0], ip[1])); } }
       body.appendChild(tr);
     });
     var e = $('#log-empty'); e.hidden = rows.length > 0;
@@ -946,7 +947,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
   }
 
   /* ---------- Case editor ---------- */
-  var ED = { date: '#ce-date', rep: '#ce-rep', surgeon: '#ce-surgeon', facility: '#ce-facility', service_line: '#ce-service', product: '#ce-product', time: '#ce-time', udi: '#ce-udi', lot: '#ce-lot', expiry: '#ce-exp', units: '#ce-units', net_sales: '#ce-sales', surgeon_type: '#ce-type', status: '#ce-status', po: '#ce-po', notes: '#ce-notes' };
+  var ED = { date: '#ce-date', rep: '#ce-rep', surgeon: '#ce-surgeon', procedure: '#ce-procedure', facility: '#ce-facility', service_line: '#ce-service', product: '#ce-product', time: '#ce-time', udi: '#ce-udi', lot: '#ce-lot', expiry: '#ce-exp', units: '#ce-units', net_sales: '#ce-sales', surgeon_type: '#ce-type', status: '#ce-status', po: '#ce-po', notes: '#ce-notes' };
   function readEditor() {
     var d = {}; Object.keys(ED).forEach(function (k) { d[k] = $(ED[k]).value.trim(); });
     d.units = numOrNull(d.units); d.net_sales = numOrNull(d.net_sales); d.updated_at = new Date().toISOString(); if (window.SCTX) SCTX.augment(d); return d;
@@ -1089,7 +1090,7 @@ section[id^="sec-"]{scroll-margin-top:62px}
     schedule('notes', 800, function () { return S.db.doc('coonotes/' + month).set(body); });
   });
   $('#btn-export').addEventListener('click', function () {
-    var cols = ['date', 'time', 'rep', 'surgeon', 'facility', 'service_line', 'product', 'udi', 'lot', 'expiry', 'units', 'net_sales', 'contract_price', 'surgeon_type', 'status', 'po', 'po_date', 'invoiced_date', 'paid_date', 'notes'];
+    var cols = ['date', 'time', 'rep', 'surgeon', 'procedure', 'facility', 'service_line', 'product', 'udi', 'lot', 'expiry', 'units', 'net_sales', 'contract_price', 'surgeon_type', 'status', 'po', 'po_date', 'invoiced_date', 'paid_date', 'notes'];
     var esc = function (v) { v = v == null ? '' : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
     var rows = visibleCases().slice().reverse();
     if (!rows.length) { setStatus('err', 'Nothing to export for this view'); return; }

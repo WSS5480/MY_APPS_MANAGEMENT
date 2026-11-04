@@ -13,7 +13,7 @@
   var SYSTEMS = ['Vendormate (GHX)', 'symplr / Reptrax', 'IntelliCentrics (SEC³URE)', 'Hospital badge', 'Other'];
   var VISIT_TYPES = ['Office visit', 'Case observation', 'In-service', 'Lunch & learn', 'Phone / virtual', '360 Experience', 'Other'];
   var SERVICES = ['', 'General Surgery', 'Colorectal', 'Bariatric', 'Orthopedics', 'GYN', 'Urology', 'Endoscopy', 'Interventional Radiology'];
-  var LABELS = { date: 'Date', time: 'Time', rep: 'Rep', surgeon: 'Surgeon', facility: 'Facility', service_line: 'Service line', product: 'Product', udi: 'Barcode', lot: 'Lot', expiry: 'Expiration', units: 'Units', net_sales: 'Net sales', surgeon_type: 'Surgeon type', status: 'Status', po: 'PO / Invoice #', notes: 'Notes', attachments: 'Photos', contract_price: 'Contract price', off_contract: 'Off contract', completed_date: 'Completed date', po_date: 'PO date', invoiced_date: 'Invoiced date', paid_date: 'Paid date' };
+  var LABELS = { date: 'Date', time: 'Time', rep: 'Rep', surgeon: 'Surgeon', procedure: 'Procedure', facility: 'Facility', service_line: 'Service line', product: 'Product', udi: 'Barcode', lot: 'Lot', expiry: 'Expiration', units: 'Units', net_sales: 'Net sales', surgeon_type: 'Surgeon type', status: 'Status', po: 'PO / Invoice #', notes: 'Notes', attachments: 'Photos', contract_price: 'Contract price', off_contract: 'Off contract', completed_date: 'Completed date', po_date: 'PO date', invoiced_date: 'Invoiced date', paid_date: 'Paid date' };
 
   var set = function () { return Object.assign({ po_alert_days: 3, invoice_alert_days: 7, stuck_step_days: 30, cred_warn_days: 30 }, X.settings || {}); };
   var lc = function (v) { return String(v || '').trim().toLowerCase(); };
@@ -589,7 +589,7 @@
       var li = el('li'), left = el('div');
       if (it.kind === 'case') {
         var c = it.c;
-        left.appendChild(el('div', 'strong', (c.time ? fmtTime(c.time) + ' · ' : '') + (c.surgeon || 'Surgeon TBD') + (c.product ? ' · ' + c.product : '')));
+        left.appendChild(el('div', 'strong', (c.time ? fmtTime(c.time) + ' · ' : '') + (c.surgeon || 'Surgeon TBD') + (c.procedure ? ' · ' + c.procedure : '') + (c.product ? ' · ' + c.product : '')));
         left.appendChild(el('div', 'meta', [c.facility, ctx.viewRep ? '' : c.rep, c.status].filter(Boolean).join(' · ')));
         li.appendChild(left); li.appendChild(btn('Open', 'small', function () { T.openEditor(c.id); $('#sec-log').scrollIntoView({ behavior: 'smooth' }); }));
       } else if (it.kind === 'visit') {
