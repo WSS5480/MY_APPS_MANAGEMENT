@@ -227,13 +227,13 @@ function fix(p){const n=newProject();p.client={...n.client,...(p.client||{})};p.
 /* ================= calculations ================= */
 function calcEst(p){let labor=0,hrs=0,exp=0;const cx=num(p.complexity)||1;
  const lines=p.lines.map(l=>{let a;if(l.type==='exp'){a=num(l.qty)*num(l.cost);exp+=a}else{a=num(l.hours)*num(l.rate);labor+=a;hrs+=num(l.hours)}return a});
- const laborAdj=labor*cx,cont=laborAdj*num(p.contingency)/100,sub=laborAdj+cont+exp,disc=sub*num(p.discount)/100,total=sub-disc;
- const low=(laborAdj+exp)*(1-num(p.discount)/100);
+ const laborAdj=labor*cx,cont=laborAdj*num(p.contingency)/100,sub=laborAdj+cont+exp,disc=p.discType==='amt'?Math.min(num(p.discount),sub):sub*num(p.discount)/100,total=sub-disc;
+ const low=Math.max(0,laborAdj+exp-disc);
  return{lines,labor,hrs,hrsAdj:hrs*cx,cx,laborAdj,cxAdj:laborAdj-labor,cont,exp,sub,disc,total,low,deposit:total*num(p.depositPct)/100}}
 function actualHrs(l,cx){return (l.actual===''||l.actual==null)?r2(num(l.hours)*cx):num(l.actual)}
 function calcBill(p){const E=calcEst(p),inv=p.invoice;const rows=[];let base=0;
  if(inv.mode==='actual'){p.lines.forEach(l=>{if(l.type==='exp'){const a=num(l.qty)*num(l.cost);rows.push({desc:l.desc,detail:`${fh(l.qty)} × ${money(l.cost)}`,amt:a});base+=a}else{const ah=actualHrs(l,E.cx),a=ah*num(l.rate);rows.push({desc:l.desc,detail:`${fh(ah)} hrs × ${money(l.rate)}/hr`,amt:a});base+=a}})}
- else{rows.push({desc:`${p.name||'Project'} — complete build per approved estimate / SOW`,detail:'Fixed price',amt:E.total});base=E.total}
+ else{rows.push({desc:`${p.name||'Project'} — complete build per approved estimate / SOW`,detail:'Fixed price'+(E.disc?` · includes ${money(E.disc)} discount${p.discLabel?' ('+esc(p.discLabel)+')':''}`:''),amt:E.total});base=E.total}
  let co=0;const cos=inv.changeOrders.map(c=>{const a=num(c.hours)*num(c.rate);co+=a;return a});
  const credit=num(inv.credit),pre=base+co-credit,tax=pre*num(inv.tax)/100,total=pre+tax,paid=inv.payments.reduce((s,x)=>s+num(x.amount),0);
  const actHrs=p.lines.filter(l=>l.type!=='exp').reduce((s,l)=>s+actualHrs(l,E.cx),0);
@@ -382,8 +382,16 @@ function rEst(p){const groups={};p.lines.forEach((l,i)=>{const ph=PHASES.include
    <div class="grid" style="margin-top:8px"><label class="f">Phase${phSel}</label><label class="f">Role<select data-k="lines.${i}.rateId" data-role="${i}">${roleOpts(l.rateId)}</select></label>${F('Hours',`lines.${i}.hours`,l.hours,'number')}${F('Rate ($/hr)',`lines.${i}.rate`,l.rate,'number')}<label class="f">Amount<div class="amt" style="padding:9px 0" data-c="line.${i}"></div></label></div></div>`};
  return `<div class="card"><h2>Pricing settings</h2><div class="grid">
   <label class="f">Complexity<select data-k="complexity" data-num>${CX.map(([v,l])=>`<option value="${v}" ${num(p.complexity)===v?'selected':''}>${l}</option>`).join('')}</select></label>
-  ${F('Contingency %','contingency',p.contingency,'number')}${F('Discount %','discount',p.discount,'number')}${F('Deposit to start %','depositPct',p.depositPct,'number')}</div>
+  ${F('Contingency %','contingency',p.contingency,'number')}${F('Deposit to start %','depositPct',p.depositPct,'number')}</div>
   <div class="sm mut" style="margin-top:8px">Complexity multiplies labor hours. Contingency is a buffer for unknowns, shown to the client as its own line.</div></div>
+ <div class="card"><h2>🏷 Discount</h2><div class="grid">
+  <label class="f">Discount type<select data-k="discType" data-rr><option value="pct" ${p.discType!=='amt'?'selected':''}>Percent (%)</option><option value="amt" ${p.discType==='amt'?'selected':''}>Dollar amount ($)</option></select></label>
+  ${F(p.discType==='amt'?'Discount ($)':'Discount (%)','discount',p.discount,'number')}
+  <label class="f">Reason (shows on client documents)<input data-k="discLabel" list="discReasons" value="${esc(p.discLabel||'')}" placeholder="e.g. Repeat client"></label></div>
+  <datalist id="discReasons">${['Repeat client','Friends & family','Launch partner / case study','Bundle: build + monthly plan','Paid in full upfront','Non-profit','Referral credit','Introductory rate'].map(x=>`<option value="${x}">`).join('')}</datalist>
+  <div class="row" style="margin-top:8px">${[['5%','pct',5],['10%','pct',10],['15%','pct',15],['$250 off','amt',250],['$500 off','amt',500],['None','pct',0]].map(([l,t,v])=>`<button class="btn sm" data-act="quickDisc" data-t="${t}" data-v="${v}">${l}</button>`).join('')}</div>
+  <div class="tot" style="margin-top:8px"><span>Discount on this build</span><b class="neg" data-c="est.disc"></b></div>
+  <div class="sm mut" style="margin-top:8px">Applied after contingency. Shows on the estimate, SOW and invoice with your reason.</div></div>
  <div class="card"><div class="row"><h2 class="grow" style="margin:0">Work breakdown</h2></div>
   <div class="grid g2" style="margin-top:10px"><label class="f">Quick-add a common module<select data-add="module"><option value="">+ Choose a module…</option>${modOpts}</select></label>
   <label class="f">Or add your own<div class="row"><button class="btn" data-act="addLabor">+ Labor item</button><button class="btn" data-act="addExp">+ Expense</button></div></label></div>
@@ -395,7 +403,7 @@ function rEst(p){const groups={};p.lines.forEach((l,i)=>{const ph=PHASES.include
   <div class="tot"><span>Complexity adjustment</span><span data-c="est.cxAdj"></span></div>
   <div class="tot"><span>Contingency (${fh(p.contingency)}%)</span><span data-c="est.cont"></span></div>
   <div class="tot"><span>Expenses / pass-through</span><span data-c="est.exp"></span></div>
-  <div class="tot"><span>Discount</span><span class="neg" data-c="est.disc"></span></div>
+  <div class="tot"><span>Discount${p.discLabel?' — '+esc(p.discLabel):''}</span><span class="neg" data-c="est.disc"></span></div>
   <div class="tot big"><span>Total estimate</span><span data-c="est.total"></span></div>
   <div class="tot"><span>Range (without contingency → with)</span><span><span data-c="est.low"></span> – <span data-c="est.total"></span></span></div>
   <div class="tot"><span>Estimated hours / duration</span><span><span data-c="est.hrs"></span> · ~<span data-c="est.weeks"></span></span></div>
@@ -597,7 +605,7 @@ function buildDoc(kind,p){const s=S.settings,d=s.d,E=calcEst(p),B=calcBill(p),M=
   h=dHead('ESTIMATE',[['Estimate #',estNo(p)],['Date',fmtDate(p.estDate||iso())],['Valid until',fmtDate(addDays(p.estDate||iso(),d.estValid))]],p)+
   `<h2>${esc(p.name)}</h2>${p.desc?`<div>${escBr(p.desc)}</div>`:''}
   <h2>Work Breakdown</h2>${breakdown(p)||'<div class="d-sm">No items.</div>'}
-  <div class="d-tots">${dRow('Development & design',money(E.laborAdj))}${E.cont?dRow(`Contingency (${fh(p.contingency)}%)`,money(E.cont)):''}${E.exp?dRow('Expenses / pass-through',money(E.exp)):''}${E.disc?dRow(`Discount (${fh(p.discount)}%)`,'-'+money(E.disc)):''}
+  <div class="d-tots">${dRow('Development & design',money(E.laborAdj))}${E.cont?dRow(`Contingency (${fh(p.contingency)}%)`,money(E.cont)):''}${E.exp?dRow('Expenses / pass-through',money(E.exp)):''}${E.disc?dRow(`Discount${p.discLabel?' — '+esc(p.discLabel):''}${p.discType==='amt'?'':` (${fh(p.discount)}%)`}`,'-'+money(E.disc)):''}
   ${dRow('<b>Total estimate</b>','<b>'+money(E.total)+'</b>','','d-grand')}
   <div class="d-hl">${dRow('Deposit to start ('+fh(p.depositPct)+'%)','<b>'+money(E.deposit)+'</b>')}<div class="d-sm">Estimated ${fh(E.hrsAdj)} hours · about ${fh(E.hrsAdj/(num(d.hpw)||25))} weeks${E.cont?` · likely range ${money0(E.low)} – ${money0(E.total)}`:''}</div></div></div>
   ${moBlock(p,'Ongoing Monthly Costs (after launch)')}
@@ -607,7 +615,7 @@ function buildDoc(kind,p){const s=S.settings,d=s.d,E=calcEst(p),B=calcBill(p),M=
   H('Project Overview')+`<div><b>${esc(p.name)}</b></div><div>${escBr(p.sow.overview||p.desc||'')}</div>`+
   H('Deliverables')+(breakdown(p,p.sow.showLine)||'<div class="d-sm">To be listed.</div>')+
   H('Timeline')+timelineHtml(p)+
-  H('Investment')+`<div class="d-tots" style="max-width:none">${dRow('<b>Total project price</b>','<b>'+money(E.total)+'</b>','','d-grand')}</div>
+  H('Investment')+`<div class="d-tots" style="max-width:none">${E.disc?dRow('Project price before discount',money(E.sub))+dRow(`Discount${p.discLabel?' — '+esc(p.discLabel):''}`,'-'+money(E.disc)):''}${dRow('<b>Total project price</b>','<b>'+money(E.total)+'</b>','','d-grand')}</div>
    <div class="d-lbl" style="margin-top:10px">Payment schedule</div>${p.sow.schedule.map(x=>dRow(esc(x.label)+` (${fh(x.pct)}%)`,money(E.total*num(x.pct)/100))).join('')}
    <div class="d-sm" style="margin-top:4px">Invoices are due within ${fh(d.terms)} days. Late balances may accrue ${fh(d.lateFee)}% per month.</div>`+
   (p.monthly.items.length?H('Ongoing Monthly Services')+moBlock(p,'').replace('<h2></h2>','')+`<div class="d-sm">Monthly services begin at launch${p.monthly.term?' for an initial term of '+fh(p.monthly.term)+' months':''}; either party may cancel with ${fh(d.cancelDays)} days' written notice after the initial term.</div>`:'')+
@@ -691,6 +699,7 @@ const ACT={
  home(){S.view='home';closeOv();render();scrollTo(0,0)},
  settings(){S.view='settings';render();scrollTo(0,0)},
  hist(){S.view='hist';render();scrollTo(0,0)},
+ quickDisc(t){const p=cur();p.discType=t.dataset.t;p.discount=+t.dataset.v;touch(p);render()},
  addLic(){const p=cur();p.lic.items.push({name:'',type:'mo',amount:'',qty:1});touch(p);render()},
  rmLic(t){const p=cur();p.lic.items.splice(+t.dataset.i,1);touch(p);render()},
  rmLink(t){const p=cur();p.links=p.links.filter(x=>x!==t.dataset.id);touch(p);render()},
