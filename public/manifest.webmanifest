@@ -1,6 +1,6 @@
 {
   "name": "360 MEDICAL PORTAL",
-  "short_name": "360 Cases",
+  "short_name": "360 Portal",
   "description": "360 Medical Portal: quota, pace, commissions and the case log.",
   "start_url": "/",
   "scope": "/",

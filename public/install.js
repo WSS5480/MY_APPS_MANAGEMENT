@@ -4,7 +4,7 @@
 (function () {
   'use strict';
   var APP = window.SCT_APP || {}; // the admin page sets its own name, icon and storage keys; the portal uses the defaults
-  var NAME = APP.name || '360 Cases', ICON = APP.icon || '/icon-192.png', BLURB = APP.blurb || 'Opens full screen, stays signed in, works offline and sends visit reminders.';
+  var NAME = APP.name || '360 Portal', ICON = APP.icon || '/icon-192.png', BLURB = APP.blurb || 'Opens full screen, stays signed in, works offline and sends visit reminders.';
   var KEY = APP.key || 'sct_app_installed', SKIP = APP.skip || 'sct_install_later';
   var standalone = (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
   function get(s, k) { try { return s.getItem(k); } catch (e) { return null; } }
