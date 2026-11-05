@@ -21,6 +21,8 @@ async function init() {
     path TEXT PRIMARY KEY, col TEXT NOT NULL, data JSONB NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now())`);
   await pool.query(`CREATE INDEX IF NOT EXISTS docs_col ON docs(col)`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS shares (
+    token TEXT PRIMARY KEY, title TEXT, html TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())`);
 }
 
 const app = express();
@@ -61,7 +63,15 @@ app.get(['/manifest.webmanifest', '/sw.js', '/offline.html', '/download.html'], 
   if (req.path === '/sw.js') res.set('Service-Worker-Allowed', '/').set('Cache-Control', 'no-cache');
   res.sendFile(path.join(__dirname, 'public', req.path), { headers: req.path.endsWith('webmanifest') ? { 'Content-Type': 'application/manifest+json' } : {} });
 });
+// public document links: anyone with the (unguessable) link can view / download the PDF, no PIN
+app.get('/d/:token', async (req, res) => {
+  if (!/^[A-Za-z0-9_-]{20,64}$/.test(req.params.token)) return res.status(404).send('Not found');
+  const r = await pool.query('SELECT html FROM shares WHERE token=$1', [req.params.token]).catch(() => ({ rows: [] }));
+  if (!r.rows[0]) return res.status(404).type('html').send('<p style="font-family:sans-serif;padding:30px">This document link is no longer available.</p>');
+  res.set('Cache-Control', 'no-store').set('X-Robots-Tag', 'noindex').type('html').send(r.rows[0].html);
+});
 app.get('/download', (req, res) => res.sendFile(path.join(__dirname, 'public', 'download.html')));
+app.get('/vendor/html2pdf.js', (req, res) => res.set('Cache-Control', 'public, max-age=604800').type('js').sendFile(path.join(__dirname, 'node_modules', 'html2pdf.js', 'dist', 'html2pdf.bundle.min.js')));
 app.use('/icons', express.static(path.join(__dirname, 'public', 'icons'), { maxAge: '7d' }));
 app.get('/login', (req, res) => res.type('html').send(loginPage(PIN ? '' : 'APP_PIN is not set on the server.')));
 app.post('/login', (req, res) => {
@@ -104,6 +114,14 @@ api.get('/col', async (req, res) => {
   if (!COLS.has(req.query.c)) return res.status(400).json({ error: 'col' });
   const r = await pool.query('SELECT path, data, updated_at FROM docs WHERE col=$1 ORDER BY path', [req.query.c]);
   res.json(r.rows.map(x => ({ id: x.path.split('/')[1], data: x.data, updated: x.updated_at })));
+});
+api.post('/share', async (req, res) => {
+  const { title, html } = req.body || {};
+  if (typeof html !== 'string' || html.length < 50 || html.length > 1500000) return res.status(400).json({ error: 'bad doc' });
+  const token = crypto.randomBytes(24).toString('base64url');
+  await pool.query('INSERT INTO shares(token,title,html) VALUES($1,$2,$3)', [token, String(title || '').slice(0, 200), html]);
+  const base = (req.headers['x-forwarded-proto'] || req.protocol) + '://' + req.headers.host;
+  res.json({ url: base + '/d/' + token });
 });
 api.get('/export', async (req, res) => {
   const r = await pool.query('SELECT path, data FROM docs ORDER BY path');
