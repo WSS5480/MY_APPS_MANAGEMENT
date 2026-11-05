@@ -721,7 +721,7 @@ const ACT={
  hist(){S.view='hist';render();scrollTo(0,0)},
  fillGit(){const p=cur(),r=fillFromGit(p,true);if(!r){toast('Link a GitHub repo first — pick it under “GitHub & Render link” below');const el=document.querySelector('[data-add=link]');if(el){el.scrollIntoView({block:'center'});el.focus()}return}touch(p);render();toast(r)},
  async lookup(){const p=cur(),q=(p.client.company||'').trim(),box=$('#lookupBox');if(q.length<2){toast('Type the company name first');return}
-  const g=`<a href="https://www.google.com/search?q=${encodeURIComponent(q)}" target="_blank" rel="noopener">Search Google instead ↗</a>`;
+  const g=`<a href="https://www.google.com/maps/search/${encodeURIComponent(q+' '+(S.settings.d.near||''))}" target="_blank" rel="noopener">Open in Google Maps ↗</a>`;
   if(!window.__RENDER_HOST){box.innerHTML=`<div class="note">Company lookup works in the Render app (dev-billing.onrender.com). ${g}</div>`;return}
   box.innerHTML='<div class="sm mut" style="margin-top:8px">Searching…</div>';
   const near=(S.settings.d.near||'').trim();fillFromEmail(p);
