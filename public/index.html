@@ -55,9 +55,9 @@ input[type=checkbox],input[type=radio]{width:20px;height:20px;flex:none;margin:0
 .b-Estimate{background:#eef0f4}.b-Sent{background:var(--acc2);color:var(--acc)}.b-Approved,.b-In\ Progress{background:var(--warnb);color:var(--warn)}.b-Invoiced{background:#f3e8ff;color:#7a2fb8}.b-Paid{background:var(--okb);color:var(--ok)}.b-Lost{background:var(--badb);color:var(--bad)}
 .pcard{cursor:pointer;transition:border-color .15s}
 .pcard:hover{border-color:var(--acc)}
-.pcard .nums{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:6px;margin-top:10px}
-.pcard .nums div{background:var(--bg);border-radius:8px;padding:7px 9px;font-size:12px;color:var(--mut)}
-.pcard .nums b{display:block;color:var(--ink);font-size:15px;font-variant-numeric:tabular-nums}
+.nums{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:6px;margin-top:10px}
+.nums div{background:var(--bg);border-radius:8px;padding:7px 9px;font-size:12px;color:var(--mut)}
+.nums b{display:block;color:var(--ink);font-size:15px;font-variant-numeric:tabular-nums}
 .line{border:1px solid var(--line);border-radius:10px;padding:10px;margin:8px 0;background:#fcfcfd}
 .line.exp{background:#fffdf6}
 .line .top{display:flex;gap:8px;align-items:center}
@@ -115,10 +115,9 @@ html,body{overscroll-behavior-y:contain}
 <body>
 <header><div class="in">
   <div class="brand"><span id="brandName">Dev Billing</span><small>Estimates · Scope · Final Bill · Monthly</small></div>
-  <select id="navSel" aria-label="Go to"><option value="home">📁 Projects</option><option value="custs">👥 Customers</option><option value="ar">💵 A/R</option><option value="hist">📊 Build History</option><option value="settings">⚙️ Settings</option><option value="getApp">⬇ Get the app</option></select>
+  <select id="navSel" aria-label="Go to"><option value="home">👥 Customers &amp; builds</option><option value="ar">💵 A/R</option><option value="hist">📊 Build History</option><option value="settings">⚙️ Settings</option><option value="getApp">⬇ Get the app</option></select>
   <div class="nav row">
-    <button data-act="home" id="navHome" class="on">Projects</button>
-    <button data-act="custs" id="navCust">Customers</button>
+    <button data-act="home" id="navHome" class="on">Customers &amp; builds</button>
     <button data-act="ar" id="navAR">A/R</button>
     <button data-act="hist" id="navHist">Build History</button>
     <button data-act="saveNow" id="navSave" title="Save changes">💾 Save</button>
@@ -364,7 +363,7 @@ async function connect(){
 
 /* ================= render: shell ================= */
 function updateBrand(){$('#brandName').textContent=(S.settings.biz.name||'Dev')+' — Dev Billing'}
-function render(){updateBrand();{const ns=document.getElementById('navSel');if(ns)ns.value=S.view==='cust'?'custs':S.view==='project'?'home':S.view}$('#navHome').classList.toggle('on',S.view==='home');$('#navSet').classList.toggle('on',S.view==='settings');$('#navHist').classList.toggle('on',S.view==='hist');$('#navCust').classList.toggle('on',S.view==='custs'||S.view==='cust');$('#navAR').classList.toggle('on',S.view==='ar');
+function render(){updateBrand();{const ns=document.getElementById('navSel');if(ns)ns.value=(S.view==='cust'||S.view==='custs'||S.view==='project')?'home':S.view}$('#navHome').classList.toggle('on',S.view==='home'||S.view==='cust'||S.view==='custs');$('#navSet').classList.toggle('on',S.view==='settings');$('#navHist').classList.toggle('on',S.view==='hist');$('#navAR').classList.toggle('on',S.view==='ar');
  const app=$('#app');
  if(S.view==='settings'){app.innerHTML=rSettings();$('#bar').style.display='none'}
  else if(S.view==='hist'){app.innerHTML=rHist();$('#bar').style.display='none'}
@@ -387,7 +386,7 @@ function rHome(){const _arOpen=Object.values(S.invoices).map(invCalc).filter(c=>
   if(p.status==='Invoiced'&&!(p.invoice.arId&&S.invoices[p.invoice.arId])){out+=B.balance;nO++}
   coll+=B.paid;
   if(p.monthly.active&&p.status!=='Lost'){const Lc=calcLic(p);mrr+=M.price+Lc.mo;mrrM+=M.margin+Lc.mo;nM++}});
- return `<div class="row" style="margin-top:6px"><h1 class="grow">Projects</h1><button class="btn p" data-act="new">+ New Project</button></div>
+ return `<div class="row" style="margin-top:6px"><h1 class="grow">${S.homeMode==='builds'?'All builds':'Customers'}</h1><button class="btn" data-act="newCust">+ Customer</button><button class="btn p" data-act="new">+ New build</button></div>
  <div class="kpis">
   <div class="kpi"><div class="l">Pipeline (quoted)</div><div class="v">${money0(pipe)}</div><div class="s">${nP} estimate${nP==1?'':'s'} out</div></div>
   <div class="kpi"><div class="l">Active builds</div><div class="v">${money0(active)}</div><div class="s">${nA} approved / in progress</div></div>
@@ -395,25 +394,38 @@ function rHome(){const _arOpen=Object.values(S.invoices).map(invCalc).filter(c=>
   <div class="kpi"><div class="l">Collected</div><div class="v">${money0(coll)}</div><div class="s">all payments logged</div></div>
   <div class="kpi"><div class="l">Monthly recurring</div><div class="v">${money0(mrr)}/mo</div><div class="s">${nM} client${nM==1?'':'s'} · ${money0(mrrM)}/mo margin</div></div>
  </div>
- <div class="row"><input class="grow" style="max-width:none;flex:2 1 200px" placeholder="Search client or project…" data-ui="q" value="${esc(S.q)}">
+ <div class="tabs" style="margin-top:0"><button data-act="homeMode" data-m="cust" class="${S.homeMode!=='builds'?'on':''}">👥 By customer</button><button data-act="homeMode" data-m="builds" class="${S.homeMode==='builds'?'on':''}">📁 All builds</button></div>
+ <div class="row"><input class="grow" style="max-width:none;flex:2 1 200px" placeholder="Search customer or build…" data-ui="q" value="${esc(S.q)}">
   <select data-ui="f" style="flex:1 1 140px">${['All',...STATUSES].map(s=>`<option ${S.f===s?'selected':''}>${s}</option>`).join('')}</select></div>
  <div id="plist">${rList()}</div>`}
-function rList(){let ps=Object.values(S.projects).sort((a,b)=>(b.updated||0)-(a.updated||0));const q=S.q.toLowerCase();
+function rCustList(){const q=S.q.toLowerCase();const groups=Object.values(S.customers).map(c=>({c,ps:custProjects(c.id)}));const none=Object.values(S.projects).filter(p=>!p.customerId||!S.customers[p.customerId]);
+ let gs=groups.filter(g=>!q||[custName(g.c),g.c.name,...g.ps.map(p=>p.name)].join(' ').toLowerCase().includes(q));if(S.f!=='All')gs=gs.filter(g=>g.ps.some(p=>p.status===S.f));
+ gs.sort((a,b)=>Math.max(0,...b.ps.map(p=>p.updated||0),b.c.updated||b.c.created||0)-Math.max(0,...a.ps.map(p=>p.updated||0),a.c.updated||a.c.created||0));
+ const row=p=>{const E=calcEst(p),M=calcMo(p),L=calcLic(p),plan=p.kind==='plan';return `<div class="line pcard" data-act="open" data-id="${esc(p.id)}" style="margin:6px 0"><div class="row"><span class="grow"><b>${plan?'🔁 ':'🛠 '}${esc(p.name||'Untitled')}</b><div class="sm mut">${plan?'Monthly plan':`Build · est. ${money0(E.total)}`} · ${money(M.price+L.mo)}/mo${p.monthly.active?'':' (off)'}</div></span><span class="badge b-${esc(p.status)}">${esc(p.status)}</span></div></div>`};
+ let out=gs.map(({c,ps})=>{const k=custCalc(c.id);const fs=S.f==='All'?ps:ps.filter(p=>p.status===S.f);const builds=fs.filter(p=>p.kind!=='plan'),plans=fs.filter(p=>p.kind==='plan');
+  return `<div class="card"><div class="row pcard" data-act="openCust" data-id="${esc(c.id)}" style="cursor:pointer"><div class="grow"><b style="font-size:17px">${esc(custName(c))}</b><div class="mut sm">${builds.length} build${builds.length==1?'':'s'} · ${plans.length} monthly plan${plans.length==1?'':'s'}${c.name&&c.company?' · '+esc(c.name):''}</div></div>${k.over?'<span class="badge b-Lost">Overdue</span>':''}<span class="btn sm">Account →</span></div>
+  <div class="nums"><div>Monthly<b>${money(k.mrr)}/mo</b></div><div>Balance due<b>${money(k.bal)}</b></div><div>Billed<b>${money0(k.billed)}</b></div></div>
+  ${builds.map(row).join('')}${plans.map(row).join('')}
+  <div class="row" style="margin-top:8px"><button class="btn sm" data-act="newBuildFor" data-id="${esc(c.id)}">+ Build</button><button class="btn sm" data-act="newPlanFor" data-id="${esc(c.id)}">+ Monthly plan</button></div></div>`}).join('');
+ if(none.length&&!q)out+=`<div class="card"><div class="row"><b class="grow" style="font-size:17px">No customer yet</b><button class="btn sm" data-act="linkAllCust">Link from client info</button></div>${none.map(row).join('')}</div>`;
+ return out||`<div class="card empty">${Object.keys(S.customers).length?'No customers match.':'No customers yet. Tap <b>+ Customer</b> or <b>+ New build</b> to start.'}</div>`}
+function rList(){if(S.homeMode!=='builds')return rCustList();let ps=Object.values(S.projects).sort((a,b)=>(b.updated||0)-(a.updated||0));const q=S.q.toLowerCase();
  if(q)ps=ps.filter(p=>[p.name,p.client.name,p.client.company].join(' ').toLowerCase().includes(q));
  if(S.f!=='All')ps=ps.filter(p=>p.status===S.f);
  if(!ps.length)return `<div class="card empty">${Object.keys(S.projects).length?'No projects match.':'No projects yet. Tap <b>+ New Project</b> to build your first estimate.'}</div>`;
  return ps.map(p=>{const E=calcEst(p),B=calcBill(p),M=calcMo(p);return `<div class="card pcard" data-act="open" data-id="${p.id}">
-  <div class="row"><div class="grow"><b style="font-size:16px">${esc(p.name||'Untitled')}</b><div class="mut sm">${esc(p.client.company||p.client.name||'No client yet')}${p.launch?' · launch '+fmtDate(p.launch):''}</div></div><span class="badge b-${esc(p.status)}">${esc(p.status)}</span></div>
+  <div class="row"><div class="grow"><b style="font-size:16px">${esc(p.name||'Untitled')}</b><div class="mut sm">${p.kind==='plan'?'🔁 Monthly plan · ':''}${esc(p.client.company||p.client.name||'No client yet')}${p.launch?' · launch '+fmtDate(p.launch):''}</div></div><span class="badge b-${esc(p.status)}">${esc(p.status)}</span></div>
   <div class="nums"><div>Estimate<b>${money0(E.total)}</b></div><div>Hours<b>${fh(E.hrsAdj)}</b></div><div>Balance due<b>${money0(B.balance)}</b></div><div>Monthly<b>${money0(M.price)}${p.monthly.active?'':' <span class="sm mut">(off)</span>'}</b></div></div></div>`}).join('')}
 
 /* ================= render: project ================= */
 const TABS=[['client','1 · Client'],['est','2 · Estimate'],['sow','3 · Scope of Work'],['bill','4 · Final Bill'],['mo','5 · Monthly'],['lic','6 · Licensing']];
-function rProject(){const p=cur();
- return `<div class="row" style="margin-top:6px"><button class="btn sm" data-act="home">← Projects</button><div class="grow"></div>
+const PLAN_TABS=[['client','1 · Customer'],['mo','2 · Monthly services'],['lic','3 · License & fees']];
+function rProject(){const p=cur();const cu=p.customerId&&S.customers[p.customerId];const tabs=p.kind==='plan'?PLAN_TABS:TABS;if(!tabs.some(t=>t[0]===S.tab))S.tab='client';
+ return `<div class="row" style="margin-top:6px">${cu?`<button class="btn sm" data-act="openCust" data-id="${esc(cu.id)}">← ${esc(custName(cu))}</button>`:'<button class="btn sm" data-act="home">← Home</button>'}<div class="grow"></div>
   <select data-k="status" data-rr style="width:auto">${STATUSES.map(s=>`<option ${p.status===s?'selected':''}>${s}</option>`).join('')}</select>
   <button class="btn sm" data-act="dup">Duplicate</button><button class="btn sm d" data-act="del">Delete</button></div>
- <h1>${esc(p.name||'Untitled')} <span class="badge b-${esc(p.status)}">${esc(p.status)}</span></h1><div class="mut sm">${esc(p.client.company||p.client.name||'')}</div>
- <div class="tabs">${TABS.map(([k,l])=>`<button data-act="tab" data-t="${k}" class="${S.tab===k?'on':''}">${l}</button>`).join('')}</div>
+ <h1>${p.kind==='plan'?'🔁 ':''}${esc(p.name||'Untitled')} <span class="badge b-${esc(p.status)}">${esc(p.status)}</span></h1><div class="mut sm">${p.kind==='plan'?'Monthly plan · ':'Build · '}${esc(p.client.company||p.client.name||'')}</div>
+ <div class="tabs">${tabs.map(([k,l])=>`<button data-act="tab" data-t="${k}" class="${S.tab===k?'on':''}">${l}</button>`).join('')}</div>
  ${S.tab==='client'?rClient(p):S.tab==='est'?rEst(p):S.tab==='sow'?rSow(p):S.tab==='bill'?rBill(p):S.tab==='lic'?rLic(p):rMo(p)}`}
 const F=(lbl,k,v,type='text',extra='')=>`<label class="f">${lbl}<input type="${type}" data-k="${k}" value="${esc(v)}" ${type==='number'?'inputmode="decimal" step="any"':''} ${extra}></label>`;
 const T=(lbl,k,v,rows=4)=>`<label class="f">${lbl}<textarea data-k="${k}" rows="${rows}">${esc(v)}</textarea></label>`;
@@ -692,15 +704,18 @@ function rCusts(){const cs=Object.values(S.customers);const q=norm(S.cq||'');con
 const CF=(lbl,k,v,type='text')=>`<label class="f">${lbl}<input type="${type}" data-cu="${k}" value="${esc(v||'')}"></label>`;
 function rCust(){const c=S.customers[S.cid];if(!c){S.view='custs';return rCusts()}const k=custCalc(c.id),ps=custProjects(c.id),rec=custRecurring(c.id),invs=custInvoices(c.id);
  if(!S.genPeriod)S.genPeriod=ym(iso());const per=S.genPeriod;const ex=invs.find(v=>v.type==='monthly'&&v.period===per&&v.status!=='void');
- const defOn=x=>x.active&&(x.cycle==='mo'||ym(x.start||'').slice(5)===per.slice(5));if(!S.genSel||S.genSelFor!==c.id+per){S.genSel=rec.filter(defOn).map(x=>x.key);S.genSelFor=c.id+per}
+ const defOn=x=>x.active&&(x.cycle==='mo'||ym(x.start||'').slice(5)===per.slice(5));const sig=c.id+per+'|'+rec.map(x=>x.key).join(',');if(!S.genSel||S.genSelFor!==sig){const prev=S.genSelFor&&S.genSelFor.split('|')[0]===c.id+per?S.genSel:null;const known=S.genSelFor?S.genSelFor.split('|')[1].split(','):[];S.genSel=rec.filter(x=>prev?(prev.includes(x.key)||(!known.includes(x.key)&&defOn(x))):defOn(x)).map(x=>x.key);S.genSelFor=sig}
  const acts=Object.values(S.ledger).filter(e=>e.customerId===c.id).sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,30);
  return `<div class="row" style="margin-top:6px"><button class="btn sm" data-act="custs">← Customers</button><div class="grow"></div><button class="btn sm" data-act="doc" data-kind="stmt">📄 Statement</button><button class="btn sm d" data-act="delCust">Delete</button></div>
  <h1>${esc(custName(c))}</h1>
  <div class="kpis"><div class="kpi"><div class="l">Balance due</div><div class="v">${money(k.bal)}</div><div class="s">${k.over?money(k.over)+' overdue':'nothing overdue'}</div></div><div class="kpi"><div class="l">Monthly recurring</div><div class="v">${money(k.mrr)}/mo</div><div class="s">${rec.length} recurring charge${rec.length==1?'':'s'}</div></div><div class="kpi"><div class="l">Billed (all time)</div><div class="v">${money(k.billed)}</div><div class="s">${invs.length} invoice${invs.length==1?'':'s'}</div></div><div class="kpi"><div class="l">Paid (all time)</div><div class="v">${money(k.paid)}</div><div class="s">last ${k.last?fmtDate(k.last):'—'}</div></div></div>
  <div class="card"><h2>Profile</h2><div class="grid g2">${CF('Company','company',c.company)}${CF('Contact name','name',c.name)}${CF('Email','email',c.email,'email')}${CF('Billing email (if different)','billEmail',c.billEmail,'email')}${CF('Phone','phone',c.phone,'tel')}${CF('Website','website',c.website)}${CF('Payment terms (days, blank = default)','terms',c.terms,'number')}</div>
   <div class="grid g2" style="margin-top:10px"><label class="f">Billing address<textarea data-cu="address" rows="3">${esc(c.address||'')}</textarea></label><label class="f">Notes<textarea data-cu="notes" rows="3">${esc(c.notes||'')}</textarea></label></div></div>
- <div class="card"><div class="row"><h2 class="grow" style="margin:0">Projects (${ps.length})</h2><button class="btn sm" data-act="newProjFor">+ New project</button></div>
-  ${ps.map(p=>{const E=calcEst(p),M=calcMo(p);return `<div class="line"><div class="row"><b class="grow">${esc(p.name)}</b><span class="badge b-${esc(p.status)}">${esc(p.status)}</span><button class="btn sm" data-act="open" data-id="${esc(p.id)}">Open</button></div><div class="sm mut" style="margin-top:4px">Estimate ${money0(E.total)} · Monthly ${money(M.price+calcLic(p).mo)}/mo${p.monthly.active?'':' (monthly off)'}${p.invoice.arId&&S.invoices[p.invoice.arId]?` · Invoice ${esc(S.invoices[p.invoice.arId].number)} ${invCalc(S.invoices[p.invoice.arId]).st}`:''}</div></div>`}).join('')||'<div class="sm mut" style="margin-top:8px">No projects linked. Link one from its Client tab.</div>'}</div>
+ <div class="card"><div class="row"><h2 class="grow" style="margin:0">🛠 Builds (${ps.filter(p=>p.kind!=='plan').length})</h2><button class="btn sm p" data-act="newBuildFor" data-id="${esc(c.id)}">+ New build</button></div>
+  ${ps.filter(p=>p.kind!=='plan').map(p=>{const E=calcEst(p),M=calcMo(p);const av=p.invoice.arId&&S.invoices[p.invoice.arId];return `<div class="line pcard" data-act="open" data-id="${esc(p.id)}"><div class="row"><b class="grow">${esc(p.name)}</b><span class="badge b-${esc(p.status)}">${esc(p.status)}</span></div><div class="sm mut" style="margin-top:4px">Estimate ${money0(E.total)}${av?` · Invoice ${esc(av.number)} ${invCalc(av).st}, balance ${money(invCalc(av).bal)}`:''} · Monthly ${money(M.price+calcLic(p).mo)}/mo${p.monthly.active?'':' (off)'}</div></div>`}).join('')||'<div class="sm mut" style="margin-top:8px">No builds yet.</div>'}</div>
+ <div class="card"><div class="row"><h2 class="grow" style="margin:0">🔁 Monthly plans (${ps.filter(p=>p.kind==='plan').length})</h2><button class="btn sm p" data-act="newPlanFor" data-id="${esc(c.id)}">+ New monthly plan</button></div>
+  <div class="sm mut" style="margin-top:4px">Ongoing services that aren't tied to one build: hosting, support retainers, licenses. Builds can have their own monthly charges too; all of them roll into one monthly invoice below.</div>
+  ${ps.filter(p=>p.kind==='plan').map(p=>{const M=calcMo(p),L=calcLic(p);return `<div class="line pcard" data-act="open" data-id="${esc(p.id)}"><div class="row"><b class="grow">${esc(p.name)}</b>${p.monthly.active?'<span class="badge b-Paid">Active</span>':'<span class="badge">Off</span>'}</div><div class="sm mut" style="margin-top:4px">${money(M.price+L.mo)}/mo · ${p.monthly.items.length+p.lic.items.length} charge${p.monthly.items.length+p.lic.items.length==1?'':'s'}${p.monthly.start?' · since '+fmtDate(p.monthly.start):''}</div></div>`}).join('')||'<div class="sm mut" style="margin-top:8px">No monthly plans yet.</div>'}</div>
  <div class="card"><h2>Consolidated monthly invoice</h2><div class="sm mut">One bill for every recurring charge across ${esc(custName(c))}'s projects (monthly services, license and admin fees). Yearly charges are pre-checked in their anniversary month.</div>
   <div class="row" style="margin:10px 0"><button class="btn sm" data-act="genPrev">‹</button><b style="min-width:150px;text-align:center">${monthLabel(per)}</b><button class="btn sm" data-act="genNext">›</button></div>
   ${rec.length?rec.map(x=>`<label class="chk line" style="margin:6px 0"><input type="checkbox" data-gen="${esc(x.key)}" ${S.genSel.includes(x.key)?'checked':''}><span class="grow">${esc(x.proj)} — ${esc(x.desc)}<div class="sm mut">${esc(x.kind)} · ${x.cycle==='yr'?'yearly':'monthly'}${x.active?'':' · monthly plan off'}</div></span><b>${money(x.amount)}</b></label>`).join('')+`<div class="tot big"><span>Invoice total</span><span>${money(rec.filter(x=>S.genSel.includes(x.key)).reduce((a,x)=>a+x.amount,0))}</span></div>`:'<div class="sm mut">No recurring charges yet. Add them on a project’s Monthly or Licensing tab.</div>'}
@@ -923,6 +938,16 @@ function buildDoc(kind,p){const s=S.settings,d=s.d,E=calcEst(p),B=calcBill(p),M=
 function rArCard(p){const v=p.invoice.arId&&S.invoices[p.invoice.arId];
  if(!v)return `<div class="card"><div class="row"><div class="grow"><h2 style="margin:0">📌 Accounts receivable</h2><div class="sm mut">Post this bill to A/R to track payments, deposits and aging${p.customerId&&S.customers[p.customerId]?' under '+esc(custName(S.customers[p.customerId])):' (a customer account is created from the client info if needed)'}.</div></div><button class="btn g" data-act="postAR">Post to A/R</button></div></div>`;
  const c=invCalc(v);return `<div class="card"><div class="row"><div class="grow"><h2 style="margin:0">📌 In A/R: ${esc(v.number)} ${stBadge(c.st)}</h2><div class="sm mut">Total ${money(c.total)} · paid ${money(c.paid)} · balance ${money(c.bal)}. Record payments in A/R.</div></div><button class="btn sm" data-act="postAR">Update A/R invoice</button><button class="btn sm p" data-act="openAR">Open in A/R</button></div></div>`}
+function startProject(cid,kind){const p=newProject();const c=cid&&S.customers[cid];if(c){p.customerId=c.id;Object.assign(p.client,{company:c.company||'',name:c.name||'',email:c.email||'',phone:c.phone||'',address:c.address||'',website:c.website||''})}
+ if(kind==='plan'){p.kind='plan';p.name='Monthly plan'+(c?' — '+custName(c):'');p.status='Approved';p.monthly.active=true;p.monthly.start=iso()}
+ S.projects[p.id]=p;S.pid=p.id;S.view='project';S.tab=kind==='plan'?'mo':'client';touch(p);render();scrollTo(0,0);if(kind==='plan')toast('Add the services this customer pays for each month')}
+function pickCustomer(title){return new Promise(res=>{const d=document.createElement('div');d.className='cfbg';
+ d.innerHTML=`<div class="cf"><h2>${esc(title)}</h2><label class="f">Customer<select id="pcSel"><option value="__new">+ New customer…</option>${custOpts(S.cid||'')}</select></label><div id="pcNew" style="margin-top:8px"><label class="f">Company or customer name<input id="pcName" placeholder="e.g. The Dive On 495"></label></div><div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" data-x="0">Cancel</button><button class="btn p" data-x="1">Continue</button></div></div>`;
+ const sel=d.querySelector('#pcSel');if(Object.keys(S.customers).length&&S.cid&&S.customers[S.cid])sel.value=S.cid;else if(Object.keys(S.customers).length)sel.selectedIndex=1;
+ const upd=()=>{d.querySelector('#pcNew').style.display=sel.value==='__new'?'block':'none'};sel.onchange=upd;upd();
+ d.addEventListener('click',e=>{const b=e.target.closest('[data-x]');if(!b&&e.target!==d)return;if(!b||b.dataset.x==='0'){d.remove();res(null);return}
+  if(sel.value==='__new'){const n=d.querySelector('#pcName').value.trim();if(!n){d.querySelector('#pcName').focus();return}const c=newCustomer({company:n});d.remove();res(c.id)}else{d.remove();res(sel.value)}});
+ document.body.appendChild(d);(sel.value==='__new'?d.querySelector('#pcName'):sel).focus()})}
 let curDoc=null,LOOK=[];
 function copyOpts(p,what){const ps=Object.values(S.projects).filter(x=>x.id!==p.id&&(what==='desc'?(x.desc||'').trim():((x.sow&&x.sow.overview)||x.desc||'').trim()));
  const hs=histList().filter(h=>h.pro||h.summary).sort((a,b)=>a.name.localeCompare(b.name));
@@ -1000,7 +1025,7 @@ const ACT={
  home(){S.view='home';closeOv();render();scrollTo(0,0)},
  settings(){S.view='settings';render();scrollTo(0,0)},
  hist(){S.view='hist';render();scrollTo(0,0)},
- custs(){S.view='custs';render();scrollTo(0,0)},
+ custs(){S.view='home';S.homeMode='cust';render();scrollTo(0,0)},
  ar(){S.view='ar';render();scrollTo(0,0)},
  openCust(t){S.cid=t.dataset.id;S.view='cust';S.genPeriod=null;closeOv();render();scrollTo(0,0)},
  newCust(){const c=newCustomer({company:'New customer'});S.cid=c.id;S.view='cust';render();scrollTo(0,0)},
@@ -1008,7 +1033,7 @@ const ACT={
   if(!await askConfirm('Delete customer?','Delete <b>'+esc(custName(c))+'</b>? Projects stay; they just get unlinked.','Delete'))return;
   custProjects(c.id).forEach(p=>{p.customerId='';touch(p)});delete S.customers[c.id];clearTimeout(timers['c:'+c.id]);dirty.delete('c:'+c.id);queueSave('xc',c.id);S.view='custs';render()},
  linkAllCust(){let n=0;Object.values(S.projects).forEach(p=>{if(!p.customerId&&(p.client.company||p.client.name)){findOrCreateCustomer(p);n++}});render();toast(`Linked ${n} project${n==1?'':'s'} to customer accounts`)},
- newProjFor(){const c=S.customers[S.cid];const p=newProject();p.customerId=c.id;Object.assign(p.client,{company:c.company,name:c.name,email:c.email,phone:c.phone,address:c.address,website:c.website});S.projects[p.id]=p;S.pid=p.id;S.view='project';S.tab='client';touch(p);render();scrollTo(0,0)},
+ _oldNewProjFor(){const c=S.customers[S.cid];const p=newProject();p.customerId=c.id;Object.assign(p.client,{company:c.company,name:c.name,email:c.email,phone:c.phone,address:c.address,website:c.website});S.projects[p.id]=p;S.pid=p.id;S.view='project';S.tab='client';touch(p);render();scrollTo(0,0)},
  genPrev(){S.genPeriod=addMonths(S.genPeriod||ym(iso()),-1);render()},
  genNext(){S.genPeriod=addMonths(S.genPeriod||ym(iso()),1);render()},
  async genInv(){const c=S.customers[S.cid],per=S.genPeriod;const ex=custInvoices(c.id).find(v=>v.type==='monthly'&&v.period===per&&v.status!=='void');
@@ -1077,7 +1102,10 @@ const ACT={
   const c=svcCost(sv);p.monthly.items.push({name:`${sv.name} (Render ${planLabel(sv)})`,cat:sv.type==='postgres'?'Database':sv.type==='cron_job'?'Software':'Hosting',cycle:'mo',cost:c,price:r2(c*(1+mk/100)),renderId:sv.id});n++});
   touch(p);render();toast(n?`Added ${n} Render service${n==1?'':'s'}`:'Render services already imported')},
  histOpen(t){const id=t.dataset.id;const el=document.getElementById('hd-'+id);if(el)el.style.display=el.style.display==='none'?'block':'none'},
- new(){const p=newProject();S.projects[p.id]=p;S.pid=p.id;S.view='project';S.tab='client';touch(p);render();scrollTo(0,0)},
+ async new(){const cid=await pickCustomer('New build — which customer?');if(cid===null)return;startProject(cid,'build')},
+ homeMode(t){S.homeMode=t.dataset.m;render()},
+ newBuildFor(t){startProject(t.dataset.id||S.cid,'build')},
+ newPlanFor(t){startProject(t.dataset.id||S.cid,'plan')},
  open(t){S.pid=t.dataset.id;S.view='project';S.tab='client';render();scrollTo(0,0)},
  tab(t){S.tab=t.dataset.t;render();scrollTo(0,0)},
  dup(){const p=clone(cur());p.id=uid();p.name+=' (copy)';p.status='Estimate';p.created=Date.now();p.invoice.number='';p.invoice.payments=[];p.invoice.date=iso();p.invoice.due='';p.estDate=iso();S.projects[p.id]=p;S.pid=p.id;touch(p);render();toast('Duplicated')},
