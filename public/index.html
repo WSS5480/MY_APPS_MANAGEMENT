@@ -80,6 +80,8 @@ input[type=checkbox],input[type=radio]{width:20px;height:20px;flex:none;margin:0
 .nav button.dirty{background:#f5a623;border-color:#f5a623;color:#101626;font-weight:700}
 #ptr{position:fixed;left:50%;top:0;transform:translate(-50%,-60px);z-index:40;background:#101626;color:#fff;border-radius:20px;padding:8px 16px;font-size:13px;font-weight:600;box-shadow:0 4px 14px rgba(0,0,0,.25);transition:transform .15s,opacity .15s;opacity:0;pointer-events:none}
 html,body{overscroll-behavior-y:contain}
+.cfbg{position:fixed;inset:0;z-index:70;background:rgba(10,14,25,.6);display:flex;align-items:center;justify-content:center;padding:16px}.cf{background:#fff;border-radius:14px;padding:18px;max-width:420px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.3)}.cf p{margin:0 0 14px;color:#3b4252;line-height:1.45}
+.line.added{border-left:5px solid var(--ok);background:#f3fbf6}.addtag{font-size:11px;font-weight:700;color:var(--ok);text-transform:uppercase;letter-spacing:.3px;margin-left:6px;white-space:nowrap}
 #toast{position:fixed;left:50%;bottom:80px;transform:translateX(-50%);background:#14171f;color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;z-index:60;opacity:0;pointer-events:none;transition:opacity .2s;max-width:90vw;text-align:center}
 #toast.on{opacity:1}
 .chipx{display:inline-flex;align-items:center;gap:4px;background:var(--acc2);color:var(--acc);border-radius:20px;padding:4px 4px 4px 11px;font-size:13px;font-weight:600}.chipx button{border:none;background:#fff;color:var(--acc);border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:14px;line-height:1}
@@ -133,6 +135,37 @@ html,body{overscroll-behavior-y:contain}
 const STATUSES=['Estimate','Sent','Approved','In Progress','Invoiced','Paid','Lost'];
 const PHASES=['Discovery','Design','Build','Integrations','Launch','Other'];
 const CX=[[0.85,'Simple (×0.85)'],[1,'Standard (×1.0)'],[1.25,'Complex (×1.25)'],[1.5,'Rush / high-risk (×1.5)']];
+const MOD_DESC={
+ 'Discovery & requirements meetings':'Kickoff and follow-up meetings to confirm goals, users, workflows and must-have features.',
+ 'Project plan & technical spec':'Written plan covering screens, data, integrations, hosting and milestones, approved before the build starts.',
+ 'UI/UX wireframes & mockups':'Layouts and clickable mockups of the main screens for phone and desktop, with up to 2 revision rounds.',
+ 'Branding / logo & color setup':'Apply the client’s logo, colors and fonts across the app.',
+ 'Phone-first responsive layout':'Every screen works on phones, tablets and desktops, with no sideways scrolling.',
+ 'Database design & setup':'Database tables for the app’s data, with backups and room to grow.',
+ 'User login, roles & security':'Secure sign-in, password reset, user roles (e.g. admin, staff) and permission checks on every page.',
+ 'Admin dashboard':'Admin area to manage users, records and settings, with search and edit tools.',
+ 'Customer / client portal':'Logged-in area where customers view their own records, status and documents.',
+ 'Forms & data intake':'Online forms with validation that save straight into the database.',
+ 'Search, filters & sorting':'Find records fast with search, filters and sortable lists.',
+ 'Reports & dashboards':'Summary dashboards and reports with key numbers, date ranges and export.',
+ 'PDF / document generation':'Generate branded PDFs (e.g. invoices, agreements, summaries) from app data.',
+ 'File & photo uploads':'Upload, store and view files and photos attached to records.',
+ 'Email notifications':'Automatic emails for key events (sign-ups, status changes, reminders).',
+ 'Calendar / scheduling':'Calendar view with booking, rescheduling and reminders.',
+ 'Inventory / product catalog':'Product or inventory list with categories, photos, pricing and stock levels.',
+ 'Data import / migration':'Import existing data from spreadsheets or the old system, cleaned and checked.',
+ 'AI features (chat, summaries, OCR)':'AI tools such as chat help, automatic summaries or reading text from documents/photos.',
+ 'Marketing website (up to 5 pages)':'Public website, up to 5 pages, with contact form and basic SEO.',
+ 'Payments (Stripe / Square)':'Online card payments with receipts, refunds and payment records.',
+ 'Third-party API integration':'Connect to one outside system to send or receive data automatically.',
+ 'SMS / text alerts':'Text message alerts for key events.',
+ 'Email inbox parsing / import':'Read incoming emails and turn them into records automatically.',
+ 'Google / Microsoft sign-in':'Sign in with Google or Microsoft accounts.',
+ 'Testing & QA (phone + desktop)':'Test every screen and feature on phones and computers, and fix issues before launch.',
+ 'Hosting, deploy, domain & SSL setup':'Set up hosting, the database, the domain and SSL (https), then launch the app.',
+ 'Training & user guide':'Walkthrough training session and a short written user guide.',
+ 'Launch support (first 2 weeks)':'Priority fixes and help for the first two weeks after launch.'};
+const scopeOf=l=>(l.scope&&l.scope.trim())||MOD_DESC[l.desc]||'';
 const MOD_CATS=['Hosting','Database','Domain','Email','Support','API / AI','Software','Other'];
 const MODS=[
  ['Discovery','Discovery & requirements meetings',4,'pm'],
@@ -382,11 +415,11 @@ function rClient(p){return `<div class="card"><div class="row"><h2 class="grow" 
  <div class="row"><div class="grow"></div><button class="btn p" data-act="tab" data-t="est">Next: Build the estimate →</button></div>`}
 function roleOpts(sel){return S.settings.rates.map(r=>`<option value="${esc(r.id)}" ${r.id===sel?'selected':''}>${esc(r.name)} (${money0(r.rate)}/hr)</option>`).join('')}
 function rEst(p){const groups={};p.lines.forEach((l,i)=>{const ph=PHASES.includes(l.phase)?l.phase:'Other';(groups[ph]=groups[ph]||[]).push(i)});
- const modOpts=PHASES.filter(ph=>MODS.some(m=>m[0]===ph)).map(ph=>`<optgroup label="${ph}">${MODS.map((m,i)=>m[0]===ph?`<option value="${i}">${esc(m[1])} — ${m[2]} hrs</option>`:'').join('')}</optgroup>`).join('');
+ const modOpts=PHASES.filter(ph=>MODS.some(m=>m[0]===ph)).map(ph=>`<optgroup label="${ph}">${MODS.map((m,i)=>m[0]===ph?`<option value="${i}"${hasLine(p,m[1])?' style="color:#0f8a4f;font-weight:700"':''}>${hasLine(p,m[1])?'✓ ':''}${esc(m[1])} — ${m[2]} hrs${hasLine(p,m[1])?' (already added)':''}</option>`:'').join('')}</optgroup>`).join('');
  const lineHtml=i=>{const l=p.lines[i];const phSel=`<select data-k="lines.${i}.phase" data-rr>${PHASES.map(x=>`<option ${l.phase===x?'selected':''}>${x}</option>`).join('')}</select>`;
   if(l.type==='exp')return `<div class="line exp"><div class="top"><input data-k="lines.${i}.desc" value="${esc(l.desc)}" placeholder="Expense / pass-through (license, domain purchase…)"><button class="x" data-act="rmLine" data-i="${i}" title="Remove">×</button></div>
    <div class="grid" style="margin-top:8px"><label class="f">Phase${phSel}</label>${F('Qty',`lines.${i}.qty`,l.qty,'number')}${F('Cost each ($)',`lines.${i}.cost`,l.cost,'number')}<label class="f">Amount<div class="amt" style="padding:9px 0" data-c="line.${i}"></div></label></div></div>`;
-  return `<div class="line"><div class="top"><input data-k="lines.${i}.desc" value="${esc(l.desc)}" placeholder="Feature / task"><button class="x" data-act="rmLine" data-i="${i}" title="Remove">×</button></div>
+  const isMod=MODS.some(m=>norm(m[1])===norm(l.desc));return `<div class="line${isMod?' added':''}"><div class="top">${isMod?'<span class="addtag">✓ Module</span>':''}<input data-k="lines.${i}.desc" value="${esc(l.desc)}" placeholder="Feature / task"><button class="x" data-act="rmLine" data-i="${i}" title="Remove">×</button></div>
    <div class="grid" style="margin-top:8px"><label class="f">Phase${phSel}</label><label class="f">Role<select data-k="lines.${i}.rateId" data-role="${i}">${roleOpts(l.rateId)}</select></label>${F('Hours',`lines.${i}.hours`,l.hours,'number')}${F('Rate ($/hr)',`lines.${i}.rate`,l.rate,'number')}<label class="f">Amount<div class="amt" style="padding:9px 0" data-c="line.${i}"></div></label></div></div>`};
  return `<div class="card"><h2>Pricing settings</h2><div class="grid">
   <label class="f">Complexity<select data-k="complexity" data-num>${CX.map(([v,l])=>`<option value="${v}" ${num(p.complexity)===v?'selected':''}>${l}</option>`).join('')}</select></label>
@@ -416,11 +449,13 @@ function rEst(p){const groups={};p.lines.forEach((l,i)=>{const ph=PHASES.include
   <div class="tot"><span>Range (without contingency → with)</span><span><span data-c="est.low"></span> – <span data-c="est.total"></span></span></div>
   <div class="tot"><span>Estimated hours / duration</span><span><span data-c="est.hrs"></span> · ~<span data-c="est.weeks"></span></span></div>
   <div class="tot"><span>Deposit to start (${fh(p.depositPct)}%)</span><b data-c="est.deposit"></b></div>
-  <div class="row" style="margin-top:12px"><button class="btn p" data-act="doc" data-kind="estimate">📄 Client estimate</button><button class="btn" data-act="tab" data-t="sow">Next: Scope of Work →</button></div></div>`}
-function rSow(p){const s=p.sow;
- return `<div class="card"><h2>Overview</h2>${T('Project overview (leave blank to use the project description)','sow.overview',s.overview,4)}
+  <div class="row" style="margin-top:12px"><button class="btn p" data-act="doc" data-kind="estimate">📄 Client estimate</button><button class="btn g" data-act="sowFromEst" data-go="1">⚡ Build Scope of Work →</button></div></div>`}
+function rSow(p){const s=p.sow;const lab=p.lines.map((l,i)=>[l,i]).filter(([l])=>l.type!=='exp');
+ return `<div class="card"><div class="row"><div class="grow"><h2 style="margin:0">Build from the estimate</h2><div class="sm mut">Fills the overview, what each deliverable includes, the timeline and the payment schedule. Anything you typed yourself is kept.</div></div><button class="btn g" data-act="sowFromEst">⚡ Fill SOW from estimate</button></div></div>
+ <div class="card"><h2>Overview</h2>${T('Project overview (leave blank to use the project description)','sow.overview',s.overview,4)}
   <label class="chk" style="margin-top:10px"><input type="checkbox" data-k="sow.showLine" ${s.showLine?'checked':''}> Show hours &amp; price for each deliverable in the SOW</label>
   <div class="sm mut" style="margin-top:6px">Deliverables come from your estimate line items automatically (${p.lines.length} items).</div></div>
+ <div class="card"><h2>Deliverables — what's included</h2>${lab.length?lab.map(([l,i])=>`<label class="f" style="margin-top:8px"><b style="color:var(--ink)">${esc(l.desc||'Item')}</b><textarea data-k="lines.${i}.scope" rows="2" placeholder="${esc(MOD_DESC[l.desc]||'Describe what this includes…')}">${esc(l.scope||'')}</textarea></label>`).join(''):'<div class="sm mut">Add line items on the Estimate tab first.</div>'}</div>
  <div class="card"><div class="row"><h2 class="grow" style="margin:0">Timeline / milestones</h2><button class="btn sm" data-act="autoTl">Auto-build from estimate</button><button class="btn sm" data-act="addTl">+ Milestone</button></div>
   ${s.timeline.length?s.timeline.map((t,i)=>`<div class="line"><div class="top"><input data-k="sow.timeline.${i}.label" value="${esc(t.label)}" placeholder="Milestone"><button class="x" data-act="rmTl" data-i="${i}">×</button></div><div class="grid" style="margin-top:8px">${F('Weeks',`sow.timeline.${i}.weeks`,t.weeks,'number')}</div></div>`).join(''):'<div class="sm mut" style="margin-top:8px">No milestones yet. Auto-build uses your hours ÷ '+fh(S.settings.d.hpw)+' hrs/week capacity (change it in Settings).</div>'}</div>
  <div class="card"><div class="row"><h2 class="grow" style="margin:0">Payment schedule</h2><button class="btn sm" data-act="sched3">Use 3-part (40/30/30)</button><button class="btn sm" data-act="addSched">+ Payment</button></div>
@@ -460,7 +495,7 @@ function rBill(p){const inv=p.invoice,E=calcEst(p);const dueAuto=addDays(inv.dat
   <div style="margin-top:10px">${T('Notes on invoice','invoice.notes',inv.notes,2)}</div>
   <div class="row" style="margin-top:12px"><button class="btn p" data-act="doc" data-kind="invoice">📄 Final invoice</button><button class="btn" data-act="tab" data-t="mo">Next: Monthly →</button></div></div>`}
 function rMo(p){const m=p.monthly;
- const presets=MO_PRESETS.map((x,i)=>`<option value="${i}">${esc(x[0])}${x[2]?` — your cost ${money0(x[2])}/${x[3]}`:''}</option>`).join('');
+ const presets=MO_PRESETS.map((x,i)=>`<option value="${i}"${hasMo(p,x[0])?' style="color:#0f8a4f;font-weight:700"':''}>${hasMo(p,x[0])?'✓ ':''}${esc(x[0])}${hasMo(p,x[0])?' (already added)':''}${x[2]?` — your cost ${money0(x[2])}/${x[3]}`:''}</option>`).join('');
  return `<div class="card"><h2>Monthly service plan</h2>
   <label class="chk"><input type="checkbox" data-k="monthly.active" ${m.active?'checked':''}> Active — count this client in monthly recurring revenue</label>
   <div class="grid" style="margin-top:10px">${F('Service start','monthly.start',m.start,'date')}${F('Term (months)','monthly.term',m.term,'number')}${F('Default markup %','monthly.markup',m.markup,'number')}</div></div>
@@ -486,7 +521,7 @@ function rMo(p){const m=p.monthly;
 
 /* ================= licensing ================= */
 const MODELS=[['license','Licensed — you keep ownership, client gets a license to use it'],['saas','SaaS subscription — you host it, client subscribes'],['own','Client buys it — code transfers on final payment']];
-function rLic(p){const L=p.lic;const presets=LIC_PRESETS.map((x,i)=>`<option value="${i}">${esc(x[0])} — ${money0(x[2])} ${esc(LIC_TYPES.find(t=>t[0]===x[1])[1].toLowerCase())}</option>`).join('');
+function rLic(p){const L=p.lic;const presets=LIC_PRESETS.map((x,i)=>`<option value="${i}"${hasLic(p,x[0])?' style="color:#0f8a4f;font-weight:700"':''}>${hasLic(p,x[0])?'✓ ':''}${esc(x[0])}${hasLic(p,x[0])?' (already added)':''} — ${money0(x[2])} ${esc(LIC_TYPES.find(t=>t[0]===x[1])[1].toLowerCase())}</option>`).join('');
  return `<div class="card"><h2>License model</h2>
   <label class="f">Who owns the software?<select data-k="lic.model" data-rr>${MODELS.map(([v,l])=>`<option value="${v}" ${L.model===v?'selected':''}>${l}</option>`).join('')}</select></label>
   ${L.model==='own'?'<div class="note">With "client buys it," the SOW transfers ownership on final payment. License fees here are optional (support, admin, hosting management).</div>':'<div class="note ok">You keep the code and IP. The client pays to use it. The SOW and agreement will say so.</div>'}
@@ -601,8 +636,8 @@ function dHead(title,meta,p,lbl='Prepared for'){const b=S.settings.biz;
 const dRow=(desc,amt,detail='',cls='')=>`<div class="d-row ${cls}"><div>${desc}${detail?`<div class="d-sm">${detail}</div>`:''}</div><div class="d-amt">${amt}</div></div>`;
 const ul=arr=>arr.length?`<ul>${arr.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:'<div class="d-sm">None.</div>';
 function estNo(p){return 'EST-'+p.id.slice(0,6).toUpperCase()}
-function breakdown(p,showAmt=true){const E=calcEst(p);return PHASES.map(ph=>{const ls=p.lines.map((l,i)=>[l,i]).filter(([l])=>(PHASES.includes(l.phase)?l.phase:'Other')===ph);if(!ls.length)return '';
- return `<div class="d-ph">${ph}</div>`+ls.map(([l,i])=>l.type==='exp'?dRow(esc(l.desc||'Expense'),showAmt?money(E.lines[i]):'',showAmt?`${fh(l.qty)} × ${money(l.cost)}`:''):dRow(esc(l.desc||'Item'),showAmt?money(E.lines[i]*E.cx):'',showAmt?`${fh(num(l.hours)*E.cx)} hrs`:'')).join('')}).join('')}
+function breakdown(p,showAmt=true,showScope=false){const E=calcEst(p);return PHASES.map(ph=>{const ls=p.lines.map((l,i)=>[l,i]).filter(([l])=>(PHASES.includes(l.phase)?l.phase:'Other')===ph);if(!ls.length)return '';
+ return `<div class="d-ph">${ph}</div>`+ls.map(([l,i])=>l.type==='exp'?dRow(esc(l.desc||'Expense'),showAmt?money(E.lines[i]):'',showAmt?`${fh(l.qty)} × ${money(l.cost)}`:''):dRow(esc(l.desc||'Item')+(showScope&&scopeOf(l)?`<div class="d-sm">${esc(scopeOf(l))}</div>`:''),showAmt?money(E.lines[i]*E.cx):'',showAmt?`${fh(num(l.hours)*E.cx)} hrs`:'')).join('')}).join('')}
 function moBlock(p,title='Ongoing Monthly Services'){const M=calcMo(p);if(!p.monthly.items.length)return '';
  return `<h2>${title}</h2>${p.monthly.items.map((it,i)=>dRow(esc(it.name||'Service'),money(M.items[i].pr)+'/mo',it.cycle==='yr'?`${money(it.price)} billed yearly`:'')).join('')}
  <div class="d-tots">${dRow('<b>Monthly total</b>','<b>'+money(M.price)+'/mo</b>','','d-grand')}</div>`}
@@ -621,7 +656,7 @@ function buildDoc(kind,p){const s=S.settings,d=s.d,E=calcEst(p),B=calcBill(p),M=
  else if(kind==='sow'){t='Scope of Work';fn=slug(p.name)+'-scope-of-work';let n=0;const H=x=>`<h2>${++n}. ${x}</h2>`;
   h=dHead('SCOPE OF WORK',[['Ref',estNo(p)],['Date',fmtDate(iso())]],p,'Client')+
   H('Project Overview')+`<div><b>${esc(p.name)}</b></div><div>${escBr(p.sow.overview||p.desc||'')}</div>`+
-  H('Deliverables')+(breakdown(p,p.sow.showLine)||'<div class="d-sm">To be listed.</div>')+
+  H('Deliverables')+(breakdown(p,p.sow.showLine,true)||'<div class="d-sm">To be listed.</div>')+
   H('Timeline')+timelineHtml(p)+
   H('Investment')+`<div class="d-tots" style="max-width:none">${E.disc?dRow('Project price before discount',money(E.sub))+dRow(`Discount${p.discLabel?' — '+esc(p.discLabel):''}`,'-'+money(E.disc)):''}${dRow('<b>Total project price</b>','<b>'+money(E.total)+'</b>','','d-grand')}</div>
    <div class="d-lbl" style="margin-top:10px">Payment schedule</div>${p.sow.schedule.map(x=>dRow(esc(x.label)+` (${fh(x.pct)}%)`,money(E.total*num(x.pct)/100))).join('')}
@@ -684,6 +719,16 @@ function buildDoc(kind,p){const s=S.settings,d=s.d,E=calcEst(p),B=calcBill(p),M=
   ${s.biz.payInfo?`<h2>How to Pay</h2><div>${escBr(s.biz.payInfo)}</div>`:''}<div class="d-foot">Thank you for your business!</div>`}
  return{t,h,fn}}
 let curDoc=null,LOOK=[];
+function buildTimeline(p){const E=calcEst(p),hpw=num(S.settings.d.hpw)||25;
+ const tl=PHASES.map(ph=>{const h=p.lines.filter(l=>l.type!=='exp'&&(PHASES.includes(l.phase)?l.phase:'Other')===ph).reduce((s,l)=>s+num(l.hours)*E.cx,0);return h?{label:ph+(ph==='Launch'?' — testing, deploy & training':ph==='Build'?' — core features':ph==='Design'?' — mockups & approval':ph==='Discovery'?' — requirements & plan':ph==='Integrations'?' — connect outside services':''),weeks:Math.max(0.5,Math.ceil(h/hpw*2)/2)}:null}).filter(Boolean);
+ if(!tl.length)return false;p.sow.timeline=tl;return true}
+const norm=x=>String(x||'').trim().toLowerCase();
+const hasLine=(p,name)=>p.lines.some(l=>norm(l.desc)===norm(name));
+const hasMo=(p,name)=>p.monthly.items.some(i=>norm(i.name)===norm(name));
+const hasLic=(p,name)=>p.lic.items.some(i=>norm(i.name)===norm(name));
+function askConfirm(title,msg,okLabel){return new Promise(res=>{const d=document.createElement('div');d.className='cfbg';
+ d.innerHTML=`<div class="cf" role="dialog" aria-modal="true"><h2>${esc(title)}</h2><p>${msg}</p><div class="row" style="justify-content:flex-end"><button class="btn" data-x="0">Cancel</button><button class="btn p" data-x="1">${esc(okLabel)}</button></div></div>`;
+ d.addEventListener('click',e=>{const b=e.target.closest('[data-x]');if(b||e.target===d){d.remove();res(!!(b&&b.dataset.x==='1'))}});document.body.appendChild(d);d.querySelector('[data-x="0"]').focus()})}
 function fillFromGit(p,force){const hs=p.links.map(id=>S.hist[id]).filter(Boolean);if(!hs.length)return '';
  const d=x=>x?iso(new Date(x)):'';const first=hs.map(h=>h.first).filter(Boolean).sort()[0],last=hs.map(h=>h.last).filter(Boolean).sort().pop();
  const live=hs.map(h=>h.goLive).filter(Boolean).sort()[0];let f=[];
@@ -762,7 +807,16 @@ const ACT={
  rmLine(t){const p=cur();p.lines.splice(+t.dataset.i,1);touch(p);render()},
  addTl(){const p=cur();p.sow.timeline.push({label:'',weeks:1});touch(p);render()},
  rmTl(t){const p=cur();p.sow.timeline.splice(+t.dataset.i,1);touch(p);render()},
- autoTl(){const p=cur(),E=calcEst(p),hpw=num(S.settings.d.hpw)||25;
+ sowFromEst(t){const p=cur(),E=calcEst(p);const lab=p.lines.filter(l=>l.type!=='exp');if(!lab.length){toast('Add line items on the Estimate tab first');S.tab='est';render();return}
+  const f=[];lab.forEach(l=>{if(!(l.scope&&l.scope.trim())&&MOD_DESC[l.desc]){l.scope=MOD_DESC[l.desc];f.push(1)}});
+  const phs=PHASES.filter(ph=>lab.some(l=>(PHASES.includes(l.phase)?l.phase:'Other')===ph));const wks=E.hrsAdj/(num(S.settings.d.hpw)||25);
+  const ov=`${p.desc?p.desc.trim()+'\n\n':''}${S.settings.biz.name} will design, build and launch ${p.name||'this app'} for ${p.client.company||p.client.name||'the client'}. The work covers ${lab.length} deliverable${lab.length==1?'':'s'} across ${phs.join(', ').toLowerCase()}, estimated at about ${fh(E.hrsAdj)} hours over roughly ${fh(Math.max(1,Math.ceil(wks*2)/2))} weeks, for a total of ${money(E.total)}.`;
+  const mine=p.sow.overview&&p.sow.overview.trim()&&p.sow.overview!==p.sow.autoOv;if(!mine){p.sow.overview=p.sow.autoOv=ov}
+  buildTimeline(p);
+  const d=num(p.depositPct);const sch=p.sow.schedule;if(sch.length<=2){p.sow.schedule=[{label:'Deposit — due at signing',pct:d},{label:'Final payment — due at launch / acceptance',pct:100-d}]}else if(sch[0])sch[0].pct=d;
+  touch(p);if(t&&t.dataset.go)S.tab='sow';render();scrollTo(0,0);toast(`SOW filled: ${mine?'overview kept (yours), ':'overview, '}${lab.length} deliverables, timeline, payments`)},
+ autoTl(){const p=cur();if(!buildTimeline(p)){toast('Add labor items to the estimate first');return}touch(p);render()},
+ _oldAutoTl(){const p=cur(),E=calcEst(p),hpw=num(S.settings.d.hpw)||25;
   p.sow.timeline=PHASES.map(ph=>{const h=p.lines.filter(l=>l.type!=='exp'&&(PHASES.includes(l.phase)?l.phase:'Other')===ph).reduce((s,l)=>s+num(l.hours)*E.cx,0);return h?{label:ph+(ph==='Launch'?' — testing, deploy & training':ph==='Build'?' — core features':ph==='Design'?' — mockups & approval':ph==='Discovery'?' — requirements & plan':''),weeks:Math.max(0.5,Math.ceil(h/hpw*2)/2)}:null}).filter(Boolean);
   if(!p.sow.timeline.length){toast('Add labor items to the estimate first');return}touch(p);render()},
  addSched(){const p=cur();p.sow.schedule.push({label:'Milestone payment',pct:0});touch(p);render()},
@@ -801,11 +855,11 @@ app.addEventListener('input',e=>{const t=e.target;
  else if(t.dataset.s){setPath(S.settings,t.dataset.s,readVal(t));queueSave('set');if(t.dataset.s==='biz.name')updateBrand()}});
 app.addEventListener('change',e=>{const t=e.target;
  if(t.dataset.role!==undefined){const p=cur(),l=p.lines[+t.dataset.role];l.rateId=t.value;l.rate=rate(t.value);touch(p);render()}
- else if(t.dataset.add==='module'&&t.value!==''){const m=MODS[+t.value];addLine(cur(),{id:uid(),type:'labor',phase:m[0],desc:m[1],hours:m[2],rateId:m[3],rate:rate(m[3])});toast('Added: '+m[1])}
- else if(t.dataset.add==='mo'&&t.value!==''){const x=MO_PRESETS[+t.value],p=cur(),mk=num(p.monthly.markup);let price;
+ else if(t.dataset.add==='module'&&t.value!==''){const m=MODS[+t.value],p=cur();t.value='';(async()=>{if(hasLine(p,m[1])&&!await askConfirm('Already added','<b>'+esc(m[1])+'</b> is already in this estimate. Add it a second time?','Yes, add again'))return;addLine(p,{id:uid(),type:'labor',phase:m[0],desc:m[1],hours:m[2],rateId:m[3],rate:rate(m[3])});toast('Added: '+m[1])})()}
+ else if(t.dataset.add==='mo'&&t.value!==''){const x=MO_PRESETS[+t.value],p=cur(),mk=num(p.monthly.markup);let price;t.value='';(async()=>{if(hasMo(p,x[0])&&!await askConfirm('Already added','<b>'+esc(x[0])+'</b> is already on the monthly plan. Add it a second time?','Yes, add again'))return;
   if(x[4]==='mk')price=r2(x[2]*(1+mk/100));else if(x[4]==='ret2')price=2*rate('dev');else if(x[4]==='ret5')price=5*rate('dev');else price=x[4];
-  p.monthly.items.push({name:x[0],cat:x[1],cycle:x[3],cost:x[2],price});touch(p);render();toast('Added: '+x[0])}
- else if(t.dataset.add==='lic'&&t.value!==''){const x=LIC_PRESETS[+t.value],p=cur();p.lic.items.push({name:x[0],type:x[1],amount:x[2],qty:x[3]});touch(p);render();toast('Added: '+x[0])}
+  p.monthly.items.push({name:x[0],cat:x[1],cycle:x[3],cost:x[2],price});touch(p);render();toast('Added: '+x[0])})()}
+ else if(t.dataset.add==='lic'&&t.value!==''){const x=LIC_PRESETS[+t.value],p=cur();t.value='';(async()=>{if(hasLic(p,x[0])&&!await askConfirm('Already added','<b>'+esc(x[0])+'</b> is already on this license. Add it a second time?','Yes, add again'))return;p.lic.items.push({name:x[0],type:x[1],amount:x[2],qty:x[3]});touch(p);render();toast('Added: '+x[0])})()}
  else if(t.dataset.add==='link'&&t.value){const p=cur();if(!p.links.includes(t.value))p.links.push(t.value);const r=fillFromGit(p,false);touch(p);render();if(r)toast(r)}
  else if(t.dataset.add==='comp'&&t.value){const p=cur();if(!p.comps.includes(t.value))p.comps.push(t.value);touch(p);render()}
  else if(t.dataset.rr!==undefined){render()}
