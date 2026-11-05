@@ -67,7 +67,7 @@
         '<div class="lb-m">' + detail + '</div></div>';
     }).join('');
     b.innerHTML = '<div class="lb-h"><h2 class="lb-t">🏆 Leaderboard · ' + esc(m) + '</h2><span class="lb-s">Ranked by % to quota · day ' + j.biz.elapsed + ' of ' + j.biz.total + '</span></div>' +
-      (rows ? '<div class="lb-list">' + rows + '</div><div class="lb-key"><span><i></i>Pace: where everyone should be today (' + Math.round(j.pace) + '% of the month)</span></div>' : '<p class="lb-empty">No quotas set yet. Add them under Team logins → each rep\'s plan.</p>');
+      (rows ? '<div class="lb-list">' + rows + '</div><div class="lb-key"><span><i></i>Pace: where everyone should be today (' + Math.round(j.pace) + '% of the month)</span></div>' : '<p class="lb-empty">No quotas set yet. Add them under Team in the store admin → each rep\'s plan.</p>');
     requestAnimationFrame(function () { requestAnimationFrame(function () { [].forEach.call(b.querySelectorAll('.lb-f'), function (f) { f.style.width = f.dataset.w + '%'; }); }); });
   }
 

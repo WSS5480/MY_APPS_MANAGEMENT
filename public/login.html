@@ -90,7 +90,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').cat
   }
   $('#tab-rep').addEventListener('click', function () { tab('rep'); }); $('#tab-mgr').addEventListener('click', function () { tab('mgr'); });
   var who = $('#who');
-  (function(){ var e = new URLSearchParams(location.search).get('err'); if (e === 'sso') show('#err-rep', 'That sign-in link from the store has expired — go back to the store and tap 360 Medical Portal again.'); if (e === 'noaccess') show('#err-rep', "Your login doesn't have the 360 Medical Portal box ticked in the store's Team logins yet. Ask an admin."); })();
+  (function(){ var e = new URLSearchParams(location.search).get('err'); if (e === 'sso') show('#err-rep', 'That sign-in link from the store has expired — go back to the store and tap 360 Medical Portal again.'); if (e === 'noaccess') show('#err-rep', "Your login doesn't have the 360 Medical Portal box ticked under Team in the store admin yet. Ask an admin."); })();
   who.appendChild(new Option('Loading names…', '')); // the store may be waking up: this can take up to a minute
   fetch('/api/login-options').then(function (r) { return r.json(); }).then(function (j) {
     who.innerHTML = '';
