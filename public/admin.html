@@ -72,7 +72,7 @@ header.head.has-who{padding-top:58px}
     <div class="brand"><small class="appname">Portal admin</small><div class="ver" id="ver"></div><div class="appswitch" id="appswitch" hidden><a class="on">Portal</a><a id="sw-store" href="#">Peptide store ↗</a></div><div class="appswitch views" id="views" style="margin-top:.35rem"><a class="on">Admin</a><a id="v-store" href="#" hidden>Store</a><a id="v-rep" href="#" hidden>Rep</a><a href="/">Portal</a></div></div>
     <div class="who-badge" id="who-badge" hidden title=""><span class="wb-ic" id="wb-ic" aria-hidden="true"></span><span><b id="wb-name"></b><small id="wb-role"></small></span></div>
     <div class="headtxt"><h1>Admin</h1><span class="conf">360 MEDICAL PORTAL</span><p class="sub">Reps, PINs, quotas and commission plans. Changes here show in the portal within seconds.</p></div>
-    <div class="tools"><button class="btn" id="btn-refresh" type="button" onclick="this.disabled=true;this.textContent='⟳ Refreshing…';location.reload()">⟳ Refresh</button><a class="btn" href="/">Open portal</a><a class="btn" href="#sec-wcu">📝 WCU</a><a class="btn" href="#sec-logins">🔐 Login activity</a><a class="btn" href="#sec-import">⬆ Import history</a><a class="btn" href="#managers">Managers</a><a class="btn" href="#visits">Visits</a><a class="btn" href="#surgeons">Surgeons</a><a class="btn" href="#facilities">Facilities</a><a class="btn" href="/products">Products</a><a class="btn" href="#mail-card">Approval emails</a><hr class="navline both-apps" hidden><a class="btn both-apps" hidden data-go="/admin#university" data-hub="university">🎓 360 University</a><a class="btn both-apps" hidden data-go="/admin#staff" data-hub="staff">Team logins</a><a class="btn both-apps" hidden data-go="/admin#setup" data-hub="setup">Email &amp; approvals</a><a class="btn both-apps" hidden data-local="geo-card" href="#hub-geo">Geofencing</a><a class="btn both-apps" hidden data-go="/admin#apps" data-hub="apps">Apps &amp; downloads</a><a class="btn both-apps" hidden data-go="/admin#howto" data-hub="howto">How to</a><a class="btn both-apps" hidden data-go="/admin#account" data-hub="account">My account</a><button class="btn" id="logout" type="button">Log out</button></div>
+    <div class="tools"><button class="btn" id="btn-refresh" type="button" onclick="this.disabled=true;this.textContent='⟳ Refreshing…';location.reload()">⟳ Refresh</button><a class="btn" href="/">Open portal</a><a class="btn" href="#sec-wcu">📝 WCU</a><a class="btn" href="#sec-logins">🔐 Login activity</a><a class="btn" href="#sec-import">⬆ Import history</a><a class="btn" href="#managers">Managers</a><a class="btn" href="#visits">Visits</a><a class="btn" href="#surgeons">Surgeons</a><a class="btn" href="#facilities">Facilities</a><a class="btn" href="/products">Products</a><a class="btn" href="#mail-card">Approval emails</a><hr class="navline both-apps" hidden><a class="btn both-apps" hidden data-go="/admin#university" data-hub="university">🎓 360 University</a><a class="btn both-apps" hidden data-go="/admin#staff" data-hub="staff">Team</a><a class="btn both-apps" hidden data-go="/admin#setup" data-hub="setup">Email &amp; approvals</a><a class="btn both-apps" hidden data-local="geo-card" href="#hub-geo">Geofencing</a><a class="btn both-apps" hidden data-go="/admin#apps" data-hub="apps">Apps &amp; downloads</a><a class="btn both-apps" hidden data-go="/admin#howto" data-hub="howto">How to</a><a class="btn both-apps" hidden data-go="/admin#account" data-hub="account">My account</a><button class="btn" id="logout" type="button">Log out</button></div>
   </header>
   <div id="hubpane" hidden><iframe id="hubframe" title="Shared admin page"></iframe></div>
 
@@ -82,13 +82,13 @@ header.head.has-who{padding-top:58px}
   <section class="card" id="sec-dash" data-nofold></section>
   <section class="card" id="sec-wcu"><p class="note">Loading WCUs…</p></section>
   <section class="card" id="sec-replist" data-nofold hidden></section>
-  <section class="card" id="reps-pointer" hidden><div class="cardhead"><h2>Reps and plans</h2><a class="btn primary" href="#hub-staff">Open Team logins</a></div><p class="note">Reps, PINs, access and each rep's quota and commission plan are all under <a href="#hub-staff">Team logins</a> — one roster for the store and the portal.</p></section>
+  <section class="card" id="reps-pointer" hidden><div class="cardhead"><h2>Reps and plans</h2><a class="btn primary" href="#hub-staff">Open Team</a></div><p class="note">Reps, PINs, access and each rep's quota and commission plan are all under <a href="#hub-staff">Team</a> — one roster for the store and the portal.</p></section>
   <section class="card" id="reps-card">
     <div class="cardhead">
       <h2>Reps and plans</h2>
       <div class="tools"><button class="btn" id="add-rep" type="button">+ Add rep</button><button class="btn" id="add-team" type="button">+ Add team quota</button><button class="btn primary" id="save" type="button" disabled>Save changes</button></div>
     </div>
-    <p class="note" id="hub-reps-note" hidden>Reps are added, renamed, given PINs and switched on or off under <b>Team logins</b> (the table above this card, one roster for both apps). Set each rep's plan here.</p>
+    <p class="note" id="hub-reps-note" hidden>Reps are added, renamed, given PINs and switched on or off under <b>Team</b> in the store admin — one roster for both apps — and each rep's plan is set on their card there. This card is the same data, kept for team quotas and a quick look.</p>
     <p class="note">Quota and commission rules drive the scorecard, pace alerts and commission estimates. <b>Counts</b> is the surgeon rule: New = surgeons the rep brought in, Existing = surgeons the rep already works with, Legacy = surgeons the company brought to the table (reps are not paid on those, so rep plans use New + Existing); <b>Product</b> limits it to one product line. <b>Carry</b> adds a month's shortfall to the next month's target within the quarter. A <b>Team</b> row sets a quota for a whole territory. Turning access off signs the rep out right away.</p>
     <label class="f" style="max-width:28rem;margin:4px 0 10px"><b>Rep</b><select class="field" id="rep-pick"></select></label>
     <div id="reps"></div>
@@ -470,7 +470,7 @@ header.head.has-who{padding-top:58px}
     [rows[repPick]].forEach(function (r) { var idx = repPick;
       var team = r.role === 'Team', col = 0, tr = el('div', 'repgrid' + (team ? ' team' : '')), td = function (n) { var c = el('div', 'f'), lb = REP_COLS[col++]; if (lb) c.appendChild(el('b', '', lb)); if (n) c.appendChild(n); tr.appendChild(c); return c; };
       var hubRow = !team && ST && ST.linked && r.hub; // managed from the store's Team logins: name, PIN and access live there
-      var nameIn = input(r, 'rep', 'text', 'w-l', 'Name'); if (hubRow) { nameIn.readOnly = true; nameIn.title = 'Rename under Team logins'; } td(nameIn);
+      var nameIn = input(r, 'rep', 'text', 'w-l', 'Name'); if (hubRow) { nameIn.readOnly = true; nameIn.title = 'Rename under Team (in the store admin)'; } td(nameIn);
       td(team ? el('span', 'pill mute', 'Team') : input(r, 'role', 'text', 'w-m', 'Sales Rep'));
       td(input(r, 'territory', 'text', 'w-m', r.rep));
       td(select(r, 'metric', [['Revenue', 'Revenue $'], ['Cases', 'Cases']]));
@@ -488,7 +488,7 @@ header.head.has-who{padding-top:58px}
       td(input(r, 'sim_quota', 'number', 'w-s', '—'));
       var pc = td();
       if (team) pc.appendChild(el('span', 'note', '—'));
-      else if (hubRow) pc.appendChild(el('span', 'pill mute', 'Team logins'));
+      else if (hubRow) pc.appendChild(el("span", "pill mute", "Team"));
       else if (r.account === 'active') pc.appendChild(el('span', 'pill ok', 'Email + 2-step'));
       else if (r.pin == null) pc.appendChild(el('span', 'note', 'Set on save'));
       else {
@@ -510,7 +510,7 @@ header.head.has-who{padding-top:58px}
         if (!rm.dataset.armed) { rm.dataset.armed = '1'; rm.textContent = 'Confirm'; setTimeout(function () { rm.dataset.armed = ''; rm.textContent = 'Remove'; }, 4000); return; }
         rows.splice(idx, 1); repPick = 0; setDirty(true); draw(); say('#save-msg', 'warn', 'Removed from the list. Their logged cases stay in the portal. Click Save changes to apply.');
       });
-      if (!(hubRow && r.active !== false)) x.appendChild(rm); // an active store rep is removed under Team logins
+      if (!(hubRow && r.active !== false)) x.appendChild(rm); // an active store rep is removed under Team (store admin)
       b.appendChild(tr);
     });
   }

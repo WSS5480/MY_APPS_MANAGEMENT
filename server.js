@@ -519,11 +519,39 @@ app.get(['/go/store', '/admin/go/store'], (req, res) => {
   res.redirect(HUB_URL + (next.startsWith('/rep') ? '/rep/sso' : next.startsWith('/admin') ? '/admin/sso' : '/sso') + '?t=' + encodeURIComponent(token) + '&next=' + encodeURIComponent(next));
 });
 app.get('/api/hub/ping', hubAuth, (req, res) => res.json({ ok: true, app: 'case-tracker' }));
+// The store's Team page edits each rep's portal plan in place (and the team quota rows) through these.
+const planOut = (r) => Object.assign({}, r, { comm_rate: r.comm_rate != null ? Math.round(r.comm_rate * 10000) / 100 : null }); // percent out
+app.get('/api/hub/plans', hubAuth, (req, res) => {
+  const p = pins().reps;
+  res.json({ ok: true, rows: quotaRows().map(r => Object.assign(planOut(r), { hub: r.hub || (p[r.rep] ? p[r.rep].hub || null : null), active: r.role === 'Team' ? true : !(p[r.rep] && p[r.rep].active === false) })), counts: COUNTS });
+});
+app.put('/api/hub/plan', hubAuth, async (req, res) => {
+  const b = req.body || {}, hub = Number(b.hub) || null, name = String(b.rep || '').trim(), plan = b.plan || {};
+  if (!hub && !name) return res.status(400).json({ error: 'Which rep?' });
+  const rows = quotaRows().slice(), p = pins().reps;
+  let i = rows.findIndex(r => r.role !== 'Team' && hub && (r.hub === hub || (p[r.rep] && p[r.rep].hub === hub)));
+  if (i < 0 && name) i = rows.findIndex(r => r.role !== 'Team' && r.rep.trim().toLowerCase() === name.toLowerCase());
+  const rep = i >= 0 ? rows[i].rep : name;
+  if (!rep) return res.status(404).json({ error: 'That rep is not in the portal yet (tick 360 Medical Portal on their login and save, then set the plan).' });
+  const row = planRow(rep, Object.assign({}, i >= 0 ? planOut(rows[i]) : {}, plan), false);
+  if (i >= 0) rows[i] = Object.assign({}, rows[i], row, { hub: rows[i].hub || hub || null }); else rows.push(Object.assign(row, { hub }));
+  await put('config/quotas', Object.assign({}, docs.get('config/quotas') || {}, { rows, updated_at: new Date().toISOString() }));
+  res.json({ ok: true, row: planOut(rows[i >= 0 ? i : rows.length - 1]) });
+});
+app.put('/api/hub/team-plans', hubAuth, async (req, res) => {
+  const inRows = Array.isArray(req.body.rows) ? req.body.rows : null;
+  if (!inRows) return res.status(400).json({ error: 'No rows' });
+  const team = [], names = new Set();
+  for (const r of inRows) { const rep = String(r.rep || '').trim().slice(0, 60); if (!rep) return res.status(400).json({ error: 'Every team row needs a name.' }); if (names.has(rep.toLowerCase())) return res.status(400).json({ error: `"${rep}" is listed twice.` }); names.add(rep.toLowerCase()); team.push(planRow(rep, r, true)); }
+  const rows = quotaRows().filter(r => r.role !== 'Team').concat(team);
+  await put('config/quotas', Object.assign({}, docs.get('config/quotas') || {}, { rows, updated_at: new Date().toISOString() }));
+  res.json({ ok: true, rows: rows.filter(r => r.role === 'Team').map(planOut) });
+});
 // the store's Team logins removing a portal-only rep (one that was never a store login): row + PIN go, their logged cases stay
 app.post('/api/hub/rep-remove', hubAuth, async (req, res) => {
   const rep = String((req.body || {}).rep || '').trim(); if (!rep) return res.status(400).json({ error: 'Which rep?' });
   const p = JSON.parse(JSON.stringify(pins()));
-  if (p.reps[rep] && p.reps[rep].hub) return res.status(400).json({ error: rep + ' is a store login — delete it under Team logins.' });
+  if (p.reps[rep] && p.reps[rep].hub) return res.status(400).json({ error: rep + ' is a store login — delete it under Team in the store admin.' });
   const rows = quotaRows().filter(r => !(r.rep === rep && r.role !== 'Team'));
   if (rows.length === quotaRows().length && !p.reps[rep]) return res.status(404).json({ error: 'No such rep in the portal.' });
   delete p.reps[rep];
@@ -656,6 +684,8 @@ app.get('/api/admin/state', needApi('owner'), async (req, res) => {
   res.json({ linked: hubLinked(), rows: quotaRows().map(r => { const ac = Object.values(mgrs()).find(a => a.kind === 'rep' && a.rep === r.rep); return Object.assign({}, r, { hub: (p[r.rep] && p[r.rep].hub) || r.hub || null, pin: p[r.rep] ? p[r.rep].pin : null, active: p[r.rep] ? p[r.rep].active !== false : r.role === 'Team' ? null : false, account: ac ? (ac.totp_on ? 'active' : 'pending') : null }); }), counts, db: dbMode, adminPinIsDefault: !docs.has('_auth/admin') && !process.env.ADMIN_PIN, url: (process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`) });
 });
 const num = v => (v === '' || v == null || isNaN(Number(v))) ? null : Number(v);
+// one plan row from what a form sent (comm_rate arrives as a percent, is kept as a fraction)
+const planRow = (rep, r, team) => ({ rep, role: team ? 'Team' : String(r.role || 'Sales Rep').slice(0, 40), territory: String(r.territory || rep).slice(0, 60), metric: r.metric === 'Cases' ? 'Cases' : 'Revenue', quota: num(r.quota), counts: COUNTS.includes(r.counts) ? r.counts : 'All', product_filter: String(r.product_filter || '').slice(0, 80), carry: !!r.carry, draw: r.pay_kind === 'draw' ? num(r.pay_amount) : null, comm_rate: num(r.comm_rate) != null ? num(r.comm_rate) / 100 : null, comm_floor: num(r.comm_floor), pay_kind: team ? null : (r.pay_kind === 'draw' ? 'draw' : r.pay_kind === 'salary' ? 'salary' : null), pay_amount: team ? null : num(r.pay_amount), sim_quota: num(r.sim_quota) });
 app.post('/api/admin/reps', needApi('owner'), async (req, res) => {
   const inRows = Array.isArray(req.body.rows) ? req.body.rows : null;
   if (!inRows) return res.status(400).json({ error: 'No rows' });
@@ -666,7 +696,7 @@ app.post('/api/admin/reps', needApi('owner'), async (req, res) => {
     if (names.has(rep.toLowerCase())) return res.status(400).json({ error: `"${rep}" is listed twice.` });
     names.add(rep.toLowerCase());
     const team = r.role === 'Team';
-    rows.push({ rep, role: team ? 'Team' : String(r.role || 'Sales Rep').slice(0, 40), territory: String(r.territory || rep).slice(0, 60), metric: r.metric === 'Cases' ? 'Cases' : 'Revenue', quota: num(r.quota), counts: COUNTS.includes(r.counts) ? r.counts : 'All', product_filter: String(r.product_filter || '').slice(0, 80), carry: !!r.carry, draw: r.pay_kind === 'draw' ? num(r.pay_amount) : null, comm_rate: num(r.comm_rate) != null ? num(r.comm_rate) / 100 : null, comm_floor: num(r.comm_floor), pay_kind: team ? null : (r.pay_kind === 'draw' ? 'draw' : r.pay_kind === 'salary' ? 'salary' : null), pay_amount: team ? null : num(r.pay_amount), sim_quota: num(r.sim_quota) });
+    rows.push(planRow(rep, r, team));
   }
   const p = JSON.parse(JSON.stringify(pins()));
   // reps that come from the store's Team logins can't be dropped here: their row (quota, plan) and PIN record stay, or the next sync would re-add them blank
@@ -2203,7 +2233,7 @@ app.post('/api/login/manager', async (req, res) => {
       tries.delete(req.ip); setSession(res, { role: 'owner', hub: u.email, hubId: u.id, hubName: u.name, hubStaff: u.role !== 'owner', v: adminV() }, req.body.dev);
       return res.json({ ok: true, role: 'owner' });
     }
-    if (r && r.noTracker) { t.n++; return res.status(403).json({ error: 'This login does not have the portal turned on. Tick it under Team logins in the store admin.' }); }
+    if (r && r.noTracker) { t.n++; return res.status(403).json({ error: 'This login does not have the portal turned on. Tick it under Team in the store admin in the store admin.' }); }
   }
   t.n++; return res.status(401).json({ error: 'Wrong email or password.' });
 });
