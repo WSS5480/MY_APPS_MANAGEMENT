@@ -77,7 +77,7 @@ input[type=checkbox],input[type=radio]{width:20px;height:20px;flex:none;margin:0
 .ovbar{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:8px;max-width:8.5in;margin:0 auto 10px;background:#101626;padding:10px;border-radius:12px}
 .ovbar .t{color:#fff;font-weight:700;flex:1;min-width:140px;align-self:center}
 .nav button.dirty{background:#f5a623;border-color:#f5a623;color:#101626;font-weight:700}
-#ptr{position:fixed;left:50%;top:0;transform:translate(-50%,-60px);z-index:40;background:#101626;color:#fff;border-radius:20px;padding:8px 16px;font-size:13px;font-weight:600;box-shadow:0 4px 14px rgba(0,0,0,.25);transition:transform .15s}
+#ptr{position:fixed;left:50%;top:0;transform:translate(-50%,-60px);z-index:40;background:#101626;color:#fff;border-radius:20px;padding:8px 16px;font-size:13px;font-weight:600;box-shadow:0 4px 14px rgba(0,0,0,.25);transition:transform .15s,opacity .15s;opacity:0;pointer-events:none}
 html,body{overscroll-behavior-y:contain}
 #toast{position:fixed;left:50%;bottom:80px;transform:translateX(-50%);background:#14171f;color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;z-index:60;opacity:0;pointer-events:none;transition:opacity .2s;max-width:90vw;text-align:center}
 #toast.on{opacity:1}
@@ -374,7 +374,7 @@ const T=(lbl,k,v,rows=4)=>`<label class="f">${lbl}<textarea data-k="${k}" rows="
 function rClient(p){return `<div class="card"><h2>Project</h2><div class="grid g2">${F('Project name','name',p.name)}${F('Estimate date','estDate',p.estDate,'date')}</div>
  <div style="margin-top:10px">${T('What are we building? (short description — used in the estimate & SOW)','desc',p.desc,4)}</div>
  <div class="grid" style="margin-top:10px">${F('Target start','start',p.start,'date')}${F('Target launch','launch',p.launch,'date')}</div></div>
- <div class="card"><h2>Client</h2><div class="grid g2">${F('Contact name','client.name',p.client.name)}${F('Company','client.company',p.client.company)}${F('Email','client.email',p.client.email,'email')}${F('Phone','client.phone',p.client.phone,'tel')}</div>
+ <div class="card"><h2>Client</h2><div class="grid g2">${F('Contact name','client.name',p.client.name)}<label class="f">Company<div class="row" style="flex-wrap:nowrap"><input data-k="client.company" value="${esc(p.client.company)}" placeholder="Type the company name, then Fill"><button class="btn p" data-act="lookup" title="Look up company info">🔎 Fill</button></div></label>${F('Email','client.email',p.client.email,'email')}${F('Phone','client.phone',p.client.phone,'tel')}${F('Website','client.website',p.client.website||'')}</div><div id="lookupBox"></div>
  <div style="margin-top:10px">${T('Billing address','client.address',p.client.address,3)}</div></div>
  ${rLinkCard(p)}
  <div class="row"><div class="grow"></div><button class="btn p" data-act="tab" data-t="est">Next: Build the estimate →</button></div>`}
@@ -591,7 +591,7 @@ function rSettings(){const s=S.settings,b=s.biz,d=s.d;
   <div class="row" style="margin-top:8px"><button class="btn" data-act="export">Copy backup</button><button class="btn" data-act="importShow">Restore from backup</button></div><div id="impBox"></div></div>`}
 
 /* ================= documents ================= */
-function clientBlock(p){const c=p.client;return `<b>${esc(c.company||c.name||'—')}</b><div class="d-sm">${[c.company&&c.name?esc(c.name):'',escBr(c.address),esc(c.phone),esc(c.email)].filter(Boolean).join('<br>')}</div>`}
+function clientBlock(p){const c=p.client;return `<b>${esc(c.company||c.name||'—')}</b><div class="d-sm">${[c.company&&c.name?esc(c.name):'',escBr(c.address),esc(c.phone),esc(c.email),esc(c.website||'')].filter(Boolean).join('<br>')}</div>`}
 function dHead(title,meta,p,lbl='Prepared for'){const b=S.settings.biz;
  return `<div class="d-top"><div><div class="d-biz">${esc(b.name)}</div><div class="d-sm">${[esc(b.owner),escBr(b.address),esc(b.phone),esc(b.email),esc(b.website)].filter(Boolean).join('<br>')}</div></div>
  <div class="d-right"><div class="d-title">${title}</div>${meta.filter(x=>x[1]).map(([k,v])=>`<div class="d-sm"><b>${k}:</b> ${esc(v)}</div>`).join('')}</div></div>
@@ -681,7 +681,7 @@ function buildDoc(kind,p){const s=S.settings,d=s.d,E=calcEst(p),B=calcBill(p),M=
   <div class="d-tots"><div class="d-hl">${dRow('<b>AMOUNT DUE</b>','<b style="font-size:16px">'+money(M.price)+'</b>')}</div></div>
   ${s.biz.payInfo?`<h2>How to Pay</h2><div>${escBr(s.biz.payInfo)}</div>`:''}<div class="d-foot">Thank you for your business!</div>`}
  return{t,h,fn}}
-let curDoc=null;
+let curDoc=null,LOOK=[];
 function openDoc(kind){const p=cur();curDoc={...buildDoc(kind,p)};const ov=$('#ov');
  ov.innerHTML=`<div class="ovbar"><div class="t">${esc(curDoc.t)}</div><button class="btn sm p" data-act="pdf">⬇ PDF</button><button class="btn sm" data-act="html">⬇ Printable HTML</button><button class="btn sm" data-act="copyTxt">Copy text</button><button class="btn sm" data-act="closeOv">Close</button></div><div class="paper" id="paper">${curDoc.h}</div>`;
  ov.classList.remove('hidden');ov.scrollTop=0;document.body.style.overflow='hidden'}
@@ -705,6 +705,17 @@ const ACT={
  home(){S.view='home';closeOv();render();scrollTo(0,0)},
  settings(){S.view='settings';render();scrollTo(0,0)},
  hist(){S.view='hist';render();scrollTo(0,0)},
+ async lookup(){const p=cur(),q=(p.client.company||'').trim(),box=$('#lookupBox');if(q.length<2){toast('Type the company name first');return}
+  const g=`<a href="https://www.google.com/search?q=${encodeURIComponent(q)}" target="_blank" rel="noopener">Search Google instead ↗</a>`;
+  if(!window.__RENDER_HOST){box.innerHTML=`<div class="note">Company lookup works in the Render app (dev-billing.onrender.com). ${g}</div>`;return}
+  box.innerHTML='<div class="sm mut" style="margin-top:8px">Searching…</div>';
+  try{const city=(S.settings.biz.address||'').split('\n').pop();const r=await fetch('/api/lookup?q='+encodeURIComponent(q),{credentials:'same-origin'}).then(r=>r.json());LOOK=r.results||[];
+   box.innerHTML=LOOK.length?`<h3>Pick the right one (${LOOK.length})</h3>`+LOOK.map((x,i)=>`<div class="line"><div class="row"><div class="grow"><b>${esc(x.name)}</b><div class="sm mut">${escBr(x.address||'No address listed')}</div><div class="sm">${[x.phone,x.website,x.email].filter(Boolean).map(esc).join(' · ')}</div></div><button class="btn sm g" data-act="useLookup" data-i="${i}">Use this</button></div></div>`).join('')+`<div class="sm" style="margin-top:6px">${esc(r.source||'')} · ${g}</div>`
+    :`<div class="note">No listing found for "${esc(q)}". Try adding the city (e.g. "${esc(q)} McAllen"). ${g}</div>`}
+  catch(e){box.innerHTML=`<div class="note">Lookup failed. ${g}</div>`}},
+ useLookup(t){const p=cur(),x=LOOK[+t.dataset.i];if(!x)return;const c=p.client;let n=0;
+  [['company','name'],['address','address'],['phone','phone'],['website','website'],['email','email']].forEach(([k,f])=>{if(x[f]){c[k]=x[f];n++}});
+  touch(p);render();toast(`Filled ${n} field${n==1?'':'s'} — check them before sending`)},
  async saveNow(){await saveAll();toast(syncState==='err'?syncErr:'✓ All changes saved')},
  async refresh(){await doRefresh()},
  quickDisc(t){const p=cur();p.discType=t.dataset.t;p.discount=+t.dataset.v;touch(p);render()},
@@ -792,8 +803,8 @@ async function doRefresh(){if(refreshing)return;refreshing=true;const b=$('#navR
  refreshing=false;if(b)b.textContent='⟳ Refresh'}
 (function(){let y0=null,pull=0;const ptr=()=>$('#ptr');
  addEventListener('touchstart',e=>{y0=(scrollY<=0&&$('#ov').classList.contains('hidden'))?e.touches[0].clientY:null;pull=0},{passive:true});
- addEventListener('touchmove',e=>{if(y0==null)return;pull=e.touches[0].clientY-y0;if(pull>0&&scrollY<=0){const d=Math.min(pull*0.5,70);ptr().style.transform=`translate(-50%,${d-50}px)`;ptr().textContent=pull>110?'↻ Release to refresh':'↓ Pull to refresh'}},{passive:true});
- addEventListener('touchend',()=>{if(y0==null)return;const go=pull>110;y0=null;pull=0;if(go){ptr().textContent='Refreshing…';doRefresh().then(()=>{ptr().style.transform='translate(-50%,-60px)'})}else ptr().style.transform='translate(-50%,-60px)'},{passive:true});})();
+ addEventListener('touchmove',e=>{if(y0==null)return;pull=e.touches[0].clientY-y0;if(pull>0&&scrollY<=0){const d=Math.min(pull*0.5,70);ptr().style.transform=`translate(-50%,${d-50}px)`;ptr().style.opacity=d>15?1:0;ptr().textContent=pull>110?'↻ Release to refresh':'↓ Pull to refresh'}},{passive:true});
+ addEventListener('touchend',()=>{if(y0==null)return;const go=pull>110;y0=null;pull=0;if(go){ptr().textContent='Refreshing…';doRefresh().then(()=>{ptr().style.transform='translate(-50%,-60px)';ptr().style.opacity=0})}else{ptr().style.transform='translate(-50%,-60px)';ptr().style.opacity=0}},{passive:true});})();
 addEventListener('beforeunload',e=>{if(dirty.size){saveAll();e.preventDefault();e.returnValue=''}});
 
 /* ================= boot ================= */

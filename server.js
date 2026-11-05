@@ -103,6 +103,50 @@ api.get('/export', async (req, res) => {
   res.setHeader('Content-Disposition', `attachment; filename="dev-billing-backup-${new Date().toISOString().slice(0, 10)}.json"`);
   res.json(Object.fromEntries(r.rows.map(x => [x.path, x.data])));
 });
+// ---- company lookup (Google Places if GOOGLE_PLACES_KEY is set, else OpenStreetMap) ----
+async function lookupGoogle(q) {
+  const r = await fetch('https://places.googleapis.com/v1/places:searchText', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': process.env.GOOGLE_PLACES_KEY,
+      'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.websiteUri' },
+    body: JSON.stringify({ textQuery: q, regionCode: 'US', maxResultCount: 6 }),
+  });
+  if (!r.ok) throw new Error('google ' + r.status);
+  const j = await r.json();
+  return (j.places || []).map(p => ({
+    name: p.displayName && p.displayName.text || '',
+    address: String(p.formattedAddress || '').replace(/, USA$/, '').replace(/, ([^,]+, [A-Z]{2} \d{5})/, '\n$1'),
+    phone: p.nationalPhoneNumber || '', website: p.websiteUri || '', email: '',
+  }));
+}
+function osmMap(x) {
+  const a = x.address || {}, t = x.extratags || {}, n = x.namedetails || {};
+  const street = [a.house_number, a.road].filter(Boolean).join(' ');
+  const city = a.city || a.town || a.village || a.hamlet || a.county || '';
+  const line2 = [city, [a.state, a.postcode].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+  return { name: n.name || x.name || String(x.display_name || '').split(',')[0],
+    address: [street, line2].filter(Boolean).join('\n'),
+    phone: t.phone || t['contact:phone'] || '', website: t.website || t['contact:website'] || '',
+    email: t.email || t['contact:email'] || '' };
+}
+async function lookupOSM(q) {
+  const u = 'https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&extratags=1&namedetails=1&limit=6&countrycodes=us&q=' + encodeURIComponent(q);
+  const r = await fetch(u, { headers: { 'User-Agent': 'StemoDevBilling/1.0 (+https://dev-billing.onrender.com)', 'Accept-Language': 'en' } });
+  if (!r.ok) throw new Error('osm ' + r.status);
+  return (await r.json()).map(osmMap);
+}
+let lastOSM = 0;
+api.get('/lookup', async (req, res) => {
+  const q = String(req.query.q || '').trim().slice(0, 120);
+  if (q.length < 2) return res.json({ results: [] });
+  try {
+    if (process.env.GOOGLE_PLACES_KEY) return res.json({ source: 'Google Places', results: await lookupGoogle(q) });
+    const wait = 1100 - (Date.now() - lastOSM); if (wait > 0) await new Promise(r => setTimeout(r, wait)); lastOSM = Date.now();
+    res.json({ source: 'OpenStreetMap', results: await lookupOSM(q) });
+  } catch (e) { res.status(502).json({ error: String(e.message || e), results: [] }); }
+});
+module.exports.osmMap = osmMap;
+
 app.use('/api', (req, res, next) => api(req, res, err => err ? res.status(500).json({ error: String(err.message || err) }) : next()));
 
 // ---- app ----
