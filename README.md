@@ -1,4 +1,4 @@
-# Dev Billing (Stemo Enterprises)
+# Dev Billing (Steve Smith)
 
 Estimates, scope of work, final bills, monthly costs and licensing for app builds, with build history from GitHub + Render.
 

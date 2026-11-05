@@ -248,7 +248,7 @@ function getPath(o,path){return path.split('.').reduce((c,k)=>c==null?undefined:
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('on'),2400)}
 
 /* ================= state ================= */
-function defSettings(){return{biz:{name:'Stemo Enterprises',owner:'Steve Smith',email:'',phone:'',address:'',website:'',payInfo:'Checks payable to Stemo Enterprises. ACH / Zelle details provided on request.'},
+function defSettings(){return{biz:{name:'Steve Smith',owner:'',email:'',phone:'',address:'',website:'',payInfo:'Checks payable to Steve Smith. ACH / Zelle details provided on request.'},
  rates:[{id:'dev',name:'Developer',rate:125},{id:'des',name:'UI/UX Design',rate:95},{id:'pm',name:'Project Management',rate:85}],
  d:{contingency:10,deposit:50,tax:0,terms:15,markup:30,hpw:25,trackAllow:25,warranty:30,invPrefix:'INV-',nextInv:1001,estValid:30,cancelDays:30,lateFee:1.5,law:'Texas',venue:'Hidalgo County, Texas',licCap:5,near:'McAllen, TX'},
  oos:DEF_OOS,assume:DEF_ASSUME,resp:DEF_RESP}}
@@ -408,6 +408,7 @@ const F=(lbl,k,v,type='text',extra='')=>`<label class="f">${lbl}<input type="${t
 const T=(lbl,k,v,rows=4)=>`<label class="f">${lbl}<textarea data-k="${k}" rows="${rows}">${esc(v)}</textarea></label>`;
 function rClient(p){return `<div class="card"><div class="row"><h2 class="grow" style="margin:0">Project</h2><button class="btn g" data-act="fillGit">⚡ Fill from GitHub &amp; Render</button></div><div style="height:10px"></div><div class="grid g2">${F('Project name','name',p.name)}${F('Estimate date','estDate',p.estDate,'date')}</div>
  <div style="margin-top:10px">${T('What are we building? (short description — used in the estimate & SOW)','desc',p.desc,4)}</div>
+ <label class="f" style="margin-top:8px">📋 Use a similar project for reference<select data-add="copyDesc"><option value="">Pick a past project or build…</option>${copyOpts(p,'desc')}</select></label>
  <div class="grid" style="margin-top:10px">${F('Target start','start',p.start,'date')}${F('Target launch','launch',p.launch,'date')}</div></div>
  <div class="card"><h2>Client</h2><div class="grid g2">${F('Contact name','client.name',p.client.name)}<label class="f">Company<div class="row" style="flex-wrap:nowrap"><input data-k="client.company" value="${esc(p.client.company)}" placeholder="Type the company name, then Fill"><button class="btn p" data-act="lookup" title="Look up company info">🔎 Fill</button></div></label>${F('Email','client.email',p.client.email,'email')}${F('Phone','client.phone',p.client.phone,'tel')}${F('Website','client.website',p.client.website||'')}</div><div id="lookupBox"></div>
  <div style="margin-top:10px">${T('Billing address','client.address',p.client.address,3)}</div></div>
@@ -451,7 +452,8 @@ function rEst(p){const groups={};p.lines.forEach((l,i)=>{const ph=PHASES.include
   <div class="tot"><span>Deposit to start (${fh(p.depositPct)}%)</span><b data-c="est.deposit"></b></div>
   <div class="row" style="margin-top:12px"><button class="btn p" data-act="doc" data-kind="estimate">📄 Client estimate</button><button class="btn g" data-act="sowFromEst" data-go="1">⚡ Build Scope of Work →</button></div></div>`}
 function rSow(p){const s=p.sow;const lab=p.lines.map((l,i)=>[l,i]).filter(([l])=>l.type!=='exp');
- return `<div class="card"><div class="row"><div class="grow"><h2 style="margin:0">Build from the estimate</h2><div class="sm mut">Fills the overview, what each deliverable includes, the timeline and the payment schedule. Anything you typed yourself is kept.</div></div><button class="btn g" data-act="sowFromEst">⚡ Fill SOW from estimate</button></div></div>
+ return `<div class="card"><div class="row"><div class="grow"><h2 style="margin:0">Build from the estimate</h2><div class="sm mut">Fills the overview, what each deliverable includes, the timeline and the payment schedule. Anything you typed yourself is kept.</div></div><button class="btn g" data-act="sowFromEst">⚡ Fill SOW from estimate</button></div>
+  <label class="f" style="margin-top:10px">📋 Or start from a similar project (overview, what's included, terms)<select data-add="copySow"><option value="">Pick a past project or build…</option>${copyOpts(p,'sow')}</select></label></div>
  <div class="card"><h2>Overview</h2>${T('Project overview (leave blank to use the project description)','sow.overview',s.overview,4)}
   <label class="chk" style="margin-top:10px"><input type="checkbox" data-k="sow.showLine" ${s.showLine?'checked':''}> Show hours &amp; price for each deliverable in the SOW</label>
   <div class="sm mut" style="margin-top:6px">Deliverables come from your estimate line items automatically (${p.lines.length} items).</div></div>
@@ -613,7 +615,7 @@ const SF=(lbl,k,v,type='text')=>`<label class="f">${lbl}<input type="${type}" da
 const ST=(lbl,k,v,rows=4)=>`<label class="f">${lbl}<textarea data-s="${k}" rows="${rows}">${esc(v)}</textarea></label>`;
 function rSettings(){const s=S.settings,b=s.biz,d=s.d;
  return `<h1 style="margin-top:6px">Settings</h1>
- <div class="card"><h2>Your business (shows on every document)</h2><div class="grid g2">${SF('Business name','biz.name',b.name)}${SF('Your name','biz.owner',b.owner)}${SF('Email','biz.email',b.email,'email')}${SF('Phone','biz.phone',b.phone,'tel')}${SF('Website','biz.website',b.website)}</div>
+ <div class="card"><h2>Your business (shows on every document)</h2><div class="grid g2">${SF('Name on documents (you or your business)','biz.name',b.name)}${SF('Signer name (if different)','biz.owner',b.owner)}${SF('Email','biz.email',b.email,'email')}${SF('Phone','biz.phone',b.phone,'tel')}${SF('Website','biz.website',b.website)}</div>
   <div class="grid g2" style="margin-top:10px">${ST('Address','biz.address',b.address,3)}${ST('How to pay you (printed on invoices)','biz.payInfo',b.payInfo,3)}</div></div>
  <div class="card"><div class="row"><h2 class="grow" style="margin:0">Hourly rates</h2><button class="btn sm" data-act="addRate">+ Role</button></div>
   ${s.rates.map((r,i)=>`<div class="line"><div class="top"><input data-s="rates.${i}.name" value="${esc(r.name)}"><button class="x" data-act="rmRate" data-i="${i}">×</button></div><div class="grid" style="margin-top:8px">${SF('Rate ($/hr)',`rates.${i}.rate`,r.rate,'number')}</div></div>`).join('')}
@@ -630,7 +632,7 @@ function rSettings(){const s=S.settings,b=s.biz,d=s.d;
 /* ================= documents ================= */
 function clientBlock(p){const c=p.client;return `<b>${esc(c.company||c.name||'—')}</b><div class="d-sm">${[c.company&&c.name?esc(c.name):'',escBr(c.address),esc(c.phone),esc(c.email),esc(c.website||'')].filter(Boolean).join('<br>')}</div>`}
 function dHead(title,meta,p,lbl='Prepared for'){const b=S.settings.biz;
- return `<div class="d-top"><div><div class="d-biz">${esc(b.name)}</div><div class="d-sm">${[esc(b.owner),escBr(b.address),esc(b.phone),esc(b.email),esc(b.website)].filter(Boolean).join('<br>')}</div></div>
+ return `<div class="d-top"><div><div class="d-biz">${esc(b.name)}</div><div class="d-sm">${[b.owner&&b.owner!==b.name?esc(b.owner):'',escBr(b.address),esc(b.phone),esc(b.email),esc(b.website)].filter(Boolean).join('<br>')}</div></div>
  <div class="d-right"><div class="d-title">${title}</div>${meta.filter(x=>x[1]).map(([k,v])=>`<div class="d-sm"><b>${k}:</b> ${esc(v)}</div>`).join('')}</div></div>
  <div class="d-to"><div class="d-lbl">${lbl}</div>${clientBlock(p)}</div>`}
 const dRow=(desc,amt,detail='',cls='')=>`<div class="d-row ${cls}"><div>${desc}${detail?`<div class="d-sm">${detail}</div>`:''}</div><div class="d-amt">${amt}</div></div>`;
@@ -665,7 +667,7 @@ function buildDoc(kind,p){const s=S.settings,d=s.d,E=calcEst(p),B=calcBill(p),M=
   H('Assumptions')+ul(lines2list(p.sow.assume))+H('Client Responsibilities')+ul(lines2list(p.sow.resp))+H('Out of Scope')+ul(lines2list(p.sow.oos))+
   H('Changes to Scope')+`<div>Requests outside this scope will be quoted as a written change order at ${money0(rate('dev'))}/hr (or a fixed price) and require approval before work begins. Change orders may adjust the timeline.</div>`+
   H('Acceptance & Warranty')+`<div>The client has 5 business days after delivery to report defects against this scope. Bugs reported within ${fh(d.warranty)} days of launch are fixed at no charge. New features and changes are billed as change orders. ${p.lic.model==='own'?'Upon final payment the client owns the custom code and data created for this project; third-party services remain under their own terms.':`${esc(s.biz.name)} retains all ownership of the software, code and intellectual property. The client owns its own data and receives the right to use the software under the separate Software License Agreement.`}</div>`+
-  `<div class="d-sig"><div><div class="d-sigl"></div><b>${esc(s.biz.owner||'')}</b><div class="d-sm">${esc(s.biz.name)} · Date</div></div><div><div class="d-sigl"></div><b>${esc(p.client.name||'Client')}</b><div class="d-sm">${esc(p.client.company||'')} · Date</div></div></div>`}
+  `<div class="d-sig"><div><div class="d-sigl"></div><b>${esc(s.biz.owner||s.biz.name||'')}</b><div class="d-sm">${s.biz.owner&&s.biz.owner!==s.biz.name?esc(s.biz.name)+' · ':''}Date</div></div><div><div class="d-sigl"></div><b>${esc(p.client.name||'Client')}</b><div class="d-sm">${esc(p.client.company||'')} · Date</div></div></div>`}
  else if(kind==='invoice'){const inv=p.invoice;t='Invoice';fn=slug(p.name)+'-invoice'+(inv.number?'-'+slug(inv.number):'');
   h=dHead('INVOICE',[['Invoice #',inv.number||'—'],['Date',fmtDate(inv.date)],['Due',fmtDate(inv.due||addDays(inv.date,d.terms))],['Project',p.name]],p,'Bill to')+
   `<h2>Services</h2>${B.rows.map(r=>dRow(esc(r.desc),money(r.amt),r.detail)).join('')}
@@ -683,7 +685,7 @@ function buildDoc(kind,p){const s=S.settings,d=s.d,E=calcEst(p),B=calcBill(p),M=
   <div class="d-tots">${dRow('<b>Monthly total</b>','<b>'+money(M.price)+'/mo</b>','','d-grand')}${dRow('Annual',money(M.annual))}</div>
   ${p.monthly.notes?`<h2>Details</h2><div>${escBr(p.monthly.notes)}</div>`:''}
   <h2>Terms</h2><ul><li>Billed monthly in advance${p.monthly.start?' starting '+fmtDate(p.monthly.start):''}; due within ${fh(d.terms)} days of invoice.</li><li>Initial term of ${fh(p.monthly.term)} months, then month-to-month. Either party may cancel with ${fh(d.cancelDays)} days' written notice after the initial term.</li><li>Third-party prices (hosting, domains, APIs) may change; changes will be communicated before the next billing cycle.</li><li>Services may be paused if an invoice is more than 30 days past due.</li><li>Work outside the included services is billed at ${money0(rate('dev'))}/hr with prior approval.</li></ul>
-  <div class="d-sig"><div><div class="d-sigl"></div><b>${esc(s.biz.owner||'')}</b><div class="d-sm">${esc(s.biz.name)} · Date</div></div><div><div class="d-sigl"></div><b>${esc(p.client.name||'Client')}</b><div class="d-sm">${esc(p.client.company||'')} · Date</div></div></div>`}
+  <div class="d-sig"><div><div class="d-sigl"></div><b>${esc(s.biz.owner||s.biz.name||'')}</b><div class="d-sm">${s.biz.owner&&s.biz.owner!==s.biz.name?esc(s.biz.name)+' · ':''}Date</div></div><div><div class="d-sigl"></div><b>${esc(p.client.name||'Client')}</b><div class="d-sm">${esc(p.client.company||'')} · Date</div></div></div>`}
  else if(kind==='licAgree'){const L=p.lic,Lc=calcLic(p),own=L.model==='own',saas=L.model==='saas';t='Software License Agreement';fn=slug(p.name)+'-license-agreement';let n=0;const H=x=>`<h2>${++n}. ${x}</h2>`;
   const svUrls=linkedServices(p).filter(x=>x.url&&x.type!=='postgres').map(x=>x.url);const lic=esc(s.biz.name),cl=esc(p.client.company||p.client.name||'Client');
   const typeLbl=it=>({once:'one-time',mo:'per month',yr:'per year',user:'per user / month',loc:'per location / month'})[it.type]||'';
@@ -704,7 +706,7 @@ function buildDoc(kind,p){const s=S.settings,d=s.d,E=calcEst(p),B=calcBill(p),M=
   H('Termination')+`<div>Either party may terminate for a material breach not fixed within 30 days of written notice. Licensor may terminate for non-payment after suspension. Fees already paid are non-refundable unless Licensor is in breach.</div>`+
   H('Governing Law')+`<div>This Agreement is governed by the laws of the State of ${esc(d.law)}, with venue in ${esc(d.venue)}.</div>`+
   (L.notes?H('Additional Terms')+`<div>${escBr(L.notes)}</div>`:'')+
-  `<div class="d-sig"><div><div class="d-sigl"></div><b>${esc(s.biz.owner||'')}</b><div class="d-sm">${lic} (Licensor) · Date</div></div><div><div class="d-sigl"></div><b>${esc(p.client.name||'Authorized signer')}</b><div class="d-sm">${cl} (Licensee) · Date</div></div></div>
+  `<div class="d-sig"><div><div class="d-sigl"></div><b>${esc(s.biz.owner||s.biz.name||'')}</b><div class="d-sm">${s.biz.owner&&s.biz.owner!==s.biz.name?lic+' ':''}(Licensor) · Date</div></div><div><div class="d-sigl"></div><b>${esc(p.client.name||'Authorized signer')}</b><div class="d-sm">${cl} (Licensee) · Date</div></div></div>
   <div class="d-foot">Template agreement. Have an attorney review before signing.</div>`}
  else if(kind==='licInv'){const L=p.lic,Lc=calcLic(p);t='License Invoice';fn=slug(p.name)+'-license-invoice';const dt=iso();
   h=dHead('INVOICE',[['Invoice #',L.invNo||'—'],['Date',fmtDate(dt)],['Due',fmtDate(addDays(dt,d.terms))],['Software',p.name]],p,'Bill to')+
@@ -719,6 +721,24 @@ function buildDoc(kind,p){const s=S.settings,d=s.d,E=calcEst(p),B=calcBill(p),M=
   ${s.biz.payInfo?`<h2>How to Pay</h2><div>${escBr(s.biz.payInfo)}</div>`:''}<div class="d-foot">Thank you for your business!</div>`}
  return{t,h,fn}}
 let curDoc=null,LOOK=[];
+function copyOpts(p,what){const ps=Object.values(S.projects).filter(x=>x.id!==p.id&&(what==='desc'?(x.desc||'').trim():((x.sow&&x.sow.overview)||x.desc||'').trim()));
+ const hs=histList().filter(h=>h.pro||h.summary).sort((a,b)=>a.name.localeCompare(b.name));
+ return (ps.length?`<optgroup label="Your projects">${ps.map(x=>`<option value="p:${esc(x.id)}">${esc(x.name||'Untitled')}${x.client&&x.client.company?' — '+esc(x.client.company):''}</option>`).join('')}</optgroup>`:'')+
+  (hs.length?`<optgroup label="Past builds (GitHub)">${hs.map(h=>`<option value="h:${esc(h.id)}">${esc(h.name)}</option>`).join('')}</optgroup>`:'')}
+function swapNames(txt,from,to){let t=String(txt||'');[[from.name,to.name],[from.client&&from.client.company,to.client.company],[from.client&&from.client.name,to.client.name]].forEach(([a,b])=>{if(a&&b&&a!==b)t=t.split(a).join(b)});return t}
+function proFromBuild(p,h){const who=p.client.company||p.client.name||'the client';const what=p.name&&p.name!=='New App Build'?p.name:'a custom application';
+ return{desc:(h.pro||h.summary),overview:`${S.settings.biz.name} will design, build and launch ${what} for ${who}, using the same proven approach as our ${h.name} build.\n\n${h.pro||h.summary}\n\nThe application will work on phones, tablets and computers, and will be hosted on Render with a managed database, secure sign-in and daily backups.`}}
+async function copyFrom(p,val,what){const [k,id]=[val.slice(0,1),val.slice(2)];let src,label,text,apply;
+ if(k==='p'){const o=S.projects[id];if(!o)return;label=o.name;
+  if(what==='desc'){text=swapNames(o.desc,o,p);apply=()=>{p.desc=text}}
+  else{text=swapNames((o.sow&&o.sow.overview)||o.desc,o,p);let n=0;
+   apply=()=>{p.sow.overview=text;p.sow.autoOv='';['assume','resp','oos'].forEach(f=>{if(o.sow&&o.sow[f])p.sow[f]=swapNames(o.sow[f],o,p)});
+    p.lines.forEach(l=>{const m=o.lines.find(x=>norm(x.desc)===norm(l.desc)&&x.scope);if(m){l.scope=swapNames(m.scope,o,p);n++}});return n}}}
+ else{const h=S.hist[id];if(!h)return;label=h.name+' (past build)';const r=proFromBuild(p,h);
+  if(what==='desc'){text=r.desc;apply=()=>{p.desc=text}}else{text=r.overview;apply=()=>{p.sow.overview=text;p.sow.autoOv=''}}}
+ const target=what==='desc'?'the project description':'the SOW overview, matching deliverable details and terms';
+ if(!await askConfirm('Use '+label+'?',`This replaces ${target}. Preview:<div style="max-height:40vh;overflow:auto;margin-top:8px;padding:10px;background:#f4f5f7;border-radius:8px;font-size:13.5px;color:#14171f">${escBr(text)}</div>`,'Use this'))return;
+ const n=apply();touch(p);render();toast(`Copied from ${label}${n?` · ${n} deliverable details`:''}. Edit anything you like.`)}
 function buildTimeline(p){const E=calcEst(p),hpw=num(S.settings.d.hpw)||25;
  const tl=PHASES.map(ph=>{const h=p.lines.filter(l=>l.type!=='exp'&&(PHASES.includes(l.phase)?l.phase:'Other')===ph).reduce((s,l)=>s+num(l.hours)*E.cx,0);return h?{label:ph+(ph==='Launch'?' — testing, deploy & training':ph==='Build'?' — core features':ph==='Design'?' — mockups & approval':ph==='Discovery'?' — requirements & plan':ph==='Integrations'?' — connect outside services':''),weeks:Math.max(0.5,Math.ceil(h/hpw*2)/2)}:null}).filter(Boolean);
  if(!tl.length)return false;p.sow.timeline=tl;return true}
@@ -859,6 +879,7 @@ app.addEventListener('change',e=>{const t=e.target;
   if(x[4]==='mk')price=r2(x[2]*(1+mk/100));else if(x[4]==='ret2')price=2*rate('dev');else if(x[4]==='ret5')price=5*rate('dev');else price=x[4];
   p.monthly.items.push({name:x[0],cat:x[1],cycle:x[3],cost:x[2],price});touch(p);render();toast('Added: '+x[0])})()}
  else if(t.dataset.add==='lic'&&t.value!==''){const x=LIC_PRESETS[+t.value],p=cur();t.value='';(async()=>{if(hasLic(p,x[0])&&!await askConfirm('Already added','<b>'+esc(x[0])+'</b> is already on this license. Add it a second time?','Yes, add again'))return;p.lic.items.push({name:x[0],type:x[1],amount:x[2],qty:x[3]});touch(p);render();toast('Added: '+x[0])})()}
+ else if((t.dataset.add==='copyDesc'||t.dataset.add==='copySow')&&t.value){const v=t.value;t.value='';copyFrom(cur(),v,t.dataset.add==='copyDesc'?'desc':'sow')}
  else if(t.dataset.add==='link'&&t.value){const p=cur();if(!p.links.includes(t.value))p.links.push(t.value);const r=fillFromGit(p,false);touch(p);render();if(r)toast(r)}
  else if(t.dataset.add==='comp'&&t.value){const p=cur();if(!p.comps.includes(t.value))p.comps.push(t.value);touch(p);render()}
  else if(t.dataset.rr!==undefined){render()}

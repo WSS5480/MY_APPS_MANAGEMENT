@@ -52,7 +52,7 @@ const loginPage = (msg = '') => `<!DOCTYPE html><html lang="en"><head><meta char
 form{background:#fff;border-radius:14px;padding:28px;width:min(340px,90vw);box-shadow:0 10px 40px rgba(0,0,0,.3)}h1{margin:0 0 4px;font-size:20px}p{margin:0 0 18px;color:#667085;font-size:14px}
 input{width:100%;box-sizing:border-box;font-size:22px;letter-spacing:6px;text-align:center;padding:12px;border:1px solid #cfd5de;border-radius:10px}
 button{width:100%;margin-top:14px;padding:12px;border:none;border-radius:10px;background:#1f5eff;color:#fff;font-size:16px;font-weight:700;cursor:pointer}.e{color:#c62828;font-size:14px;margin-top:10px;text-align:center}</style></head>
-<body><form method="post" action="/login"><h1>Dev Billing</h1><p>Stemo Enterprises — enter your PIN</p>
+<body><form method="post" action="/login"><h1>Dev Billing</h1><p>Steve Smith — enter your PIN</p>
 <input name="pin" type="password" inputmode="numeric" autocomplete="current-password" autofocus required><button>Sign in</button>${msg ? `<div class="e">${msg}</div>` : ''}<a href="/download" style="display:block;text-align:center;margin-top:14px;color:#1f5eff;font-size:14px;font-weight:600;text-decoration:none">⬇ Get the app</a></form></body></html>`;
 
 app.get('/healthz', (req, res) => res.send('ok'));
@@ -136,7 +136,7 @@ function osmMap(x) {
     phone: t.phone || t['contact:phone'] || '', website: t.website || t['contact:website'] || '',
     email: t.email || t['contact:email'] || '', lat: +x.lat, lon: +x.lon };
 }
-const OSM_UA = { 'User-Agent': 'StemoDevBilling/1.0 (+https://dev-billing.onrender.com)', 'Accept-Language': 'en' };
+const OSM_UA = { 'User-Agent': 'DevBilling/1.0 (+https://dev-billing.onrender.com)', 'Accept-Language': 'en' };
 let lastOSM = 0;
 async function osm(params) {
   const wait = 1100 - (Date.now() - lastOSM); if (wait > 0) await new Promise(r => setTimeout(r, wait)); lastOSM = Date.now();

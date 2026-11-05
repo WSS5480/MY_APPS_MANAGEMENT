@@ -2,7 +2,7 @@
   "name": "dev-billing",
   "version": "1.0.0",
   "private": true,
-  "description": "Stemo Enterprises Dev Billing — estimates, SOW, final bills, monthly costs, licensing",
+  "description": "Steve Smith Dev Billing — estimates, SOW, final bills, monthly costs, licensing",
   "main": "server.js",
   "scripts": { "start": "node server.js" },
   "engines": { "node": ">=18" },
