@@ -127,7 +127,7 @@ function osmMap(x) {
   return { name: n.name || x.name || String(x.display_name || '').split(',')[0],
     address: [street, line2].filter(Boolean).join('\n'),
     phone: t.phone || t['contact:phone'] || '', website: t.website || t['contact:website'] || '',
-    email: t.email || t['contact:email'] || '' };
+    email: t.email || t['contact:email'] || '', lat: +x.lat, lon: +x.lon };
 }
 const OSM_UA = { 'User-Agent': 'StemoDevBilling/1.0 (+https://dev-billing.onrender.com)', 'Accept-Language': 'en' };
 let lastOSM = 0;
@@ -142,7 +142,7 @@ async function nearBox(near) {
   if (!near) return null;
   if (nearCache.has(near)) return nearCache.get(near);
   const j = await osm({ q: near, limit: 1 }); let box = null;
-  if (j[0]) { const lat = +j[0].lat, lon = +j[0].lon; box = [lon - 0.75, lat + 0.5, lon + 0.75, lat - 0.5].join(','); }
+  if (j[0]) { const lat = +j[0].lat, lon = +j[0].lon; box = { s: [lon - 0.75, lat + 0.5, lon + 0.75, lat - 0.5].join(','), lat, lon }; }
   nearCache.set(near, box); return box;
 }
 const STOP = new Set(['the', 'and', 'of', 'llc', 'inc', 'co', 'corp', 'pllc', 'pa', 'ltd']);
@@ -158,10 +158,11 @@ async function lookupOSM(q, near) {
   const out = [], seen = new Set();
   const add = (rows, local) => rows.map(osmMap).forEach(x => { const k = x.name + '|' + x.address; if (!seen.has(k) && matches(q, x)) { seen.add(k); out.push({ ...x, local }); } });
   const box = await nearBox(near).catch(() => null);
-  if (box) add(await osm({ q, limit: 15, viewbox: box, bounded: 1 }), true);
+  if (box) add(await osm({ q, limit: 15, viewbox: box.s, bounded: 1 }), true);
   if (out.length < 3 && near) add(await osm({ q: q + ', ' + near, limit: 10 }), true);
   if (out.length < 3) add(await osm({ q, limit: 20 }), false);
-  return out.slice(0, 8);
+  if (box) { const d = x => x.lat ? Math.hypot(x.lat - box.lat, (x.lon - box.lon) * Math.cos(box.lat * Math.PI / 180)) : 9; out.sort((a, b) => (b.local - a.local) || d(a) - d(b)); }
+  return out.slice(0, 8).map(({ lat, lon, ...x }) => x);
 }
 api.get('/lookup', async (req, res) => {
   const q = String(req.query.q || '').trim().slice(0, 120), near = String(req.query.near || '').trim().slice(0, 80);
