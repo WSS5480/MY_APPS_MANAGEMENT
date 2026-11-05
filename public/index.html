@@ -76,6 +76,9 @@ input[type=checkbox],input[type=radio]{width:20px;height:20px;flex:none;margin:0
 .ov.hidden{display:none}
 .ovbar{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;gap:8px;max-width:8.5in;margin:0 auto 10px;background:#101626;padding:10px;border-radius:12px}
 .ovbar .t{color:#fff;font-weight:700;flex:1;min-width:140px;align-self:center}
+.nav button.dirty{background:#f5a623;border-color:#f5a623;color:#101626;font-weight:700}
+#ptr{position:fixed;left:50%;top:0;transform:translate(-50%,-60px);z-index:40;background:#101626;color:#fff;border-radius:20px;padding:8px 16px;font-size:13px;font-weight:600;box-shadow:0 4px 14px rgba(0,0,0,.25);transition:transform .15s}
+html,body{overscroll-behavior-y:contain}
 #toast{position:fixed;left:50%;bottom:80px;transform:translateX(-50%);background:#14171f;color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;z-index:60;opacity:0;pointer-events:none;transition:opacity .2s;max-width:90vw;text-align:center}
 #toast.on{opacity:1}
 .chipx{display:inline-flex;align-items:center;gap:4px;background:var(--acc2);color:var(--acc);border-radius:20px;padding:4px 4px 4px 11px;font-size:13px;font-weight:600}.chipx button{border:none;background:#fff;color:var(--acc);border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:14px;line-height:1}
@@ -111,6 +114,8 @@ input[type=checkbox],input[type=radio]{width:20px;height:20px;flex:none;margin:0
   <div class="nav row">
     <button data-act="home" id="navHome" class="on">Projects</button>
     <button data-act="hist" id="navHist">Build History</button>
+    <button data-act="saveNow" id="navSave" title="Save changes">💾 Save</button>
+    <button data-act="refresh" id="navRef" title="Refresh">⟳ Refresh</button>
     <button data-act="settings" id="navSet">Settings</button>
   </div>
   <div class="sync" id="sync">Loading…</div>
@@ -119,6 +124,7 @@ input[type=checkbox],input[type=radio]{width:20px;height:20px;flex:none;margin:0
 <div class="bar" id="bar" style="display:none"><div class="in" id="barIn"></div></div>
 <div class="ov hidden" id="ov"></div>
 <div id="toast"></div>
+<div id="ptr">↓ Pull to refresh</div>
 
 <script>
 /* ================= constants ================= */
@@ -280,7 +286,7 @@ async function flush(kind,id){const key=kind+':'+(id||'');
  inflight[key]=false;
  if(again[key]){again[key]=false;flush(kind,id);return}
  dirty.delete(key);setSync()}
-function setSync(){const el=$('#sync');if(!el)return;el.className='sync';
+function setSync(){const sb=$('#navSave');if(sb){const d=dirty.size>0||syncState==='saving';sb.classList.toggle('dirty',d);sb.textContent=d?'💾 Save':'✓ Saved'}const el=$('#sync');if(!el)return;el.className='sync';
  if(syncState==='saving')el.textContent='Saving…';
  else if(syncState==='err'){el.textContent=syncErr;el.classList.add('err')}
  else if(syncState==='slow')el.textContent='Cloud not reachable yet — working from this device';
@@ -699,6 +705,8 @@ const ACT={
  home(){S.view='home';closeOv();render();scrollTo(0,0)},
  settings(){S.view='settings';render();scrollTo(0,0)},
  hist(){S.view='hist';render();scrollTo(0,0)},
+ async saveNow(){await saveAll();toast(syncState==='err'?syncErr:'✓ All changes saved')},
+ async refresh(){await doRefresh()},
  quickDisc(t){const p=cur();p.discType=t.dataset.t;p.discount=+t.dataset.v;touch(p);render()},
  addLic(){const p=cur();p.lic.items.push({name:'',type:'mo',amount:'',qty:1});touch(p);render()},
  rmLic(t){const p=cur();p.lic.items.splice(+t.dataset.i,1);touch(p);render()},
@@ -772,6 +780,21 @@ app.addEventListener('change',e=>{const t=e.target;
  else if(t.dataset.add==='comp'&&t.value){const p=cur();if(!p.comps.includes(t.value))p.comps.push(t.value);touch(p);render()}
  else if(t.dataset.rr!==undefined){render()}
  else if(t.dataset.k&&t.type==='number'){updateCalc()}});
+
+/* ================= save / refresh / pull-to-refresh ================= */
+async function saveAll(){const keys=[...dirty];keys.forEach(k=>clearTimeout(timers[k]));
+ await Promise.all(keys.map(k=>{const i=k.indexOf(':');return flush(k.slice(0,i),k.slice(i+1)||undefined)}));persistLocal();setSync()}
+let refreshing=false;
+async function doRefresh(){if(refreshing)return;refreshing=true;const b=$('#navRef');if(b)b.textContent='⟳ …';
+ try{await saveAll();if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();
+  if(typeof window.__dbRefresh==='function'){await window.__dbRefresh();render();toast('✓ Up to date')}
+  else{location.reload();return}}catch(e){toast('Could not refresh — check your connection')}
+ refreshing=false;if(b)b.textContent='⟳ Refresh'}
+(function(){let y0=null,pull=0;const ptr=()=>$('#ptr');
+ addEventListener('touchstart',e=>{y0=(scrollY<=0&&$('#ov').classList.contains('hidden'))?e.touches[0].clientY:null;pull=0},{passive:true});
+ addEventListener('touchmove',e=>{if(y0==null)return;pull=e.touches[0].clientY-y0;if(pull>0&&scrollY<=0){const d=Math.min(pull*0.5,70);ptr().style.transform=`translate(-50%,${d-50}px)`;ptr().textContent=pull>110?'↻ Release to refresh':'↓ Pull to refresh'}},{passive:true});
+ addEventListener('touchend',()=>{if(y0==null)return;const go=pull>110;y0=null;pull=0;if(go){ptr().textContent='Refreshing…';doRefresh().then(()=>{ptr().style.transform='translate(-50%,-60px)'})}else ptr().style.transform='translate(-50%,-60px)'},{passive:true});})();
+addEventListener('beforeunload',e=>{if(dirty.size){saveAll();e.preventDefault();e.returnValue=''}});
 
 /* ================= boot ================= */
 loadLocal();render();setSync();connect();
