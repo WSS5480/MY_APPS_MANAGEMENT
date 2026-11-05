@@ -9,7 +9,7 @@ const PORT = process.env.PORT || 10000;
 const PIN = String(process.env.APP_PIN || '');
 const SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const SYNC_TOKEN = process.env.SYNC_TOKEN || '';
-const COLS = new Set(['projects', 'settings', 'history', 'meta']);
+const COLS = new Set(['projects', 'settings', 'history', 'meta', 'customers', 'invoices', 'ledger', 'banktx', 'closes']);
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,

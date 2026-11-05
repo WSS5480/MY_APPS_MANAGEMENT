@@ -108,14 +108,18 @@ html,body{overscroll-behavior-y:contain}
 .paper .d-sig>div{flex:1;min-width:220px}
 .paper .d-sigl{border-bottom:1px solid #333;height:34px}
 .paper .d-foot{margin-top:24px;font-size:10.5px;color:#777;text-align:center}
-@media (max-width:600px){.wrap{padding:10px 10px 130px}.paper{padding:.35in .3in}.paper .d-right{text-align:left}.kpi .v{font-size:18px}}
+#navSel{display:none;width:auto;flex:1 1 150px;background:#1b2440;color:#fff;border-color:#33405e;font-weight:600}
+@media (max-width:600px){header .in{gap:6px;padding:8px 10px}.brand small{display:none}.brand{font-size:14.5px;min-width:0;flex:1 1 100%}#navSel{display:block}.nav button:not(#navSave):not(#navRef){display:none}.nav{flex:0 0 auto}.nav button{padding:7px 10px}.sync{font-size:10.5px}.wrap{padding:10px 10px 130px}.paper{padding:.35in .3in}.paper .d-right{text-align:left}.kpi .v{font-size:18px}}
 </style>
 </head>
 <body>
 <header><div class="in">
   <div class="brand"><span id="brandName">Dev Billing</span><small>Estimates · Scope · Final Bill · Monthly</small></div>
+  <select id="navSel" aria-label="Go to"><option value="home">📁 Projects</option><option value="custs">👥 Customers</option><option value="ar">💵 A/R</option><option value="hist">📊 Build History</option><option value="settings">⚙️ Settings</option><option value="getApp">⬇ Get the app</option></select>
   <div class="nav row">
     <button data-act="home" id="navHome" class="on">Projects</button>
+    <button data-act="custs" id="navCust">Customers</button>
+    <button data-act="ar" id="navAR">A/R</button>
     <button data-act="hist" id="navHist">Build History</button>
     <button data-act="saveNow" id="navSave" title="Save changes">💾 Save</button>
     <button data-act="refresh" id="navRef" title="Refresh">⟳ Refresh</button>
@@ -249,11 +253,11 @@ function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clea
 
 /* ================= state ================= */
 function defSettings(){return{biz:{name:'Steve Smith',owner:'',email:'',phone:'',address:'',website:'',payInfo:'Checks payable to Steve Smith. ACH / Zelle details provided on request.'},
- rates:[{id:'dev',name:'Developer',rate:125},{id:'des',name:'UI/UX Design',rate:95},{id:'pm',name:'Project Management',rate:85}],
+ banks:[],rates:[{id:'dev',name:'Developer',rate:125},{id:'des',name:'UI/UX Design',rate:95},{id:'pm',name:'Project Management',rate:85}],
  d:{contingency:10,deposit:50,tax:0,terms:15,markup:30,hpw:25,trackAllow:25,warranty:30,invPrefix:'INV-',nextInv:1001,estValid:30,cancelDays:30,lateFee:1.5,law:'Texas',venue:'Hidalgo County, Texas',licCap:5,near:'McAllen, TX'},
  oos:DEF_OOS,assume:DEF_ASSUME,resp:DEF_RESP}}
 function mergeSettings(s){const d=defSettings();if(!s)return d;return{...d,...s,biz:{...d.biz,...(s.biz||{})},d:{...d.d,...(s.d||{})},rates:(s.rates&&s.rates.length)?s.rates:d.rates}}
-const S={settings:defSettings(),projects:{},hist:{},histMeta:null,view:'home',pid:null,tab:'client',q:'',f:'All',hq:'',hsort:'hours'};
+const S={settings:defSettings(),projects:{},customers:{},invoices:{},ledger:{},banktx:{},closes:{},hist:{},histMeta:null,view:'home',pid:null,tab:'client',q:'',f:'All',hq:'',hsort:'hours'};
 function cur(){return S.projects[S.pid]}
 function rate(id){const r=S.settings.rates.find(x=>x.id===id);return r?num(r.rate):num((S.settings.rates[0]||{}).rate)}
 function newProject(){const d=S.settings.d;return{id:uid(),created:Date.now(),updated:Date.now(),status:'Estimate',
@@ -276,7 +280,7 @@ function calcBill(p){const E=calcEst(p),inv=p.invoice;const rows=[];let base=0;
  if(inv.mode==='actual'){p.lines.forEach(l=>{if(l.type==='exp'){const a=num(l.qty)*num(l.cost);rows.push({desc:l.desc,detail:`${fh(l.qty)} × ${money(l.cost)}`,amt:a});base+=a}else{const ah=actualHrs(l,E.cx),a=ah*num(l.rate);rows.push({desc:l.desc,detail:`${fh(ah)} hrs × ${money(l.rate)}/hr`,amt:a});base+=a}})}
  else{rows.push({desc:`${p.name||'Project'} — complete build per approved estimate / SOW`,detail:'Fixed price'+(E.disc?` · includes ${money(E.disc)} discount${p.discLabel?' ('+esc(p.discLabel)+')':''}`:''),amt:E.total});base=E.total}
  let co=0;const cos=inv.changeOrders.map(c=>{const a=num(c.hours)*num(c.rate);co+=a;return a});
- const credit=num(inv.credit),pre=base+co-credit,tax=pre*num(inv.tax)/100,total=pre+tax,paid=inv.payments.reduce((s,x)=>s+num(x.amount),0);
+ const credit=num(inv.credit),pre=base+co-credit,tax=pre*num(inv.tax)/100,total=pre+tax,arv=inv.arId&&S.invoices&&S.invoices[inv.arId],paid=arv?invCalc(arv).paid:inv.payments.reduce((s,x)=>s+num(x.amount),0);
  const actHrs=p.lines.filter(l=>l.type!=='exp').reduce((s,l)=>s+actualHrs(l,E.cx),0);
  return{E,rows,base,co,cos,credit,tax,total,paid,balance:total-paid,actHrs,variance:base-(inv.mode==='actual'?E.total:base)}}
 function calcMo(p){let price=0,cost=0;const items=p.monthly.items.map(it=>{const f=it.cycle==='yr'?1/12:1,pr=num(it.price)*f,c=num(it.cost)*f;price+=pr;cost+=c;return{pr,c,m:pr-c}});
@@ -306,15 +310,18 @@ function calcMap(p){const E=calcEst(p),B=calcBill(p),M=calcMo(p),m={};
 /* ================= persistence ================= */
 let DB=null,DL=null,readOnly=false,syncState='local',syncErr='';
 const dirty=new Set(),timers={},inflight={},again={};
-function persistLocal(){try{localStorage.setItem('devbill.v1',JSON.stringify({settings:S.settings,projects:S.projects}))}catch(e){}}
-function loadLocal(){try{const r=JSON.parse(localStorage.getItem('devbill.v1')||'null');if(r){S.settings=mergeSettings(r.settings);S.projects=r.projects||{};Object.values(S.projects).forEach(fix)}}catch(e){}}
+function persistLocal(){try{localStorage.setItem('devbill.v1',JSON.stringify({settings:S.settings,projects:S.projects,customers:S.customers,invoices:S.invoices,ledger:S.ledger,banktx:S.banktx,closes:S.closes}))}catch(e){}}
+function loadLocal(){try{const r=JSON.parse(localStorage.getItem('devbill.v1')||'null');if(r){S.settings=mergeSettings(r.settings);S.projects=r.projects||{};['customers','invoices','ledger','banktx','closes'].forEach(k=>{S[k]=r[k]||{}});Object.values(S.projects).forEach(fix)}}catch(e){}}
 function queueSave(kind,id){persistLocal();const key=kind+':'+(id||'');dirty.add(key);clearTimeout(timers[key]);syncState='saving';setSync();timers[key]=setTimeout(()=>flush(kind,id),700)}
+const COLMAP={c:['customers',()=>S.customers],i:['invoices',()=>S.invoices],l:['ledger',()=>S.ledger],b:['banktx',()=>S.banktx],k:['closes',()=>S.closes]};
 async function flush(kind,id){const key=kind+':'+(id||'');
  if(!DB){dirty.delete(key);syncState='local';setSync();return}
  if(inflight[key]){again[key]=true;return}
  inflight[key]=true;
  try{if(kind==='set')await DB.doc('settings/main').set(clone(S.settings));
   else if(kind==='del')await DB.doc('projects/'+id).delete();
+  else if(kind[0]==='x'&&COLMAP[kind[1]])await DB.doc(COLMAP[kind[1]][0]+'/'+id).delete();
+  else if(COLMAP[kind]){const o=COLMAP[kind][1]()[id];if(o)await DB.doc(COLMAP[kind][0]+'/'+id).set(clone(o))}
   else if(S.projects[id])await DB.doc('projects/'+id).set(clone(S.projects[id]));
   syncState='cloud';syncErr=''}
  catch(e){syncState='err';syncErr=(e&&e.code)==='quota_exceeded'?'Storage is full — delete old projects.':(e&&e.code)==='invalid_argument'?'You have view-only access; changes stay on this device.':'Could not reach the cloud; saved on this device.';if(e&&e.code==='invalid_argument')readOnly=true}
@@ -342,6 +349,7 @@ async function connect(){
   },e=>{syncState='err';syncErr='Cloud sync stopped; saved on this device.';setSync()});
   DB.collection('history').onSnapshot(snap=>{S.hist={};snap.docs.forEach(d=>{S.hist[d.id]=d.data()});softRender()},()=>{});
   DB.doc('meta/sync').onSnapshot(snap=>{S.histMeta=snap.exists?snap.data():null;softRender()},()=>{});
+  Object.entries(COLMAP).forEach(([k,[col,get]])=>DB.collection(col).onSnapshot(snap=>{const st=get();snap.docChanges().forEach(ch=>{const id=ch.doc.id;if(dirty.has(k+':'+id)||dirty.has('x'+k+':'+id)||ch.doc.metadata.hasPendingWrites)return;if(ch.type==='removed')delete st[id];else st[id]=clone(ch.doc.data())});persistLocal();softRender()},()=>{}));
   DB.collection('projects').onSnapshot(snap=>{
     if(!snap.metadata.fromCache){clearTimeout(timer);if(syncState==='slow')syncState='cloud'}
     if(!gotP&&!snap.metadata.fromCache){gotP=true;
@@ -356,10 +364,13 @@ async function connect(){
 
 /* ================= render: shell ================= */
 function updateBrand(){$('#brandName').textContent=(S.settings.biz.name||'Dev')+' — Dev Billing'}
-function render(){updateBrand();$('#navHome').classList.toggle('on',S.view==='home');$('#navSet').classList.toggle('on',S.view==='settings');$('#navHist').classList.toggle('on',S.view==='hist');
+function render(){updateBrand();{const ns=document.getElementById('navSel');if(ns)ns.value=S.view==='cust'?'custs':S.view==='project'?'home':S.view}$('#navHome').classList.toggle('on',S.view==='home');$('#navSet').classList.toggle('on',S.view==='settings');$('#navHist').classList.toggle('on',S.view==='hist');$('#navCust').classList.toggle('on',S.view==='custs'||S.view==='cust');$('#navAR').classList.toggle('on',S.view==='ar');
  const app=$('#app');
  if(S.view==='settings'){app.innerHTML=rSettings();$('#bar').style.display='none'}
  else if(S.view==='hist'){app.innerHTML=rHist();$('#bar').style.display='none'}
+ else if(S.view==='custs'){app.innerHTML=rCusts();$('#bar').style.display='none'}
+ else if(S.view==='cust'){app.innerHTML=rCust();$('#bar').style.display='none'}
+ else if(S.view==='ar'){app.innerHTML=rAR();$('#bar').style.display='none'}
  else if(S.view==='project'&&cur()){app.innerHTML=rProject();renderBar()}
  else{S.view='home';app.innerHTML=rHome();$('#bar').style.display='none'}
  updateCalc()}
@@ -369,18 +380,18 @@ function renderBar(){$('#bar').style.display='block';
  $('#barIn').innerHTML=`<div>Estimate<b data-c="est.total"></b></div><div>Hours<b data-c="est.hrs"></b></div><div>Final bill<b data-c="bill.total"></b></div><div>Balance due<b data-c="bill.balance"></b></div><div>Monthly + license<b data-c="all.mo"></b></div>`}
 
 /* ================= render: home ================= */
-function rHome(){const ps=Object.values(S.projects);let pipe=0,active=0,out=0,coll=0,mrr=0,mrrM=0,nP=0,nA=0,nO=0,nM=0;
+function rHome(){const _arOpen=Object.values(S.invoices).map(invCalc).filter(c=>c.bal>0);const ps=Object.values(S.projects);let pipe=0,active=0,out=0,coll=0,mrr=0,mrrM=0,nP=0,nA=0,nO=0,nM=0;
  ps.forEach(p=>{const E=calcEst(p),B=calcBill(p),M=calcMo(p);
   if(p.status==='Estimate'||p.status==='Sent'){pipe+=E.total;nP++}
   if(p.status==='Approved'||p.status==='In Progress'){active+=E.total;nA++}
-  if(p.status==='Invoiced'){out+=B.balance;nO++}
+  if(p.status==='Invoiced'&&!(p.invoice.arId&&S.invoices[p.invoice.arId])){out+=B.balance;nO++}
   coll+=B.paid;
   if(p.monthly.active&&p.status!=='Lost'){const Lc=calcLic(p);mrr+=M.price+Lc.mo;mrrM+=M.margin+Lc.mo;nM++}});
  return `<div class="row" style="margin-top:6px"><h1 class="grow">Projects</h1><button class="btn p" data-act="new">+ New Project</button></div>
  <div class="kpis">
   <div class="kpi"><div class="l">Pipeline (quoted)</div><div class="v">${money0(pipe)}</div><div class="s">${nP} estimate${nP==1?'':'s'} out</div></div>
   <div class="kpi"><div class="l">Active builds</div><div class="v">${money0(active)}</div><div class="s">${nA} approved / in progress</div></div>
-  <div class="kpi"><div class="l">Outstanding A/R</div><div class="v">${money0(out)}</div><div class="s">${nO} invoiced, unpaid</div></div>
+  <div class="kpi pcard" data-act="ar"><div class="l">Outstanding A/R</div><div class="v">${money0(out+_arOpen.reduce((a,c)=>a+c.bal,0))}</div><div class="s">${nO+_arOpen.length} unpaid invoice${nO+_arOpen.length==1?'':'s'}</div></div>
   <div class="kpi"><div class="l">Collected</div><div class="v">${money0(coll)}</div><div class="s">all payments logged</div></div>
   <div class="kpi"><div class="l">Monthly recurring</div><div class="v">${money0(mrr)}/mo</div><div class="s">${nM} client${nM==1?'':'s'} · ${money0(mrrM)}/mo margin</div></div>
  </div>
@@ -410,7 +421,8 @@ function rClient(p){return `<div class="card"><div class="row"><h2 class="grow" 
  <div style="margin-top:10px">${T('What are we building? (short description — used in the estimate & SOW)','desc',p.desc,4)}</div>
  <label class="f" style="margin-top:8px">📋 Use a similar project for reference<select data-add="copyDesc"><option value="">Pick a past project or build…</option>${copyOpts(p,'desc')}</select></label>
  <div class="grid" style="margin-top:10px">${F('Target start','start',p.start,'date')}${F('Target launch','launch',p.launch,'date')}</div></div>
- <div class="card"><h2>Client</h2><div class="grid g2">${F('Contact name','client.name',p.client.name)}<label class="f">Company<div class="row" style="flex-wrap:nowrap"><input data-k="client.company" value="${esc(p.client.company)}" placeholder="Type the company name, then Fill"><button class="btn p" data-act="lookup" title="Look up company info">🔎 Fill</button></div></label>${F('Email','client.email',p.client.email,'email')}${F('Phone','client.phone',p.client.phone,'tel')}${F('Website','client.website',p.client.website||'')}</div><div id="lookupBox"></div>
+ <div class="card"><div class="row"><h2 class="grow" style="margin:0">Client</h2>${p.customerId&&S.customers[p.customerId]?`<button class="btn sm" data-act="openCust" data-id="${esc(p.customerId)}">Open account →</button>`:''}</div>
+ <label class="f" style="margin:10px 0">Customer account<select data-add="setCust"><option value="">${p.customerId&&S.customers[p.customerId]?'— unlink —':'Not linked — pick a customer…'}</option>${custOpts(p.customerId)}<option value="__new">+ New customer from the info below</option></select></label><div class="grid g2">${F('Contact name','client.name',p.client.name)}<label class="f">Company<div class="row" style="flex-wrap:nowrap"><input data-k="client.company" value="${esc(p.client.company)}" placeholder="Type the company name, then Fill"><button class="btn p" data-act="lookup" title="Look up company info">🔎 Fill</button></div></label>${F('Email','client.email',p.client.email,'email')}${F('Phone','client.phone',p.client.phone,'tel')}${F('Website','client.website',p.client.website||'')}</div><div id="lookupBox"></div>
  <div style="margin-top:10px">${T('Billing address','client.address',p.client.address,3)}</div></div>
  ${rLinkCard(p)}
  <div class="row"><div class="grow"></div><button class="btn p" data-act="tab" data-t="est">Next: Build the estimate →</button></div>`}
@@ -482,9 +494,10 @@ function rBill(p){const inv=p.invoice,E=calcEst(p);const dueAuto=addDays(inv.dat
  <div class="card"><div class="row"><h2 class="grow" style="margin:0">Change orders / extra work</h2><button class="btn sm" data-act="addCO">+ Change order</button></div>
   ${inv.changeOrders.map((c,i)=>`<div class="line"><div class="top"><input data-k="invoice.changeOrders.${i}.desc" value="${esc(c.desc)}" placeholder="What was added"><button class="x" data-act="rmCO" data-i="${i}">×</button></div>
    <div class="grid" style="margin-top:8px">${F('Hours',`invoice.changeOrders.${i}.hours`,c.hours,'number')}${F('Rate ($/hr)',`invoice.changeOrders.${i}.rate`,c.rate,'number')}<label class="f">Amount<div class="amt" style="padding:9px 0" data-c="co.${i}"></div></label></div></div>`).join('')||'<div class="sm mut" style="margin-top:8px">None. Add anything the client asked for beyond the SOW.</div>'}</div>
- <div class="card"><div class="row"><h2 class="grow" style="margin:0">Payments received</h2><button class="btn sm" data-act="addDep">+ Deposit (${money0(E.deposit)})</button><button class="btn sm" data-act="addPay">+ Payment</button></div>
+ ${rArCard(p)}
+ ${inv.arId&&S.invoices[inv.arId]?'':`<div class="card"><div class="row"><h2 class="grow" style="margin:0">Payments received</h2><button class="btn sm" data-act="addDep">+ Deposit (${money0(E.deposit)})</button><button class="btn sm" data-act="addPay">+ Payment</button></div>
   ${inv.payments.map((x,i)=>`<div class="line"><div class="top"><input data-k="invoice.payments.${i}.label" value="${esc(x.label)}" placeholder="Check #, Zelle, ACH…"><button class="x" data-act="rmPay" data-i="${i}">×</button></div>
-   <div class="grid" style="margin-top:8px">${F('Date',`invoice.payments.${i}.date`,x.date,'date')}${F('Amount ($)',`invoice.payments.${i}.amount`,x.amount,'number')}</div></div>`).join('')||'<div class="sm mut" style="margin-top:8px">No payments logged yet.</div>'}</div>
+   <div class="grid" style="margin-top:8px">${F('Date',`invoice.payments.${i}.date`,x.date,'date')}${F('Amount ($)',`invoice.payments.${i}.amount`,x.amount,'number')}</div></div>`).join('')||'<div class="sm mut" style="margin-top:8px">No payments logged yet.</div>'}</div>`}
  <div class="card"><h2>Final bill</h2>
   <div class="tot"><span>Project ${inv.mode==='actual'?'(actual hours + expenses)':'(fixed price)'}</span><span data-c="bill.base"></span></div>
   <div class="tot"><span>Change orders</span><span data-c="bill.co"></span></div>
@@ -543,7 +556,7 @@ function rLic(p){const L=p.lic;const presets=LIC_PRESETS.map((x,i)=>`<option val
   <div class="tot"><span>Client's total monthly (services + license)</span><b data-c="all.mo"></b></div>
   <div class="grid" style="margin-top:10px">${F('License invoice #','lic.invNo',L.invNo)}</div>
   <div style="margin-top:10px">${T('Extra terms / notes for the agreement','lic.notes',L.notes,3)}</div>
-  <div class="row" style="margin-top:12px"><button class="btn p" data-act="doc" data-kind="licAgree">📄 Software License Agreement</button><button class="btn" data-act="doc" data-kind="licInv">📄 License invoice</button></div>
+  <div class="row" style="margin-top:12px"><button class="btn p" data-act="doc" data-kind="licAgree">📄 Software License Agreement</button><button class="btn" data-act="doc" data-kind="licInv">📄 License invoice</button>${L.arId&&S.invoices[L.arId]?`<button class="btn" data-act="openAR">📌 In A/R: ${esc(S.invoices[L.arId].number)} (${invCalc(S.invoices[L.arId]).st})</button>`:`<button class="btn g" data-act="postLic">📌 Post license invoice to A/R</button>`}</div>
   <div class="sm mut" style="margin-top:8px">The agreement is a template. Have an attorney review it before you sign with a client.</div></div>`}
 
 /* ================= build history (GitHub + Render) ================= */
@@ -610,6 +623,190 @@ function rHistList(){const allow=num(S.settings.d.trackAllow),dr=rate('dev');let
  <div id="hd-${esc(h.id)}" style="display:none;margin-top:10px">${svs.length?svs.map(s=>`<div class="line"><div class="row"><b class="grow">${esc(s.name)}</b><span class="badge">${esc(planLabel(s))}</span></div><div class="sm mut" style="margin-top:4px">${esc(s.workspace||'')} workspace · ${s.type==='postgres'?esc(s.status||''):`${num(s.deployCount)} deploys${s.failedCount?` (${s.failedCount} failed)`:''} ${num(s.buildMinutes)?` · ${fh(s.buildMinutes)} build min`:''}`} · ${money(svcCost(s))}/mo${s.firstDeploy?` · first deploy ${fmtDate(String(s.firstDeploy).slice(0,10))}`:''}</div>${s.expires?`<div class="note" style="margin:6px 0 0">Free database ${s.status&&s.status.startsWith('suspended')?'expired':'expires'} ${fmtDate(s.expires)} — upgrade to keep the data.</div>`:''}${s.url?`<div class="sm" style="margin-top:4px"><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.url.replace('https://',''))}</a></div>`:''}</div>`).join(''):'<div class="sm mut">No Render service found for this repo.</div>'}
  ${used.length?`<div class="sm mut">Linked to: ${used.map(esc).join(', ')}</div>`:''}</div></div>`}).join('')}
 
+/* ================= customers · A/R · ledger · banking (modeled on the Ácasa back office) ================= */
+const METHODS=['ACH','Check','Card','Zelle','Wire','Cash','Other'];
+const AR_TYPES={project:'Project',monthly:'Monthly',license:'License',other:'Other'};
+const ym=d=>String(d||'').slice(0,7);
+const monthLabel=m=>{if(!m)return'';const [y,mo]=m.split('-');return new Date(+y,+mo-1,15).toLocaleDateString('en-US',{month:'long',year:'numeric'})};
+const addMonths=(m,n)=>{const [y,mo]=m.split('-').map(Number);const d=new Date(y,mo-1+n,15);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')};
+function bankLabel(id){const b=(S.settings.banks||[]).find(x=>x.id===id);return b?`${b.name||'Account'}${b.last4?' ••'+b.last4:''}`:'No account'}
+function isClosed(date){const c=S.closes[ym(date)];return !!(c&&c.finalizedAt)}
+function nextInvNo(){const d=S.settings.d;const n=(d.invPrefix||'')+num(d.nextInv);d.nextInv=num(d.nextInv)+1;queueSave('set');return n}
+const custName=c=>c?(c.company||c.name||'Unnamed customer'):'—';
+const custProjects=cid=>Object.values(S.projects).filter(p=>p.customerId===cid);
+const custInvoices=cid=>Object.values(S.invoices).filter(v=>v.customerId===cid).sort((a,b)=>String(b.date).localeCompare(String(a.date)));
+const invEntries=iid=>Object.values(S.ledger).filter(e=>e.invId===iid).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+function invCalc(v){const total=r2(num(v.total));const paid=r2(invEntries(v.id).reduce((a,e)=>a+num(e.amount),0));const bal=v.status==='void'?0:r2(total-paid);const today=iso();
+ let st=v.status==='void'?'Void':bal<=0.004?'Paid':paid>0?'Partial':'Open';const days=v.due?Math.round((new Date(today+'T12:00:00')-new Date(v.due+'T12:00:00'))/864e5):0;
+ if((st==='Open'||st==='Partial')&&days>0)st='Overdue';return{total,paid,bal,st,days}}
+function custCalc(cid){let billed=0,paid=0,bal=0,over=0,last='';custInvoices(cid).forEach(v=>{if(v.status==='void')return;const c=invCalc(v);billed+=c.total;paid+=c.paid;bal+=c.bal;if(c.st==='Overdue')over+=c.bal});
+ Object.values(S.ledger).forEach(e=>{if(e.customerId===cid&&e.kind==='payment'&&e.date>last)last=e.date});
+ const rec=custRecurring(cid).filter(x=>x.cycle==='mo'&&x.active).reduce((a,x)=>a+x.amount,0);return{billed:r2(billed),paid:r2(paid),bal:r2(bal),over:r2(over),last,mrr:r2(rec)}}
+function custRecurring(cid){const out=[];custProjects(cid).forEach(p=>{if(p.status==='Lost')return;const M=calcMo(p),L=calcLic(p);
+  p.monthly.items.forEach((it,i)=>out.push({key:p.id+':m'+i,pid:p.id,proj:p.name,desc:it.name||'Service',cycle:it.cycle==='yr'?'yr':'mo',amount:r2(it.cycle==='yr'?num(it.price):M.items[i].pr),kind:'Monthly services',active:!!p.monthly.active,start:p.monthly.start}));
+  p.lic.items.forEach((it,i)=>{if(it.type==='once'||!num(it.amount))return;out.push({key:p.id+':l'+i,pid:p.id,proj:p.name,desc:it.name||'License fee',cycle:it.type==='yr'?'yr':'mo',amount:r2(it.type==='yr'?L.items[i].a:L.items[i].m),kind:'License',active:true,start:p.lic.start})});
+  if(L.admin)out.push({key:p.id+':adm',pid:p.id,proj:p.name,desc:'Administrative fee',cycle:'mo',amount:r2(L.admin),kind:'License',active:true,start:p.lic.start})});return out}
+function ledgerAdd(e){const id=uid();S.ledger[id]={id,created:Date.now(),...e};queueSave('l',id);return S.ledger[id]}
+function newCustomer(c){const id=uid();S.customers[id]={id,created:Date.now(),company:'',name:'',email:'',billEmail:'',phone:'',address:'',website:'',terms:'',notes:'',...(c||{})};queueSave('c',id);return S.customers[id]}
+function findOrCreateCustomer(p){const k=norm(p.client.company||p.client.name);if(!k)return null;
+ let c=Object.values(S.customers).find(x=>norm(x.company||x.name)===k);if(!c)c=newCustomer({company:p.client.company,name:p.client.name,email:p.client.email,phone:p.client.phone,address:p.client.address,website:p.client.website||''});
+ p.customerId=c.id;touch(p);return c}
+function aging(){const b={cur:0,d30:0,d60:0,d90:0,d90p:0};Object.values(S.invoices).forEach(v=>{const c=invCalc(v);if(c.bal<=0)return;if(c.days<=0)b.cur+=c.bal;else if(c.days<=30)b.d30+=c.bal;else if(c.days<=60)b.d60+=c.bal;else if(c.days<=90)b.d90+=c.bal;else b.d90p+=c.bal});return b}
+const stBadge=st=>`<span class="badge ${({Paid:'b-Paid',Overdue:'b-Lost',Partial:'b-Approved',Open:'b-Sent',Void:''})[st]||''}">${st}</span>`;
+const custOpts=sel=>Object.values(S.customers).sort((a,b)=>custName(a).localeCompare(custName(b))).map(c=>`<option value="${esc(c.id)}" ${c.id===sel?'selected':''}>${esc(custName(c))}</option>`).join('');
+const bankOpts=sel=>(S.settings.banks||[]).map(b=>`<option value="${esc(b.id)}" ${b.id===sel?'selected':''}>${esc(bankLabel(b.id))}</option>`).join('');
+
+/* ---------- create invoices ---------- */
+function postProjectInvoice(p){const c=p.customerId&&S.customers[p.customerId]||findOrCreateCustomer(p);if(!c){toast('Add the client company or name first (Client tab)');return}
+ const B=calcBill(p),inv=p.invoice;const lines=B.rows.map(r=>({desc:r.desc+(r.detail?' — '+r.detail:''),amount:r2(r.amt),pid:p.id}));
+ inv.changeOrders.forEach((co,i)=>lines.push({desc:'Change order: '+(co.desc||'extra work')+` — ${fh(co.hours)} hrs × ${money(co.rate)}`,amount:r2(B.cos[i]),pid:p.id}));
+ if(B.credit)lines.push({desc:'Credit / discount',amount:-r2(B.credit),pid:p.id});if(B.tax)lines.push({desc:`Sales tax (${fh(inv.tax)}%)`,amount:r2(B.tax),pid:p.id});
+ let v=inv.arId&&S.invoices[inv.arId];
+ if(v){if(isClosed(v.date)){toast(monthLabel(ym(v.date))+' is closed — reopen it to change this invoice');return}Object.assign(v,{lines,total:r2(B.total),customerId:c.id,due:inv.due||addDays(v.date,S.settings.d.terms),updated:Date.now()});queueSave('i',v.id);toast('A/R invoice '+v.number+' updated');return v}
+ const date=inv.date||iso();if(isClosed(date)){toast(monthLabel(ym(date))+' is closed — change the invoice date or reopen the month');return}
+ const number=inv.number||nextInvNo();inv.number=number;const id=uid();
+ v=S.invoices[id]={id,number,customerId:c.id,type:'project',projectIds:[p.id],date,due:inv.due||addDays(date,S.settings.d.terms),period:'',lines,total:r2(B.total),status:'open',notes:inv.notes||'',created:Date.now()};
+ inv.arId=id;queueSave('i',id);
+ (inv.payments||[]).forEach(x=>{if(num(x.amount))ledgerAdd({date:x.date||date,kind:'payment',amount:r2(num(x.amount)),invId:id,invNo:number,customerId:c.id,custName:custName(c),method:/ach/i.test(x.label)?'ACH':/check|chk/i.test(x.label)?'Check':/zelle/i.test(x.label)?'Zelle':/card|stripe/i.test(x.label)?'Card':'Other',bankId:'',ref:x.label||'',note:'Moved from project payments'})});
+ inv.payments=[];touch(p);toast(`Invoice ${number} posted to A/R for ${custName(c)}`);return v}
+function postLicenseInvoice(p){const c=p.customerId&&S.customers[p.customerId]||findOrCreateCustomer(p);if(!c){toast('Add the client company or name first (Client tab)');return}
+ const L=p.lic,Lc=calcLic(p);const lines=L.items.map((it,i)=>({desc:(it.name||'License fee')+({once:'',mo:' — first month',yr:' — first year',user:' — first month',loc:' — first month'})[it.type]+(num(it.qty)>1?` (${fh(it.qty)} × ${money(it.amount)})`:''),amount:r2(it.type==='yr'?Lc.items[i].a:Lc.items[i].o||Lc.items[i].m),pid:p.id})).filter(x=>x.amount);
+ if(Lc.admin)lines.push({desc:'Administrative fee — first month',amount:r2(Lc.admin),pid:p.id});if(!lines.length){toast('Add license fees first');return}
+ const date=iso();if(isClosed(date)){toast('This month is closed');return}const number=L.invNo||nextInvNo();L.invNo=number;const id=uid();
+ S.invoices[id]={id,number,customerId:c.id,type:'license',projectIds:[p.id],date,due:addDays(date,S.settings.d.terms),period:'',lines,total:r2(lines.reduce((a,x)=>a+x.amount,0)),status:'open',notes:'',created:Date.now()};
+ L.arId=id;queueSave('i',id);touch(p);toast(`License invoice ${number} posted to A/R`)}
+function createMonthly(cid,period,keys){const c=S.customers[cid];const rec=custRecurring(cid).filter(x=>keys.includes(x.key));if(!rec.length){toast('Pick at least one charge');return}
+ const date=iso();if(isClosed(date)){toast('This month is closed');return}const number=nextInvNo(),id=uid();
+ const lines=rec.map(x=>({desc:`${x.proj} — ${x.desc}${x.cycle==='yr'?' (yearly)':''}`,amount:x.amount,pid:x.pid}));
+ S.invoices[id]={id,number,customerId:cid,type:'monthly',projectIds:[...new Set(rec.map(x=>x.pid))],date,due:addDays(date,num(c.terms)||S.settings.d.terms),period,lines,total:r2(lines.reduce((a,x)=>a+x.amount,0)),status:'open',notes:'',created:Date.now()};
+ queueSave('i',id);toast(`Invoice ${number} for ${monthLabel(period)} created`);return S.invoices[id]}
+
+/* ---------- views: customers ---------- */
+function rCusts(){const cs=Object.values(S.customers);const q=norm(S.cq||'');const unl=Object.values(S.projects).filter(p=>!p.customerId&&(p.client.company||p.client.name));
+ let list=cs.map(c=>({c,k:custCalc(c.id)})).filter(x=>!q||norm([x.c.company,x.c.name,x.c.email].join(' ')).includes(q)).sort((a,b)=>b.k.bal-a.k.bal||custName(a.c).localeCompare(custName(b.c)));
+ return `<div class="row" style="margin-top:6px"><h1 class="grow">Customers</h1><button class="btn p" data-act="newCust">+ New customer</button></div>
+ ${unl.length?`<div class="note">${unl.length} project${unl.length==1?' isn’t':'s aren’t'} linked to a customer yet. <button class="btn sm" data-act="linkAllCust">Create & link customers from project clients</button></div>`:''}
+ <input placeholder="Search customers…" data-ui="cq" value="${esc(S.cq||'')}" style="margin:8px 0">
+ ${list.length?list.map(({c,k})=>`<div class="card pcard" data-act="openCust" data-id="${esc(c.id)}"><div class="row"><div class="grow"><b style="font-size:16px">${esc(custName(c))}</b><div class="mut sm">${esc([c.company&&c.name?c.name:'',c.email,c.phone].filter(Boolean).join(' · '))}</div></div>${k.over>0?'<span class="badge b-Lost">Overdue</span>':k.bal>0?'<span class="badge b-Sent">Open balance</span>':''}</div>
+  <div class="nums"><div>Projects<b>${custProjects(c.id).length}</b></div><div>Balance due<b>${money(k.bal)}</b></div><div>Monthly<b>${money(k.mrr)}/mo</b></div><div>Last payment<b>${k.last?fmtDate(k.last):'—'}</b></div></div></div>`).join(''):'<div class="card empty">No customers yet.</div>'}`}
+const CF=(lbl,k,v,type='text')=>`<label class="f">${lbl}<input type="${type}" data-cu="${k}" value="${esc(v||'')}"></label>`;
+function rCust(){const c=S.customers[S.cid];if(!c){S.view='custs';return rCusts()}const k=custCalc(c.id),ps=custProjects(c.id),rec=custRecurring(c.id),invs=custInvoices(c.id);
+ if(!S.genPeriod)S.genPeriod=ym(iso());const per=S.genPeriod;const ex=invs.find(v=>v.type==='monthly'&&v.period===per&&v.status!=='void');
+ const defOn=x=>x.active&&(x.cycle==='mo'||ym(x.start||'').slice(5)===per.slice(5));if(!S.genSel||S.genSelFor!==c.id+per){S.genSel=rec.filter(defOn).map(x=>x.key);S.genSelFor=c.id+per}
+ const acts=Object.values(S.ledger).filter(e=>e.customerId===c.id).sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,30);
+ return `<div class="row" style="margin-top:6px"><button class="btn sm" data-act="custs">← Customers</button><div class="grow"></div><button class="btn sm" data-act="doc" data-kind="stmt">📄 Statement</button><button class="btn sm d" data-act="delCust">Delete</button></div>
+ <h1>${esc(custName(c))}</h1>
+ <div class="kpis"><div class="kpi"><div class="l">Balance due</div><div class="v">${money(k.bal)}</div><div class="s">${k.over?money(k.over)+' overdue':'nothing overdue'}</div></div><div class="kpi"><div class="l">Monthly recurring</div><div class="v">${money(k.mrr)}/mo</div><div class="s">${rec.length} recurring charge${rec.length==1?'':'s'}</div></div><div class="kpi"><div class="l">Billed (all time)</div><div class="v">${money(k.billed)}</div><div class="s">${invs.length} invoice${invs.length==1?'':'s'}</div></div><div class="kpi"><div class="l">Paid (all time)</div><div class="v">${money(k.paid)}</div><div class="s">last ${k.last?fmtDate(k.last):'—'}</div></div></div>
+ <div class="card"><h2>Profile</h2><div class="grid g2">${CF('Company','company',c.company)}${CF('Contact name','name',c.name)}${CF('Email','email',c.email,'email')}${CF('Billing email (if different)','billEmail',c.billEmail,'email')}${CF('Phone','phone',c.phone,'tel')}${CF('Website','website',c.website)}${CF('Payment terms (days, blank = default)','terms',c.terms,'number')}</div>
+  <div class="grid g2" style="margin-top:10px"><label class="f">Billing address<textarea data-cu="address" rows="3">${esc(c.address||'')}</textarea></label><label class="f">Notes<textarea data-cu="notes" rows="3">${esc(c.notes||'')}</textarea></label></div></div>
+ <div class="card"><div class="row"><h2 class="grow" style="margin:0">Projects (${ps.length})</h2><button class="btn sm" data-act="newProjFor">+ New project</button></div>
+  ${ps.map(p=>{const E=calcEst(p),M=calcMo(p);return `<div class="line"><div class="row"><b class="grow">${esc(p.name)}</b><span class="badge b-${esc(p.status)}">${esc(p.status)}</span><button class="btn sm" data-act="open" data-id="${esc(p.id)}">Open</button></div><div class="sm mut" style="margin-top:4px">Estimate ${money0(E.total)} · Monthly ${money(M.price+calcLic(p).mo)}/mo${p.monthly.active?'':' (monthly off)'}${p.invoice.arId&&S.invoices[p.invoice.arId]?` · Invoice ${esc(S.invoices[p.invoice.arId].number)} ${invCalc(S.invoices[p.invoice.arId]).st}`:''}</div></div>`}).join('')||'<div class="sm mut" style="margin-top:8px">No projects linked. Link one from its Client tab.</div>'}</div>
+ <div class="card"><h2>Consolidated monthly invoice</h2><div class="sm mut">One bill for every recurring charge across ${esc(custName(c))}'s projects (monthly services, license and admin fees). Yearly charges are pre-checked in their anniversary month.</div>
+  <div class="row" style="margin:10px 0"><button class="btn sm" data-act="genPrev">‹</button><b style="min-width:150px;text-align:center">${monthLabel(per)}</b><button class="btn sm" data-act="genNext">›</button></div>
+  ${rec.length?rec.map(x=>`<label class="chk line" style="margin:6px 0"><input type="checkbox" data-gen="${esc(x.key)}" ${S.genSel.includes(x.key)?'checked':''}><span class="grow">${esc(x.proj)} — ${esc(x.desc)}<div class="sm mut">${esc(x.kind)} · ${x.cycle==='yr'?'yearly':'monthly'}${x.active?'':' · monthly plan off'}</div></span><b>${money(x.amount)}</b></label>`).join('')+`<div class="tot big"><span>Invoice total</span><span>${money(rec.filter(x=>S.genSel.includes(x.key)).reduce((a,x)=>a+x.amount,0))}</span></div>`:'<div class="sm mut">No recurring charges yet. Add them on a project’s Monthly or Licensing tab.</div>'}
+  ${ex?`<div class="note">Invoice ${esc(ex.number)} already exists for ${monthLabel(per)} (${money(ex.total)}).</div>`:''}
+  ${rec.length?`<button class="btn p" data-act="genInv" style="margin-top:8px">Create ${monthLabel(per)} invoice</button>`:''}</div>
+ <div class="card"><h2>Invoices</h2>${invs.length?invs.map(invCard).join(''):'<div class="sm mut">No invoices yet.</div>'}</div>
+ <div class="card"><h2>Account activity</h2>${acts.length?acts.map(e=>`<div class="tot"><span>${fmtDate(e.date)} · ${esc(kindLabel(e.kind))}${e.invNo?' · '+esc(e.invNo):''}<div class="sm mut">${esc([e.method,e.bankId?bankLabel(e.bankId):'',e.ref].filter(Boolean).join(' · '))}</div></span><b class="${num(e.amount)<0?'neg':''}">${money(e.amount)}</b></div>`).join(''):'<div class="sm mut">No payments yet.</div>'}</div>`}
+const kindLabel=k=>({payment:'Payment',reversal:'Payment reversed',refund:'Refund',adjustment:'Adjustment'})[k]||k;
+
+/* ---------- views: A/R ---------- */
+function invCard(v){const c=invCalc(v),cu=S.customers[v.customerId],open=S.payFor===v.id;const ents=invEntries(v.id);
+ return `<div class="line"><div class="row"><div class="grow"><b>${esc(v.number)}</b> · ${esc(custName(cu))} <span class="badge">${AR_TYPES[v.type]||v.type}</span><div class="sm mut">${fmtDate(v.date)} · due ${fmtDate(v.due)}${v.period?' · '+monthLabel(v.period):''}${c.st==='Overdue'?` · <b style="color:var(--bad)">${c.days} days late</b>`:''}</div></div>${stBadge(c.st)}</div>
+ <div class="nums" style="margin-top:8px"><div>Total<b>${money(c.total)}</b></div><div>Paid<b>${money(c.paid)}</b></div><div>Balance<b>${money(c.bal)}</b></div></div>
+ ${ents.length?`<div style="margin-top:6px">${ents.map(e=>`<div class="tot sm"><span>${fmtDate(e.date)} · ${esc(kindLabel(e.kind))} · ${esc(e.method||'')}${e.bankId?' → '+esc(bankLabel(e.bankId)):''}${e.ref?' · '+esc(e.ref):''}${e.matchTx||e.cleared?' <span class="badge b-Paid">✓ in bank</span>':''}</span><span>${money(e.amount)}${e.kind==='payment'&&!e.reversedBy?` <button class="x" style="width:26px;height:26px;font-size:14px" data-act="revPay" data-id="${esc(e.id)}" title="Reverse this payment">×</button>`:''}</span></div>`).join('')}</div>`:''}
+ <div class="row" style="margin-top:8px"><button class="btn sm" data-act="viewInv" data-id="${esc(v.id)}">📄 View</button>${c.bal>0?`<button class="btn sm g" data-act="payInv" data-id="${esc(v.id)}">+ Record payment</button>`:''}<button class="btn sm d" data-act="voidInv" data-id="${esc(v.id)}">${v.status==='void'?'Un-void':'Void'}</button></div>
+ ${open?`<div class="card" style="margin:8px 0 0;background:#f6fbf8"><div class="grid"><label class="f">Date<input type="date" id="pf-date" value="${iso()}"></label><label class="f">Amount ($)<input type="number" step="any" inputmode="decimal" id="pf-amt" value="${c.bal}"></label><label class="f">Method<select id="pf-method">${METHODS.map(m=>`<option>${m}</option>`).join('')}</select></label><label class="f">Deposited to<select id="pf-bank"><option value="">— pick account —</option>${bankOpts(S.lastBank)}</select></label><label class="f">Reference / ACH trace #<input id="pf-ref" placeholder="Trace #, check #, confirmation"></label><label class="f">Note<input id="pf-note"></label></div>
+  ${(S.settings.banks||[]).length?'':'<div class="sm mut" style="margin-top:6px">Add your bank accounts in Settings to track deposits by account.</div>'}
+  <div class="row" style="margin-top:8px"><button class="btn p" data-act="savePay" data-id="${esc(v.id)}">Save payment</button><button class="btn" data-act="payInv" data-id="">Cancel</button></div></div>`:''}</div>`}
+const AR_TABS=[['inv','Invoices'],['cust','By customer'],['reg','Register'],['bank','Banking'],['close','Month close']];
+function rAR(){const t=S.arTab||'inv';return `<div class="row" style="margin-top:6px"><h1 class="grow">Accounts Receivable</h1></div>
+ <div class="tabs">${AR_TABS.map(([k,l])=>`<button data-act="arTab" data-t="${k}" class="${t===k?'on':''}">${l}</button>`).join('')}</div>
+ ${t==='inv'?rARInv():t==='cust'?rARCust():t==='reg'?rARReg():t==='bank'?rARBank():rARClose()}`}
+function rARInv(){const ag=aging(),m=ym(iso());let open=0,over=0;Object.values(S.invoices).forEach(v=>{const c=invCalc(v);open+=c.bal;if(c.st==='Overdue')over+=c.bal});
+ const coll=Object.values(S.ledger).filter(e=>ym(e.date)===m).reduce((a,e)=>a+num(e.amount),0);const unrec=Object.values(S.ledger).filter(e=>e.kind==='payment'&&!e.reversedBy&&!e.matchTx&&!e.cleared).reduce((a,e)=>a+num(e.amount),0);
+ const f=S.arF||'Unpaid',fc=S.arC||'';let vs=Object.values(S.invoices).map(v=>({v,c:invCalc(v)}));
+ if(f==='Unpaid')vs=vs.filter(x=>x.c.bal>0);else if(f!=='All')vs=vs.filter(x=>x.c.st===f);if(fc)vs=vs.filter(x=>x.v.customerId===fc);
+ vs.sort((a,b)=>b.c.days-a.c.days||String(b.v.date).localeCompare(String(a.v.date)));
+ return `<div class="kpis"><div class="kpi"><div class="l">Open A/R</div><div class="v">${money0(open)}</div><div class="s">${money0(over)} overdue</div></div><div class="kpi"><div class="l">Collected ${monthLabel(m).split(' ')[0]}</div><div class="v">${money0(coll)}</div><div class="s">net of reversals</div></div><div class="kpi"><div class="l">Not yet matched to bank</div><div class="v">${money0(unrec)}</div><div class="s">see Banking</div></div></div>
+ <div class="card"><h2>Aging</h2><div class="grid">${[['Current',ag.cur],['1–30 days',ag.d30],['31–60',ag.d60],['61–90',ag.d90],['90+',ag.d90p]].map(([l,v])=>`<div class="kpi"><div class="l">${l}</div><div class="v" style="font-size:17px">${money0(v)}</div></div>`).join('')}</div></div>
+ <div class="row"><select data-ui="arF" style="flex:1 1 140px">${['Unpaid','Overdue','Open','Partial','Paid','Void','All'].map(x=>`<option ${f===x?'selected':''}>${x}</option>`).join('')}</select><select data-ui="arC" style="flex:2 1 180px"><option value="">All customers</option>${custOpts(fc)}</select></div>
+ <div id="arList">${vs.length?vs.map(x=>invCard(x.v)).join(''):'<div class="card empty">No invoices here. Post a project’s Final Bill or create a monthly invoice from a customer’s page.</div>'}</div>`}
+function rARCust(){const rows=Object.values(S.customers).map(c=>({c,k:custCalc(c.id)})).sort((a,b)=>b.k.bal-a.k.bal);
+ return rows.length?rows.map(({c,k})=>`<div class="card pcard" data-act="openCust" data-id="${esc(c.id)}"><div class="row"><b class="grow" style="font-size:16px">${esc(custName(c))}</b>${k.over?'<span class="badge b-Lost">Overdue</span>':''}</div><div class="nums"><div>Balance<b>${money(k.bal)}</b></div><div>Overdue<b>${money(k.over)}</b></div><div>Monthly<b>${money(k.mrr)}/mo</b></div><div>Paid all time<b>${money(k.paid)}</b></div></div></div>`).join(''):'<div class="card empty">No customers yet.</div>'}
+function rARReg(){const m=S.regM||ym(iso());const es=Object.values(S.ledger).filter(e=>m==='all'||ym(e.date)===m).sort((a,b)=>String(b.date).localeCompare(String(a.date))||b.created-a.created);const tot=es.reduce((a,e)=>a+num(e.amount),0);
+ return `<div class="card"><div class="row"><button class="btn sm" data-act="regPrev">‹</button><b class="grow" style="text-align:center">${m==='all'?'All months':monthLabel(m)}</b><button class="btn sm" data-act="regNext">›</button><button class="btn sm" data-act="regAll">All</button><button class="btn sm" data-act="regCsv">Copy CSV</button></div>
+ <div class="sm mut" style="margin-top:6px">Every money movement, kept permanently. Removing a payment adds a reversing entry instead of erasing it.</div></div>
+ ${es.map(e=>`<div class="line"><div class="row"><span class="grow"><b>${fmtDate(e.date)}</b> · ${esc(kindLabel(e.kind))} · ${esc(e.custName||custName(S.customers[e.customerId]))}${e.invNo?' · '+esc(e.invNo):''}<div class="sm mut">${esc([e.method,e.bankId?bankLabel(e.bankId):'',e.ref,e.note].filter(Boolean).join(' · '))}</div></span><b class="${num(e.amount)<0?'neg':''}">${money(e.amount)}</b></div></div>`).join('')||'<div class="card empty">No activity in this period.</div>'}
+ <div class="tot big"><span>Net</span><span>${money(tot)}</span></div>`}
+function rARBank(){const banks=S.settings.banks||[];if(!banks.length)return `<div class="card"><h2>Bank accounts</h2><div class="note">Add your bank accounts in <b>Settings → Bank accounts</b> (nickname and last 4 digits only), then record each payment to the account it was deposited in.</div><button class="btn p" data-act="settings">Go to Settings</button></div>`;
+ const b=S.recBank&&banks.find(x=>x.id===S.recBank)?S.recBank:banks[0].id,m=S.recM||ym(iso());
+ const book=Object.values(S.ledger).filter(e=>e.bankId===b&&ym(e.date)===m).sort((x,y)=>String(x.date).localeCompare(String(y.date)));
+ const txs=Object.values(S.banktx).filter(x=>x.bankId===b&&ym(x.date)===m).sort((x,y)=>String(x.date).localeCompare(String(y.date)));const dep=txs.filter(x=>num(x.amount)>0);
+ const bookT=book.reduce((a,e)=>a+num(e.amount),0),bankT=dep.reduce((a,x)=>a+num(x.amount),0),matched=book.filter(e=>e.matchTx||e.cleared).reduce((a,e)=>a+num(e.amount),0);
+ const unBook=Object.values(S.ledger).filter(e=>e.bankId===b&&e.kind==='payment'&&!e.reversedBy&&!e.matchTx);
+ return `<div class="card"><div class="grid"><label class="f">Bank account<select data-ui="recBank">${bankOpts(b)}</select></label><label class="f">Month<div class="row" style="flex-wrap:nowrap"><button class="btn sm" data-act="recPrev">‹</button><b style="flex:1;text-align:center">${monthLabel(m)}</b><button class="btn sm" data-act="recNext">›</button></div></label></div>
+  <div class="kpis"><div class="kpi"><div class="l">Recorded deposits</div><div class="v">${money(bookT)}</div><div class="s">${book.length} in A/R</div></div><div class="kpi"><div class="l">Bank statement deposits</div><div class="v">${money(bankT)}</div><div class="s">${dep.length} imported</div></div><div class="kpi"><div class="l">Matched</div><div class="v">${money(matched)}</div><div class="s">difference ${money(bookT-matched)}</div></div></div></div>
+ <div class="card"><h2>Recorded payments (your books)</h2>${book.map(e=>`<div class="tot"><span>${fmtDate(e.date)} · ${esc(e.custName||'')} · ${esc(e.invNo||'')} · ${esc(e.method||'')}${e.ref?' · '+esc(e.ref):''}<div class="sm ${e.matchTx||e.cleared?'':'mut'}">${e.matchTx?'✓ Matched to bank deposit':e.cleared?'✓ Marked cleared '+fmtDate(e.cleared):'Not matched yet'}</div></span><span><b>${money(e.amount)}</b> ${e.kind==='payment'&&!e.matchTx?`<button class="btn sm" data-act="clearPay" data-id="${esc(e.id)}">${e.cleared?'Un-clear':'✓ Cleared'}</button>`:''}</span></div>`).join('')||'<div class="sm mut">No payments recorded to this account this month.</div>'}</div>
+ <div class="card"><h2>Bank statement</h2>${dep.map(x=>{const me=x.matchId&&S.ledger[x.matchId];return `<div class="tot"><span>${fmtDate(x.date)} · ${esc(x.desc||'')}<div class="sm ${me?'':'mut'}">${me?'✓ '+esc(me.custName||'')+' · '+esc(me.invNo||''):'Unmatched deposit'}</div></span><span><b>${money(x.amount)}</b> ${me?`<button class="btn sm" data-act="unmatch" data-id="${esc(x.id)}">Unmatch</button>`:unBook.length?`<select data-match="${esc(x.id)}" style="width:auto;max-width:190px"><option value="">Match to…</option>${unBook.map(e=>`<option value="${esc(e.id)}">${fmtDate(e.date)} ${esc(e.custName||'')} ${money(e.amount)}</option>`).join('')}</select>`:''}</span></div>`}).join('')||'<div class="sm mut">No statement imported for this month.</div>'}
+  ${txs.length>dep.length?`<div class="sm mut" style="margin-top:6px">${txs.length-dep.length} withdrawal${txs.length-dep.length==1?'':'s'} on the statement (not A/R) — ${money(txs.filter(x=>num(x.amount)<0).reduce((a,x)=>a+num(x.amount),0))}</div>`:''}</div>
+ <div class="card"><h2>Import bank statement (CSV)</h2><div class="sm mut">Download the CSV from your bank’s website and drop it here. Re-importing the same file never duplicates lines. Deposits are matched to recorded payments with the same amount within 5 days.</div>
+  <input type="file" accept=".csv,.txt" id="csvFile" style="margin-top:8px"><textarea id="csvText" rows="4" placeholder="…or paste the CSV here" style="margin-top:8px"></textarea>
+  <label class="chk" style="margin-top:6px"><input type="checkbox" id="csvNeg"> My bank shows deposits as negative numbers</label>
+  <div class="row" style="margin-top:8px"><button class="btn p" data-act="importCsv">Import into ${esc(bankLabel(b))}</button><button class="btn" data-act="autoMatch">Auto-match again</button></div><div id="csvOut"></div></div>`}
+function monthSummary(m){const ins=Object.values(S.invoices).filter(v=>v.status!=='void'&&ym(v.date)===m);const es=Object.values(S.ledger).filter(e=>ym(e.date)===m);
+ const by=(arr,f)=>arr.reduce((o,e)=>{const k=f(e)||'—';o[k]=r2((o[k]||0)+num(e.amount));return o},{});
+ return{billed:r2(ins.reduce((a,v)=>a+num(v.total),0)),invoices:ins.length,collected:r2(es.filter(e=>e.kind==='payment').reduce((a,e)=>a+num(e.amount),0)),reversed:r2(es.filter(e=>e.kind!=='payment').reduce((a,e)=>a+num(e.amount),0)),net:r2(es.reduce((a,e)=>a+num(e.amount),0)),byMethod:by(es,e=>e.method),byBank:by(es,e=>e.bankId?bankLabel(e.bankId):'No account'),byType:ins.reduce((o,v)=>{o[AR_TYPES[v.type]]=r2((o[AR_TYPES[v.type]]||0)+num(v.total));return o},{})}}
+function rARClose(){const ms=new Set([ym(iso())]);Object.values(S.invoices).forEach(v=>ms.add(ym(v.date)));Object.values(S.ledger).forEach(e=>ms.add(ym(e.date)));Object.keys(S.closes).forEach(k=>ms.add(k));
+ return `<div class="card"><div class="sm mut">Finalizing a month freezes its numbers and locks it: no payments, reversals or invoices dated in that month can be added or changed until you reopen it.</div></div>`+[...ms].filter(Boolean).sort().reverse().map(m=>{const cl=S.closes[m],fin=cl&&cl.finalizedAt,sm=fin?cl.summary:monthSummary(m);
+  const kv=o=>Object.entries(o||{}).map(([k,v])=>`${esc(k)} ${money(v)}`).join(' · ')||'—';
+  return `<div class="card"><div class="row"><h2 class="grow" style="margin:0">${monthLabel(m)}</h2>${fin?'<span class="badge b-Paid">🔒 Finalized</span>':'<span class="badge">Open</span>'}</div>
+  <div class="nums" style="margin-top:8px"><div>Billed<b>${money(sm.billed)}</b></div><div>Collected<b>${money(sm.collected)}</b></div><div>Reversals<b>${money(sm.reversed)}</b></div><div>Net cash<b>${money(sm.net)}</b></div></div>
+  <div class="sm mut" style="margin-top:8px">By method: ${kv(sm.byMethod)}<br>By account: ${kv(sm.byBank)}<br>Billed by type: ${kv(sm.byType)}</div>
+  ${fin?`<div class="sm mut" style="margin-top:6px">Finalized ${new Date(cl.finalizedAt).toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'})}</div>`:''}
+  <div class="row" style="margin-top:8px">${fin?`<button class="btn sm" data-act="reopenM" data-m="${m}">Reopen month</button>`:m<ym(iso())||true?`<button class="btn sm p" data-act="closeM" data-m="${m}">🔒 Finalize ${monthLabel(m).split(' ')[0]}</button>`:''}</div></div>`}).join('')}
+
+/* ---------- CSV statement import ---------- */
+function parseCsv(text){text=String(text||'').replace(/^﻿/,'');const first=text.split(/\r?\n/).slice(0,5).join('\n');const cnt=c=>first.split(c).length;const d=[',',';','\t','|'].sort((a,b)=>cnt(b)-cnt(a))[0];
+ const rows=[];let row=[],f='',q=false;for(let i=0;i<text.length;i++){const ch=text[i];if(q){if(ch==='"'){if(text[i+1]==='"'){f+='"';i++}else q=false}else f+=ch}else if(ch==='"')q=true;else if(ch===d){row.push(f);f=''}else if(ch==='\n'||ch==='\r'){if(ch==='\r'&&text[i+1]==='\n')i++;row.push(f);f='';if(row.some(x=>x.trim()))rows.push(row);row=[]}else f+=ch}
+ row.push(f);if(row.some(x=>x.trim()))rows.push(row);return rows}
+function parseDateAny(s){s=String(s||'').trim();let m;if((m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)))return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+ if((m=s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/))){const y=m[3].length===2?'20'+m[3]:m[3];return `${y}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`}
+ const d=new Date(s);return isNaN(d)?'':iso(d)}
+const money2num=s=>{s=String(s||'').trim();if(!s)return NaN;const neg=/^\(.*\)$/.test(s)||/-/.test(s.replace(/^[^\d-]*/,'').slice(0,1))||/^-/.test(s);const n=parseFloat(s.replace(/[^\d.]/g,''));return isNaN(n)?NaN:(neg?-n:n)};
+function importStatement(bankId,text,negate){const rows=parseCsv(text);if(rows.length<2)return{err:'No rows found.'};
+ const h=rows[0].map(x=>norm(x));const idx=re=>h.findIndex(x=>re.test(x));
+ let di=idx(/date|posted|posting/),de=idx(/desc|memo|payee|details|name|transaction/),ai=idx(/^amount|amount$|^amt/),cr=idx(/credit|deposit/),db=idx(/debit|withdraw/);
+ if(di<0)return{err:'Could not find a Date column. The first row should be the column headers.'};if(ai<0&&cr<0&&db<0)return{err:'Could not find an Amount (or Credit/Debit) column.'};
+ let added=0,dup=0,skip=0;const seen={};rows.slice(1).forEach(r=>{const date=parseDateAny(r[di]);if(!date){skip++;return}let amt;
+  if(ai>=0)amt=money2num(r[ai]);else{const c=money2num(r[cr]),d=money2num(r[db]);amt=(isNaN(c)?0:Math.abs(c))-(isNaN(d)?0:Math.abs(d))}
+  if(isNaN(amt)||!amt){skip++;return}if(negate)amt=-amt;const desc=de>=0?String(r[de]||'').trim():'';
+  const base=`${bankId}|${date}|${amt.toFixed(2)}|${desc}`;seen[base]=(seen[base]||0)+1;let hsh=0;const str=base+'|'+seen[base];for(let i=0;i<str.length;i++)hsh=(hsh*31+str.charCodeAt(i))|0;const id='t'+(hsh>>>0).toString(36)+seen[base];
+  if(S.banktx[id]){dup++;return}S.banktx[id]={id,bankId,date,desc,amount:r2(amt),created:Date.now()};queueSave('b',id);added++});
+ const m=autoMatch(bankId);return{added,dup,skip,matched:m}}
+function autoMatch(bankId){let n=0;const used=new Set(Object.values(S.banktx).map(x=>x.matchId).filter(Boolean));
+ Object.values(S.banktx).filter(x=>x.bankId===bankId&&!x.matchId&&num(x.amount)>0).sort((a,b)=>String(a.date).localeCompare(String(b.date))).forEach(x=>{
+  const c=Object.values(S.ledger).filter(e=>e.bankId===bankId&&e.kind==='payment'&&!e.reversedBy&&!e.matchTx&&!used.has(e.id)&&Math.abs(num(e.amount)-num(x.amount))<0.01&&Math.abs(new Date(e.date)-new Date(x.date))<=5*864e5).sort((a,b)=>Math.abs(new Date(a.date)-new Date(x.date))-Math.abs(new Date(b.date)-new Date(x.date)))[0];
+  if(c){x.matchId=c.id;c.matchTx=x.id;c.cleared=x.date;used.add(c.id);queueSave('b',x.id);queueSave('l',c.id);n++}});return n}
+
+/* ---------- documents ---------- */
+function custPseudo(c){return{name:'',client:{company:c.company||'',name:c.name||'',email:c.billEmail||c.email||'',phone:c.phone||'',address:c.address||'',website:c.website||''}}}
+function buildArDoc(kind){const s=S.settings,d=s.d;
+ if(kind==='arInv'){const v=S.invoices[S.docInv],c=S.customers[v.customerId]||{},k=invCalc(v),ents=invEntries(v.id);
+  const h=dHead('INVOICE',[['Invoice #',v.number],['Date',fmtDate(v.date)],['Due',fmtDate(v.due)],['Period',v.period?monthLabel(v.period):'']],custPseudo(c),'Bill to')+
+   `<h2>${v.type==='monthly'?'Monthly Services':v.type==='license'?'License & Fees':'Services'}</h2>${v.lines.map(l=>dRow(esc(l.desc),money(l.amount))).join('')}
+   <div class="d-tots">${dRow('<b>Invoice total</b>','<b>'+money(k.total)+'</b>','','d-grand')}${ents.map(e=>dRow(esc(kindLabel(e.kind))+(e.method?' — '+esc(e.method):''),money(-num(e.amount)),fmtDate(e.date))).join('')}<div class="d-hl">${dRow('<b>BALANCE DUE</b>','<b style="font-size:16px">'+money(k.bal)+'</b>')}</div></div>
+   ${v.notes?`<h2>Notes</h2><div>${escBr(v.notes)}</div>`:''}${s.biz.payInfo?`<h2>How to Pay</h2><div>${escBr(s.biz.payInfo)}</div>`:''}<div class="d-foot">Payment due by ${fmtDate(v.due)}. Late balances may accrue ${fh(d.lateFee)}% per month. Thank you!</div>`;
+  return{t:'Invoice '+v.number,h,fn:slug(custName(c))+'-invoice-'+slug(v.number)}}
+ const c=S.customers[S.cid],invs=custInvoices(c.id).filter(v=>v.status!=='void').sort((a,b)=>String(a.date).localeCompare(String(b.date))),k=custCalc(c.id);
+ const open=invs.filter(v=>invCalc(v).bal>0);
+ const h=dHead('STATEMENT',[['Date',fmtDate(iso())],['Balance due',money(k.bal)]],custPseudo(c),'Account')+
+  `<h2>Open Invoices</h2>${open.map(v=>{const x=invCalc(v);return dRow(`${esc(v.number)} · ${fmtDate(v.date)}${v.period?' · '+monthLabel(v.period):''}`,money(x.bal),`Total ${money(x.total)} · paid ${money(x.paid)} · due ${fmtDate(v.due)}${x.st==='Overdue'?` · ${x.days} days late`:''}`)}).join('')||'<div class="d-sm">No open invoices. Thank you!</div>'}
+  <div class="d-tots"><div class="d-hl">${dRow('<b>TOTAL DUE</b>','<b style="font-size:16px">'+money(k.bal)+'</b>')}</div></div>
+  <h2>Recent Activity</h2>${Object.values(S.ledger).filter(e=>e.customerId===c.id).sort((a,b)=>String(b.date).localeCompare(String(a.date))).slice(0,15).map(e=>dRow(`${fmtDate(e.date)} · ${esc(kindLabel(e.kind))}${e.invNo?' · '+esc(e.invNo):''}`,money(e.amount),esc(e.method||''))).join('')||'<div class="d-sm">No payments yet.</div>'}
+  ${s.biz.payInfo?`<h2>How to Pay</h2><div>${escBr(s.biz.payInfo)}</div>`:''}`;
+ return{t:'Statement — '+custName(c),h,fn:slug(custName(c))+'-statement-'+iso()}}
+
 /* ================= render: settings ================= */
 const SF=(lbl,k,v,type='text')=>`<label class="f">${lbl}<input type="${type}" data-s="${k}" value="${esc(v)}" ${type==='number'?'inputmode="decimal" step="any"':''}></label>`;
 const ST=(lbl,k,v,rows=4)=>`<label class="f">${lbl}<textarea data-s="${k}" rows="${rows}">${esc(v)}</textarea></label>`;
@@ -626,6 +823,9 @@ function rSettings(){const s=S.settings,b=s.biz,d=s.d;
   ${SF('Monthly cancel notice (days)','d.cancelDays',d.cancelDays,'number')}${SF('Company search: look near (city, state)','d.near',d.near)}${SF('Governing law (state)','d.law',d.law)}${SF('Venue (county, state)','d.venue',d.venue)}${SF('Default max license increase %','d.licCap',d.licCap,'number')}${SF('Late fee % / month','d.lateFee',d.lateFee,'number')}${SF('Invoice prefix','d.invPrefix',d.invPrefix)}${SF('Next invoice #','d.nextInv',d.nextInv,'number')}</div></div>
  <div class="card"><h2>Default SOW terms (for new projects)</h2><div class="sm mut" style="margin-bottom:8px">One item per line.</div>
   <div class="grid g2">${ST('Assumptions','assume',s.assume,5)}${ST('Client responsibilities','resp',s.resp,5)}</div><div style="margin-top:10px">${ST('Out of scope','oos',s.oos,5)}</div></div>
+ <div class="card"><div class="row"><h2 class="grow" style="margin:0">Bank accounts (for deposits)</h2><button class="btn sm" data-act="addBank">+ Account</button></div>
+  <div class="sm mut" style="margin:6px 0">Used to track which account each payment went into and to reconcile against your bank statement. Only a nickname and the last 4 digits are stored — never the full account number.</div>
+  ${(s.banks||[]).map((b,i)=>`<div class="line"><div class="top"><input data-s="banks.${i}.name" value="${esc(b.name)}" placeholder="Nickname, e.g. Operating"><button class="x" data-act="rmBank" data-i="${i}">×</button></div><div class="grid" style="margin-top:8px">${SF('Bank',`banks.${i}.bank`,b.bank)}${SF('Last 4 digits',`banks.${i}.last4`,b.last4)}</div></div>`).join('')||'<div class="sm mut">No accounts yet.</div>'}</div>
  <div class="card"><h2>Backup</h2><div class="sm mut">Copy a backup of all projects and settings, or paste one in to restore.</div>
   <div class="row" style="margin-top:8px"><button class="btn" data-act="export">Copy backup</button><button class="btn" data-act="importShow">Restore from backup</button></div><div id="impBox"></div></div>`}
 
@@ -720,6 +920,9 @@ function buildDoc(kind,p){const s=S.settings,d=s.d,E=calcEst(p),B=calcBill(p),M=
   <div class="d-tots"><div class="d-hl">${dRow('<b>AMOUNT DUE</b>','<b style="font-size:16px">'+money(M.price)+'</b>')}</div></div>
   ${s.biz.payInfo?`<h2>How to Pay</h2><div>${escBr(s.biz.payInfo)}</div>`:''}<div class="d-foot">Thank you for your business!</div>`}
  return{t,h,fn}}
+function rArCard(p){const v=p.invoice.arId&&S.invoices[p.invoice.arId];
+ if(!v)return `<div class="card"><div class="row"><div class="grow"><h2 style="margin:0">📌 Accounts receivable</h2><div class="sm mut">Post this bill to A/R to track payments, deposits and aging${p.customerId&&S.customers[p.customerId]?' under '+esc(custName(S.customers[p.customerId])):' (a customer account is created from the client info if needed)'}.</div></div><button class="btn g" data-act="postAR">Post to A/R</button></div></div>`;
+ const c=invCalc(v);return `<div class="card"><div class="row"><div class="grow"><h2 style="margin:0">📌 In A/R: ${esc(v.number)} ${stBadge(c.st)}</h2><div class="sm mut">Total ${money(c.total)} · paid ${money(c.paid)} · balance ${money(c.bal)}. Record payments in A/R.</div></div><button class="btn sm" data-act="postAR">Update A/R invoice</button><button class="btn sm p" data-act="openAR">Open in A/R</button></div></div>`}
 let curDoc=null,LOOK=[];
 function copyOpts(p,what){const ps=Object.values(S.projects).filter(x=>x.id!==p.id&&(what==='desc'?(x.desc||'').trim():((x.sow&&x.sow.overview)||x.desc||'').trim()));
  const hs=histList().filter(h=>h.pro||h.summary).sort((a,b)=>a.name.localeCompare(b.name));
@@ -763,12 +966,12 @@ function fillFromGit(p,force){const hs=p.links.map(id=>S.hist[id]).filter(Boolea
 const FREEMAIL=/^(gmail|yahoo|hotmail|outlook|live|aol|icloud|me|msn|comcast|att|sbcglobal|proton|protonmail|ymail|gmx)\./i;
 function fillFromEmail(p){const c=p.client;if(c.website)return false;const m=String(c.email||'').trim().match(/@([a-z0-9.-]+\.[a-z]{2,})$/i);
  if(!m||FREEMAIL.test(m[1]))return false;c.website='https://'+m[1].toLowerCase();touch(p);const el=document.querySelector('[data-k="client.website"]');if(el)el.value=c.website;return true}
-function openDoc(kind){const p=cur();curDoc={...buildDoc(kind,p)};const ov=$('#ov');
+function openDoc(kind){curDoc=(kind==='arInv'||kind==='stmt')?buildArDoc(kind):{...buildDoc(kind,cur())};const ov=$('#ov');
  ov.innerHTML=`<div class="ovbar"><div class="t">${esc(curDoc.t)}</div><button class="btn sm p" data-act="pdf">⬇ PDF</button><button class="btn sm" data-act="html">⬇ Printable HTML</button><button class="btn sm" data-act="copyTxt">Copy text</button><button class="btn sm" data-act="closeOv">Close</button></div><div class="paper" id="paper">${curDoc.h}</div>`;
  ov.classList.remove('hidden');ov.scrollTop=0;document.body.style.overflow='hidden'}
 function closeOv(){$('#ov').classList.add('hidden');document.body.style.overflow=''}
 function fullHtml(){const css=[...document.querySelectorAll('style')].map(s=>s.textContent).join('\n').split('/* ===== Paper documents ===== */')[1]||'';
- return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(curDoc.t)} — ${esc(cur().name)}</title><style>body{margin:0;background:#e9ebef;padding:16px}${css}.pb{max-width:8.5in;margin:0 auto 10px;text-align:right}.pb button{font:600 14px Arial;padding:9px 14px;border-radius:8px;border:none;background:#1f5eff;color:#fff;cursor:pointer}@media print{body{background:#fff;padding:0}.pb{display:none}.paper{max-width:none;padding:0}}</style></head><body><div class="pb"><button onclick="window.print()">Print / Save as PDF</button></div><div class="paper">${curDoc.h}</div></body></html>`}
+ return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(curDoc.t)}</title><style>body{margin:0;background:#e9ebef;padding:16px}${css}.pb{max-width:8.5in;margin:0 auto 10px;text-align:right}.pb button{font:600 14px Arial;padding:9px 14px;border-radius:8px;border:none;background:#1f5eff;color:#fff;cursor:pointer}@media print{body{background:#fff;padding:0}.pb{display:none}.paper{max-width:none;padding:0}}</style></head><body><div class="pb"><button onclick="window.print()">Print / Save as PDF</button></div><div class="paper">${curDoc.h}</div></body></html>`}
 async function saveFile(filename,data){if(!DL){toast('Downloads aren’t available here — use Copy text.');return}
  try{await DL.save({filename,data});toast('Saved '+filename)}catch(e){if(e&&e.code==='declined')return;toast(e&&e.code==='rate_limited'?'A download prompt is already open.':'Download not available here — use Copy text.')}}
 let h2pP=null;
@@ -786,6 +989,53 @@ const ACT={
  home(){S.view='home';closeOv();render();scrollTo(0,0)},
  settings(){S.view='settings';render();scrollTo(0,0)},
  hist(){S.view='hist';render();scrollTo(0,0)},
+ custs(){S.view='custs';render();scrollTo(0,0)},
+ ar(){S.view='ar';render();scrollTo(0,0)},
+ openCust(t){S.cid=t.dataset.id;S.view='cust';S.genPeriod=null;closeOv();render();scrollTo(0,0)},
+ newCust(){const c=newCustomer({company:'New customer'});S.cid=c.id;S.view='cust';render();scrollTo(0,0)},
+ async delCust(){const c=S.customers[S.cid];if(custInvoices(c.id).length){toast('This customer has invoices — void them instead of deleting the customer');return}
+  if(!await askConfirm('Delete customer?','Delete <b>'+esc(custName(c))+'</b>? Projects stay; they just get unlinked.','Delete'))return;
+  custProjects(c.id).forEach(p=>{p.customerId='';touch(p)});delete S.customers[c.id];clearTimeout(timers['c:'+c.id]);dirty.delete('c:'+c.id);queueSave('xc',c.id);S.view='custs';render()},
+ linkAllCust(){let n=0;Object.values(S.projects).forEach(p=>{if(!p.customerId&&(p.client.company||p.client.name)){findOrCreateCustomer(p);n++}});render();toast(`Linked ${n} project${n==1?'':'s'} to customer accounts`)},
+ newProjFor(){const c=S.customers[S.cid];const p=newProject();p.customerId=c.id;Object.assign(p.client,{company:c.company,name:c.name,email:c.email,phone:c.phone,address:c.address,website:c.website});S.projects[p.id]=p;S.pid=p.id;S.view='project';S.tab='client';touch(p);render();scrollTo(0,0)},
+ genPrev(){S.genPeriod=addMonths(S.genPeriod||ym(iso()),-1);render()},
+ genNext(){S.genPeriod=addMonths(S.genPeriod||ym(iso()),1);render()},
+ async genInv(){const c=S.customers[S.cid],per=S.genPeriod;const ex=custInvoices(c.id).find(v=>v.type==='monthly'&&v.period===per&&v.status!=='void');
+  if(ex&&!await askConfirm('Already billed','Invoice <b>'+esc(ex.number)+'</b> already exists for '+monthLabel(per)+'. Create another one?','Create anyway'))return;
+  const v=createMonthly(c.id,per,S.genSel||[]);if(v){S.docInv=v.id;render();openDoc('arInv')}},
+ postAR(){const p=cur();const v=postProjectInvoice(p);if(v){render()}},
+ postLic(){postLicenseInvoice(cur());render()},
+ openAR(){S.view='ar';S.arTab='inv';S.arF='All';const p=cur();S.arC=p&&p.customerId||'';render();scrollTo(0,0)},
+ arTab(t){S.arTab=t.dataset.t;S.payFor=null;render();scrollTo(0,0)},
+ viewInv(t){S.docInv=t.dataset.id;openDoc('arInv')},
+ payInv(t){S.payFor=t.dataset.id||null;render();if(S.payFor){const el=document.getElementById('pf-amt');if(el)el.scrollIntoView({block:'center'})}},
+ savePay(t){const v=S.invoices[t.dataset.id];const date=$('#pf-date').value||iso(),amt=r2(num($('#pf-amt').value));if(!amt){toast('Enter the amount');return}
+  if(isClosed(date)){toast(monthLabel(ym(date))+' is closed — reopen it in Month close first');return}
+  const bank=$('#pf-bank').value;S.lastBank=bank;const c=S.customers[v.customerId];
+  ledgerAdd({date,kind:'payment',amount:amt,invId:v.id,invNo:v.number,customerId:v.customerId,custName:custName(c),method:$('#pf-method').value,bankId:bank,ref:$('#pf-ref').value.trim(),note:$('#pf-note').value.trim()});
+  if(bank)autoMatch(bank);S.payFor=null;render();toast(`Payment of ${money(amt)} recorded`)},
+ async revPay(t){const e=S.ledger[t.dataset.id];if(!e)return;const date=iso();if(isClosed(date)){toast('This month is closed');return}
+  if(!await askConfirm('Reverse payment?',`Reverse the ${money(e.amount)} payment from ${fmtDate(e.date)}? The original stays in the register and a reversing entry is added (like a bounced ACH or a mistake).`,'Reverse it'))return;
+  const r=ledgerAdd({date,kind:'reversal',amount:-num(e.amount),invId:e.invId,invNo:e.invNo,customerId:e.customerId,custName:e.custName,method:e.method,bankId:e.bankId,ref:'Reverses '+fmtDate(e.date)+(e.ref?' · '+e.ref:''),note:'',reverses:e.id});
+  e.reversedBy=r.id;if(e.matchTx&&S.banktx[e.matchTx]){S.banktx[e.matchTx].matchId='';queueSave('b',e.matchTx);e.matchTx=''}queueSave('l',e.id);render();toast('Payment reversed')},
+ async voidInv(t){const v=S.invoices[t.dataset.id];if(isClosed(v.date)){toast(monthLabel(ym(v.date))+' is closed — reopen it first');return}
+  if(v.status!=='void'){if(invCalc(v).paid>0){toast('Reverse its payments first, then void');return}if(!await askConfirm('Void invoice?','Void <b>'+esc(v.number)+'</b>? It stays on record marked Void and drops out of A/R.','Void'))return;v.status='void'}else v.status='open';
+  queueSave('i',v.id);render()},
+ clearPay(t){const e=S.ledger[t.dataset.id];e.cleared=e.cleared?'':iso();queueSave('l',e.id);render()},
+ unmatch(t){const x=S.banktx[t.dataset.id];const e=S.ledger[x.matchId];if(e){e.matchTx='';e.cleared='';queueSave('l',e.id)}x.matchId='';queueSave('b',x.id);render()},
+ recPrev(){S.recM=addMonths(S.recM||ym(iso()),-1);render()},recNext(){S.recM=addMonths(S.recM||ym(iso()),1);render()},
+ regPrev(){S.regM=addMonths(S.regM&&S.regM!=='all'?S.regM:ym(iso()),-1);render()},regNext(){S.regM=addMonths(S.regM&&S.regM!=='all'?S.regM:ym(iso()),1);render()},regAll(){S.regM='all';render()},
+ async regCsv(){const m=S.regM||ym(iso());const es=Object.values(S.ledger).filter(e=>m==='all'||ym(e.date)===m).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+  const q=x=>'"'+String(x==null?'':x).replace(/"/g,'""')+'"';const csv=['Date,Type,Customer,Invoice,Method,Account,Reference,Amount'].concat(es.map(e=>[e.date,kindLabel(e.kind),e.custName,e.invNo,e.method,e.bankId?bankLabel(e.bankId):'',e.ref,num(e.amount).toFixed(2)].map(q).join(','))).join('\n');
+  try{await navigator.clipboard.writeText(csv);toast('Register copied — paste into Excel or Sheets')}catch(e){if(DL)saveFile('register-'+m+'.csv',csv);else toast('Copy blocked')}},
+ async importCsv(){const banks=S.settings.banks||[];const b=S.recBank&&banks.find(x=>x.id===S.recBank)?S.recBank:banks[0].id;const txt=$('#csvText').value;if(!txt.trim()){toast('Choose a CSV file or paste one');return}
+  const r=importStatement(b,txt,$('#csvNeg').checked);$('#csvOut').innerHTML=r.err?`<div class="note">${esc(r.err)}</div>`:`<div class="note ok">Imported ${r.added} line${r.added==1?'':'s'}${r.dup?`, ${r.dup} already there`:''}${r.skip?`, ${r.skip} skipped`:''}. Auto-matched ${r.matched} deposit${r.matched==1?'':'s'}.</div>`;if(!r.err)setTimeout(render,1200)},
+ autoMatch(){const banks=S.settings.banks||[];const b=S.recBank&&banks.find(x=>x.id===S.recBank)?S.recBank:banks[0].id;const n=autoMatch(b);render();toast(`Matched ${n} more deposit${n==1?'':'s'}`)},
+ async closeM(t){const m=t.dataset.m;if(!await askConfirm('Finalize '+monthLabel(m)+'?','This freezes the month’s numbers and locks it: no payments, reversals or invoices dated in '+monthLabel(m)+' can be added or changed until you reopen it.','Finalize'))return;
+  S.closes[m]={id:m,period:m,finalizedAt:Date.now(),summary:monthSummary(m)};queueSave('k',m);render();toast(monthLabel(m)+' finalized')},
+ async reopenM(t){const m=t.dataset.m;if(!await askConfirm('Reopen '+monthLabel(m)+'?','Reopening unlocks the month so entries dated in it can change again.','Reopen'))return;S.closes[m].finalizedAt=null;queueSave('k',m);render()},
+ addBank(){(S.settings.banks=S.settings.banks||[]).push({id:uid(),name:'',bank:'',last4:''});queueSave('set');render()},
+ async rmBank(t){const b=S.settings.banks[+t.dataset.i];const used=Object.values(S.ledger).some(e=>e.bankId===b.id);if(used&&!await askConfirm('Remove account?','Payments already recorded to <b>'+esc(bankLabel(b.id))+'</b> keep their record, but the account will show as “No account”.','Remove'))return;S.settings.banks.splice(+t.dataset.i,1);queueSave('set');render()},
  getApp(){if(window.__RENDER_HOST)location.href='/download';else window.open('https://dev-billing.onrender.com/download','_blank')},
  fillGit(){const p=cur(),r=fillFromGit(p,true);if(!r){toast('Link a GitHub repo first — pick it under “GitHub & Render link” below');const el=document.querySelector('[data-add=link]');if(el){el.scrollIntoView({block:'center'});el.focus()}return}touch(p);render();toast(r)},
  async lookup(){const p=cur(),q=(p.client.company||'').trim(),box=$('#lookupBox');if(q.length<2){toast('Type the company name first');return}
@@ -865,20 +1115,25 @@ const ACT={
   Object.values(o.projects||{}).forEach(p=>{S.projects[p.id]=fix(p);queueSave('p',p.id)});render();toast('Restored')}catch(e){toast('That doesn’t look like a Dev Billing backup')}}
 };
 document.addEventListener('click',e=>{if(e.target.closest('a[href]'))return;const t=e.target.closest('[data-act]');if(!t)return;const a=ACT[t.dataset.act];if(a){e.preventDefault();a(t)}});
+document.getElementById('navSel').addEventListener('change',e=>{const v=e.target.value;if(ACT[v])ACT[v]();if(v==='getApp')render()});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#ov').classList.contains('hidden'))closeOv()});
 function readVal(t){if(t.type==='checkbox')return t.checked;if(t.type==='number'||t.dataset.num!==undefined)return t.value===''?'':parseFloat(t.value);return t.value}
 const app=$('#app');
 app.addEventListener('input',e=>{const t=e.target;
- if(t.dataset.ui){S[t.dataset.ui]=t.value;if(t.dataset.ui==='hq'||t.dataset.ui==='hsort'){$('#hlist').innerHTML=rHistList()}else $('#plist').innerHTML=rList();return}
+ if(t.dataset.ui){S[t.dataset.ui]=t.value;const u=t.dataset.ui;if(u==='hq'||u==='hsort'){$('#hlist').innerHTML=rHistList()}else if(u==='q'||u==='f')$('#plist').innerHTML=rList();else if(u==='cq'){const a=document.activeElement;render();const el=document.querySelector('[data-ui=cq]');if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length)}}else render();return}
+ if(t.dataset.cu){const c=S.customers[S.cid];if(c){c[t.dataset.cu]=readVal(t);c.updated=Date.now();queueSave('c',c.id);custProjects(c.id).forEach(p=>{if(['company','name','email','phone','address','website'].includes(t.dataset.cu)){p.client[t.dataset.cu]=c[t.dataset.cu];touch(p)}})}return}
  if(t.dataset.k){if(t.type==='radio'&&!t.checked)return;const p=cur();setPath(p,t.dataset.k,readVal(t));touch(p);updateCalc()}
  else if(t.dataset.s){setPath(S.settings,t.dataset.s,readVal(t));queueSave('set');if(t.dataset.s==='biz.name')updateBrand()}});
-app.addEventListener('change',e=>{const t=e.target;
+app.addEventListener('change',e=>{const t=e.target;if(t.id==='csvFile'&&t.files&&t.files[0]){const fr=new FileReader();fr.onload=()=>{$('#csvText').value=fr.result};fr.readAsText(t.files[0]);return}
  if(t.dataset.role!==undefined){const p=cur(),l=p.lines[+t.dataset.role];l.rateId=t.value;l.rate=rate(t.value);touch(p);render()}
  else if(t.dataset.add==='module'&&t.value!==''){const m=MODS[+t.value],p=cur();t.value='';(async()=>{if(hasLine(p,m[1])&&!await askConfirm('Already added','<b>'+esc(m[1])+'</b> is already in this estimate. Add it a second time?','Yes, add again'))return;addLine(p,{id:uid(),type:'labor',phase:m[0],desc:m[1],hours:m[2],rateId:m[3],rate:rate(m[3])});toast('Added: '+m[1])})()}
  else if(t.dataset.add==='mo'&&t.value!==''){const x=MO_PRESETS[+t.value],p=cur(),mk=num(p.monthly.markup);let price;t.value='';(async()=>{if(hasMo(p,x[0])&&!await askConfirm('Already added','<b>'+esc(x[0])+'</b> is already on the monthly plan. Add it a second time?','Yes, add again'))return;
   if(x[4]==='mk')price=r2(x[2]*(1+mk/100));else if(x[4]==='ret2')price=2*rate('dev');else if(x[4]==='ret5')price=5*rate('dev');else price=x[4];
   p.monthly.items.push({name:x[0],cat:x[1],cycle:x[3],cost:x[2],price});touch(p);render();toast('Added: '+x[0])})()}
  else if(t.dataset.add==='lic'&&t.value!==''){const x=LIC_PRESETS[+t.value],p=cur();t.value='';(async()=>{if(hasLic(p,x[0])&&!await askConfirm('Already added','<b>'+esc(x[0])+'</b> is already on this license. Add it a second time?','Yes, add again'))return;p.lic.items.push({name:x[0],type:x[1],amount:x[2],qty:x[3]});touch(p);render();toast('Added: '+x[0])})()}
+ else if(t.dataset.add==='setCust'){const p=cur(),v=t.value;if(v==='__new'){const c=findOrCreateCustomer(p);if(!c){toast('Type the company or contact name first');render();return}toast('Linked to '+custName(c))}else if(v){const c=S.customers[v];p.customerId=v;['company','name','email','phone','address','website'].forEach(k=>{if(c[k])p.client[k]=c[k]});touch(p);toast('Linked to '+custName(c))}else{p.customerId='';touch(p)}render()}
+ else if(t.dataset.gen){const k=t.dataset.gen;S.genSel=(S.genSel||[]).filter(x=>x!==k);if(t.checked)S.genSel.push(k);render()}
+ else if(t.dataset.match&&t.value){const x=S.banktx[t.dataset.match],e=S.ledger[t.value];x.matchId=e.id;e.matchTx=x.id;e.cleared=x.date;queueSave('b',x.id);queueSave('l',e.id);render()}
  else if((t.dataset.add==='copyDesc'||t.dataset.add==='copySow')&&t.value){const v=t.value;t.value='';copyFrom(cur(),v,t.dataset.add==='copyDesc'?'desc':'sow')}
  else if(t.dataset.add==='link'&&t.value){const p=cur();if(!p.links.includes(t.value))p.links.push(t.value);const r=fillFromGit(p,false);touch(p);render();if(r)toast(r)}
  else if(t.dataset.add==='comp'&&t.value){const p=cur();if(!p.comps.includes(t.value))p.comps.push(t.value);touch(p);render()}
