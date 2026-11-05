@@ -809,10 +809,9 @@ const ACT={
  rmTl(t){const p=cur();p.sow.timeline.splice(+t.dataset.i,1);touch(p);render()},
  sowFromEst(t){const p=cur(),E=calcEst(p);const lab=p.lines.filter(l=>l.type!=='exp');if(!lab.length){toast('Add line items on the Estimate tab first');S.tab='est';render();return}
   const f=[];lab.forEach(l=>{if(!(l.scope&&l.scope.trim())&&MOD_DESC[l.desc]){l.scope=MOD_DESC[l.desc];f.push(1)}});
-  const phs=PHASES.filter(ph=>lab.some(l=>(PHASES.includes(l.phase)?l.phase:'Other')===ph));const wks=E.hrsAdj/(num(S.settings.d.hpw)||25);
-  const ov=`${p.desc?p.desc.trim()+'\n\n':''}${S.settings.biz.name} will design, build and launch ${p.name||'this app'} for ${p.client.company||p.client.name||'the client'}. The work covers ${lab.length} deliverable${lab.length==1?'':'s'} across ${phs.join(', ').toLowerCase()}, estimated at about ${fh(E.hrsAdj)} hours over roughly ${fh(Math.max(1,Math.ceil(wks*2)/2))} weeks, for a total of ${money(E.total)}.`;
+  const phs=PHASES.filter(ph=>lab.some(l=>(PHASES.includes(l.phase)?l.phase:'Other')===ph));buildTimeline(p);const wks=p.sow.timeline.reduce((a,x)=>a+num(x.weeks),0);
+  const ov=`${p.desc?p.desc.trim()+'\n\n':''}${S.settings.biz.name} will design, build and launch ${p.name||'this app'} for ${p.client.company||p.client.name||'the client'}. The work covers ${lab.length} deliverable${lab.length==1?'':'s'} across ${phs.join(', ').toLowerCase()}, estimated at about ${fh(E.hrsAdj)} hours over roughly ${fh(wks)} weeks, for a total of ${money(E.total)}.`;
   const mine=p.sow.overview&&p.sow.overview.trim()&&p.sow.overview!==p.sow.autoOv;if(!mine){p.sow.overview=p.sow.autoOv=ov}
-  buildTimeline(p);
   const d=num(p.depositPct);const sch=p.sow.schedule;if(sch.length<=2){p.sow.schedule=[{label:'Deposit — due at signing',pct:d},{label:'Final payment — due at launch / acceptance',pct:100-d}]}else if(sch[0])sch[0].pct=d;
   touch(p);if(t&&t.dataset.go)S.tab='sow';render();scrollTo(0,0);toast(`SOW filled: ${mine?'overview kept (yours), ':'overview, '}${lab.length} deliverables, timeline, payments`)},
  autoTl(){const p=cur();if(!buildTimeline(p)){toast('Add labor items to the estimate first');return}touch(p);render()},
