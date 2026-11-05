@@ -57,6 +57,12 @@ form{display:flex;flex-direction:column;gap:14px}
       </form>
       <div class="msg err" id="err-mgr" hidden style="margin-top:12px"></div>
     </div>
+    <p class="note" style="margin:12px 0 0;text-align:center"><button class="btn small" type="button" id="forgot">Forgot your password or PIN?</button></p>
+    <form id="f-forgot" hidden style="margin-top:8px">
+      <label class="f">Email you sign in with<input class="field" id="f-email" type="email" autocomplete="username" required></label>
+      <button class="btn primary" type="submit" id="go-forgot">Email me a reset link</button>
+      <div class="msg" id="msg-forgot" hidden style="margin-top:8px"></div>
+    </form>
   </section>
   <section class="card box row">
     <span class="note" style="margin:0">Put the portal on your phone or PC.</span>
@@ -120,6 +126,12 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').cat
   $('#code').addEventListener('input', function () { if (/^\d{6}$/.test(this.value)) $('#f-code').requestSubmit(); });
   $('#back').addEventListener('click', function () { $('#f-code').hidden = true; $('#f-mgr').hidden = false; show('#err-mgr', ''); });
   try { var em = localStorage.getItem('sct_email'); if (em) $('#email').value = em; } catch (x) {}
+  $('#forgot').addEventListener('click', function () { var f = $('#f-forgot'); f.hidden = !f.hidden; if (!f.hidden) { if ($('#email').value) $('#f-email').value = $('#email').value; $('#f-email').focus(); } });
+  $('#f-forgot').addEventListener('submit', function (e) {
+    e.preventDefault(); var b = $('#go-forgot'), m = $('#msg-forgot'), em = $('#f-email').value.trim(); b.disabled = true; m.hidden = true;
+    post('/api/login/forgot', { email: em }).then(function () { m.className = 'msg ok'; m.textContent = 'If ' + em + ' has a login, a reset link is on its way (good for 1 hour). It sets a new password for both apps — and a PIN if you want one. Check spam if it is not there in a few minutes.'; m.hidden = false; })
+      .catch(function (j) { m.className = 'msg err'; m.textContent = (j && j.error) || 'Could not send it.'; m.hidden = false; }).finally(function () { b.disabled = false; });
+  });
   var W = window.SimpleWebAuthnBrowser;
   if (W && W.browserSupportsWebAuthn()) {
     $('#face').hidden = false; $('#face-or').hidden = false;

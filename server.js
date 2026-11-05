@@ -395,14 +395,15 @@ async function syncPeople(force, wait) {
       if (Object.keys(changes).length) { Object.assign(cur, changes); pinsChanged = true; }
       // one PIN per person: a PIN this portal kept for them moves to their store login when that login has none; when the login
       // already has the same PIN the portal's copy is retired; a different one stays usable (flagged) until an admin sets a PIN under Team
-      if (cur.pin && (cur.pinV == null || cur.pinV !== (u.pin_version || 0))) {
+      if (cur.pin && cur.pinDup && cur.pinV != null && cur.pinV !== (u.pin_version || 0)) { cur.pin = ''; cur.pinDup = false; pinsChanged = true; console.log(`PIN for ${name}: a store PIN was set under Team — the portal's own is retired`); }
+      else if (cur.pin && (cur.pinV == null || cur.pinV !== (u.pin_version || 0))) {
         try {
           const r = await hubCall('/api/hub/set-pin', { method: 'POST', body: JSON.stringify({ id: u.id, pin: String(cur.pin) }), wait: 0 });
           if (r && r.ok && (!r.kept || r.same)) { console.log(`PIN for ${name}: ${r.kept ? 'same as the store login — the portal keeps none of its own now' : 'moved to their store login'}`); cur.pin = ''; cur.pinDup = false; pinsChanged = true; }
           else if (r && r.ok && r.kept) { if (!cur.pinDup) console.log(`PIN for ${name}: their store login has a different PIN; the portal PIN keeps working until an admin sets a PIN under Team`); cur.pinDup = true; cur.pinV = u.pin_version || 0; pinsChanged = true; }
           else if (r && r.clash) { if (!cur.pinDup) console.error(`PIN for ${name} can't move to the store (someone there already uses it): their portal PIN still works until an admin sets a store PIN under Team`); cur.pinDup = true; cur.pinV = u.pin_version || 0; pinsChanged = true; }
         } catch (e) { console.error(`PIN move for ${name} failed: ${e.message}`); } // tried again on the next sync
-      } else if (cur.pin && cur.pinDup && cur.pinV !== undefined && cur.pinV !== (u.pin_version || 0)) { cur.pin = ''; cur.pinDup = false; pinsChanged = true; console.log(`PIN for ${name}: a store PIN was set under Team — the portal's own is retired`); }
+      }
     }
     if (!rows.some(r => r.rep === name && r.role !== 'Team')) { rows.push({ rep: name, role: 'Sales Rep', territory: name, metric: 'Revenue', quota: null, counts: 'New + Existing', product_filter: '', carry: false, draw: null, comm_rate: null, comm_floor: 0, pay_kind: '', pay_amount: null, hub: u.id }); rowsChanged = true; }
   }
@@ -604,6 +605,15 @@ app.post('/api/login', async (req, res) => {
   }
   t.n++;
   res.status(401).json({ error: 'Wrong PIN.' });
+});
+// "Forgot?" on the sign-in page: the store sends the reset email for that login (one reset for both apps); same reply either way
+app.post('/api/login/forgot', async (req, res) => {
+  const t = throttled('forgot:' + req.ip); if (t.n >= 10) return res.status(429).json({ error: 'Too many tries. Wait 15 minutes and try again.' }); t.n++;
+  const email = String(req.body.email || '').trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ error: 'Enter the email you sign in with.' });
+  if (!hubLinked()) return res.status(400).json({ error: 'Sign-in resets are not set up on this portal. Ask the COO for a new PIN.' });
+  res.json({ ok: true });
+  hubCall('/api/hub/reset-request', { method: 'POST', body: JSON.stringify({ email }), wait: HUB_WAIT }).catch(e => console.error('Reset request to the store failed: ' + e.message));
 });
 app.post('/api/logout', (req, res) => { res.setHeader('Set-Cookie', `sct_session=; Path=/; HttpOnly; ${COOKIE_ATTRS()}; Max-Age=0`); res.json({ ok: true }); });
 
