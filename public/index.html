@@ -215,7 +215,7 @@ function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clea
 /* ================= state ================= */
 function defSettings(){return{biz:{name:'Stemo Enterprises',owner:'Steve Smith',email:'',phone:'',address:'',website:'',payInfo:'Checks payable to Stemo Enterprises. ACH / Zelle details provided on request.'},
  rates:[{id:'dev',name:'Developer',rate:125},{id:'des',name:'UI/UX Design',rate:95},{id:'pm',name:'Project Management',rate:85}],
- d:{contingency:10,deposit:50,tax:0,terms:15,markup:30,hpw:25,trackAllow:25,warranty:30,invPrefix:'INV-',nextInv:1001,estValid:30,cancelDays:30,lateFee:1.5,law:'Texas',venue:'Hidalgo County, Texas',licCap:5},
+ d:{contingency:10,deposit:50,tax:0,terms:15,markup:30,hpw:25,trackAllow:25,warranty:30,invPrefix:'INV-',nextInv:1001,estValid:30,cancelDays:30,lateFee:1.5,law:'Texas',venue:'Hidalgo County, Texas',licCap:5,near:'McAllen, TX'},
  oos:DEF_OOS,assume:DEF_ASSUME,resp:DEF_RESP}}
 function mergeSettings(s){const d=defSettings();if(!s)return d;return{...d,...s,biz:{...d.biz,...(s.biz||{})},d:{...d.d,...(s.d||{})},rates:(s.rates&&s.rates.length)?s.rates:d.rates}}
 const S={settings:defSettings(),projects:{},hist:{},histMeta:null,view:'home',pid:null,tab:'client',q:'',f:'All',hq:'',hsort:'hours'};
@@ -584,7 +584,7 @@ function rSettings(){const s=S.settings,b=s.biz,d=s.d;
  <div class="card"><h2>Defaults</h2><div class="grid">
   ${SF('Contingency %','d.contingency',d.contingency,'number')}${SF('Deposit %','d.deposit',d.deposit,'number')}${SF('Sales tax %','d.tax',d.tax,'number')}${SF('Payment terms (days)','d.terms',d.terms,'number')}
   ${SF('Monthly markup %','d.markup',d.markup,'number')}${SF('Build capacity (hrs/week)','d.hpw',d.hpw,'number')}${SF('Off-commit time allowance %','d.trackAllow',d.trackAllow,'number')}${SF('Warranty (days)','d.warranty',d.warranty,'number')}${SF('Estimate valid (days)','d.estValid',d.estValid,'number')}
-  ${SF('Monthly cancel notice (days)','d.cancelDays',d.cancelDays,'number')}${SF('Governing law (state)','d.law',d.law)}${SF('Venue (county, state)','d.venue',d.venue)}${SF('Default max license increase %','d.licCap',d.licCap,'number')}${SF('Late fee % / month','d.lateFee',d.lateFee,'number')}${SF('Invoice prefix','d.invPrefix',d.invPrefix)}${SF('Next invoice #','d.nextInv',d.nextInv,'number')}</div></div>
+  ${SF('Monthly cancel notice (days)','d.cancelDays',d.cancelDays,'number')}${SF('Company search: look near (city, state)','d.near',d.near)}${SF('Governing law (state)','d.law',d.law)}${SF('Venue (county, state)','d.venue',d.venue)}${SF('Default max license increase %','d.licCap',d.licCap,'number')}${SF('Late fee % / month','d.lateFee',d.lateFee,'number')}${SF('Invoice prefix','d.invPrefix',d.invPrefix)}${SF('Next invoice #','d.nextInv',d.nextInv,'number')}</div></div>
  <div class="card"><h2>Default SOW terms (for new projects)</h2><div class="sm mut" style="margin-bottom:8px">One item per line.</div>
   <div class="grid g2">${ST('Assumptions','assume',s.assume,5)}${ST('Client responsibilities','resp',s.resp,5)}</div><div style="margin-top:10px">${ST('Out of scope','oos',s.oos,5)}</div></div>
  <div class="card"><h2>Backup</h2><div class="sm mut">Copy a backup of all projects and settings, or paste one in to restore.</div>
@@ -682,6 +682,9 @@ function buildDoc(kind,p){const s=S.settings,d=s.d,E=calcEst(p),B=calcBill(p),M=
   ${s.biz.payInfo?`<h2>How to Pay</h2><div>${escBr(s.biz.payInfo)}</div>`:''}<div class="d-foot">Thank you for your business!</div>`}
  return{t,h,fn}}
 let curDoc=null,LOOK=[];
+const FREEMAIL=/^(gmail|yahoo|hotmail|outlook|live|aol|icloud|me|msn|comcast|att|sbcglobal|proton|protonmail|ymail|gmx)\./i;
+function fillFromEmail(p){const c=p.client;if(c.website)return false;const m=String(c.email||'').trim().match(/@([a-z0-9.-]+\.[a-z]{2,})$/i);
+ if(!m||FREEMAIL.test(m[1]))return false;c.website='https://'+m[1].toLowerCase();touch(p);const el=document.querySelector('[data-k="client.website"]');if(el)el.value=c.website;return true}
 function openDoc(kind){const p=cur();curDoc={...buildDoc(kind,p)};const ov=$('#ov');
  ov.innerHTML=`<div class="ovbar"><div class="t">${esc(curDoc.t)}</div><button class="btn sm p" data-act="pdf">⬇ PDF</button><button class="btn sm" data-act="html">⬇ Printable HTML</button><button class="btn sm" data-act="copyTxt">Copy text</button><button class="btn sm" data-act="closeOv">Close</button></div><div class="paper" id="paper">${curDoc.h}</div>`;
  ov.classList.remove('hidden');ov.scrollTop=0;document.body.style.overflow='hidden'}
@@ -709,9 +712,10 @@ const ACT={
   const g=`<a href="https://www.google.com/search?q=${encodeURIComponent(q)}" target="_blank" rel="noopener">Search Google instead ↗</a>`;
   if(!window.__RENDER_HOST){box.innerHTML=`<div class="note">Company lookup works in the Render app (dev-billing.onrender.com). ${g}</div>`;return}
   box.innerHTML='<div class="sm mut" style="margin-top:8px">Searching…</div>';
-  try{const city=(S.settings.biz.address||'').split('\n').pop();const r=await fetch('/api/lookup?q='+encodeURIComponent(q),{credentials:'same-origin'}).then(r=>r.json());LOOK=r.results||[];
-   box.innerHTML=LOOK.length?`<h3>Pick the right one (${LOOK.length})</h3>`+LOOK.map((x,i)=>`<div class="line"><div class="row"><div class="grow"><b>${esc(x.name)}</b><div class="sm mut">${escBr(x.address||'No address listed')}</div><div class="sm">${[x.phone,x.website,x.email].filter(Boolean).map(esc).join(' · ')}</div></div><button class="btn sm g" data-act="useLookup" data-i="${i}">Use this</button></div></div>`).join('')+`<div class="sm" style="margin-top:6px">${esc(r.source||'')} · ${g}</div>`
-    :`<div class="note">No listing found for "${esc(q)}". Try adding the city (e.g. "${esc(q)} McAllen"). ${g}</div>`}
+  const near=(S.settings.d.near||'').trim();fillFromEmail(p);
+  try{const r=await fetch('/api/lookup?q='+encodeURIComponent(q)+'&near='+encodeURIComponent(near),{credentials:'same-origin'}).then(r=>r.json());LOOK=r.results||[];
+   box.innerHTML=LOOK.length?`<h3>Pick the right one (${LOOK.length})</h3>`+LOOK.map((x,i)=>`<div class="line"><div class="row"><div class="grow"><b>${esc(x.name)}</b>${x.local?' <span class="badge b-Paid">📍 Local</span>':''}<div class="sm mut">${escBr(x.address||'No address listed')}</div><div class="sm">${[x.phone,x.website,x.email].filter(Boolean).map(esc).join(' · ')}</div></div><button class="btn sm g" data-act="useLookup" data-i="${i}">Use this</button></div></div>`).join('')+`<div class="sm" style="margin-top:6px">${esc(r.source||'')} · ${g}</div>`
+    :`<div class="note">No exact listing for "${esc(q)}"${near?` near ${esc(near)} or nationwide`:''}. Small businesses often aren't in the free map data. ${p.client.website?`Website filled from the email domain. `:''}${g}</div>`}
   catch(e){box.innerHTML=`<div class="note">Lookup failed. ${g}</div>`}},
  useLookup(t){const p=cur(),x=LOOK[+t.dataset.i];if(!x)return;const c=p.client;let n=0;
   [['company','name'],['address','address'],['phone','phone'],['website','website'],['email','email']].forEach(([k,f])=>{if(x[f]){c[k]=x[f];n++}});

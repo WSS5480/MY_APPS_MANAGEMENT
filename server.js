@@ -129,22 +129,52 @@ function osmMap(x) {
     phone: t.phone || t['contact:phone'] || '', website: t.website || t['contact:website'] || '',
     email: t.email || t['contact:email'] || '' };
 }
-async function lookupOSM(q) {
-  const u = 'https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&extratags=1&namedetails=1&limit=6&countrycodes=us&q=' + encodeURIComponent(q);
-  const r = await fetch(u, { headers: { 'User-Agent': 'StemoDevBilling/1.0 (+https://dev-billing.onrender.com)', 'Accept-Language': 'en' } });
-  if (!r.ok) throw new Error('osm ' + r.status);
-  return (await r.json()).map(osmMap);
-}
+const OSM_UA = { 'User-Agent': 'StemoDevBilling/1.0 (+https://dev-billing.onrender.com)', 'Accept-Language': 'en' };
 let lastOSM = 0;
+async function osm(params) {
+  const wait = 1100 - (Date.now() - lastOSM); if (wait > 0) await new Promise(r => setTimeout(r, wait)); lastOSM = Date.now();
+  const r = await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&extratags=1&namedetails=1&countrycodes=us&' + new URLSearchParams(params), { headers: OSM_UA });
+  if (!r.ok) throw new Error('osm ' + r.status);
+  return r.json();
+}
+const nearCache = new Map();
+async function nearBox(near) {
+  if (!near) return null;
+  if (nearCache.has(near)) return nearCache.get(near);
+  const j = await osm({ q: near, limit: 1 }); let box = null;
+  if (j[0]) { const lat = +j[0].lat, lon = +j[0].lon; box = [lon - 0.75, lat + 0.5, lon + 0.75, lat - 0.5].join(','); }
+  nearCache.set(near, box); return box;
+}
+const STOP = new Set(['the', 'and', 'of', 'llc', 'inc', 'co', 'corp', 'pllc', 'pa', 'ltd']);
+const toks = q => String(q || '').toLowerCase().replace(/['’]/g, '').replace(/&/g, ' and ').split(/[^a-z0-9]+/).filter(t => t && !STOP.has(t));
+// every word you typed must appear (so "360 Medical" never matches plain "Medical")
+function matches(q, x) {
+  const t = toks(q); if (!t.length) return false;
+  const name = ' ' + toks(x.name).join(' ') + ' ', all = name + toks(x.address + ' ' + x.website).join(' ') + ' ';
+  const has = (hay, w) => hay.includes(' ' + w + ' ') || (w.length > 3 && hay.includes(w));
+  return t.every(w => has(all, w)) && t.some(w => has(name, w));
+}
+async function lookupOSM(q, near) {
+  const out = [], seen = new Set();
+  const add = (rows, local) => rows.map(osmMap).forEach(x => { const k = x.name + '|' + x.address; if (!seen.has(k) && matches(q, x)) { seen.add(k); out.push({ ...x, local }); } });
+  const box = await nearBox(near).catch(() => null);
+  if (box) add(await osm({ q, limit: 15, viewbox: box, bounded: 1 }), true);
+  if (out.length < 3 && near) add(await osm({ q: q + ', ' + near, limit: 10 }), true);
+  if (out.length < 3) add(await osm({ q, limit: 20 }), false);
+  return out.slice(0, 8);
+}
 api.get('/lookup', async (req, res) => {
-  const q = String(req.query.q || '').trim().slice(0, 120);
+  const q = String(req.query.q || '').trim().slice(0, 120), near = String(req.query.near || '').trim().slice(0, 80);
   if (q.length < 2) return res.json({ results: [] });
   try {
-    if (process.env.GOOGLE_PLACES_KEY) return res.json({ source: 'Google Places', results: await lookupGoogle(q) });
-    const wait = 1100 - (Date.now() - lastOSM); if (wait > 0) await new Promise(r => setTimeout(r, wait)); lastOSM = Date.now();
-    res.json({ source: 'OpenStreetMap', results: await lookupOSM(q) });
+    if (process.env.GOOGLE_PLACES_KEY) {
+      const g = await lookupGoogle(near ? `${q} near ${near}` : q);
+      return res.json({ source: 'Google Places', results: g.map(x => ({ ...x, local: !!near && toks(x.address).join(' ').includes(toks(near)[0] || '~') })) });
+    }
+    res.json({ source: 'OpenStreetMap', near, results: await lookupOSM(q, near) });
   } catch (e) { res.status(502).json({ error: String(e.message || e), results: [] }); }
 });
+module.exports.matches = matches;
 module.exports.osmMap = osmMap;
 
 app.use('/api', (req, res, next) => api(req, res, err => err ? res.status(500).json({ error: String(err.message || err) }) : next()));
