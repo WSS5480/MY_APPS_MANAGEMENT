@@ -1,0 +1,15 @@
+{
+  "name": "Dev Billing — Stemo Enterprises",
+  "short_name": "Dev Billing",
+  "description": "Estimates, scope of work, final bills, monthly costs and licensing for app builds.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#101626",
+  "theme_color": "#101626",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

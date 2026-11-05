@@ -1,0 +1,25 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Get the Dev Billing app</title><link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><meta name="theme-color" content="#101626">
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f4f5f7;color:#14171f;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{background:#101626;color:#fff;padding:28px 18px;text-align:center}header img{width:84px;height:84px;border-radius:20px}h1{margin:10px 0 4px;font-size:24px}header p{margin:0;color:#9fb0d0}
+main{max-width:720px;margin:0 auto;padding:16px}.card{background:#fff;border:1px solid #e3e6eb;border-radius:14px;padding:16px;margin:12px 0}
+h2{margin:0 0 8px;font-size:17px}ol{margin:6px 0 0;padding-left:20px;line-height:1.7}.btn{display:block;width:100%;padding:14px;border:none;border-radius:12px;background:#1f5eff;color:#fff;font-size:17px;font-weight:700;cursor:pointer;text-align:center;text-decoration:none}
+.btn.alt{background:#fff;color:#1f5eff;border:2px solid #1f5eff;margin-top:10px}.mut{color:#667085;font-size:14px}.hl{outline:3px solid #f5a623}#done{display:none;color:#0f8a4f;font-weight:700;text-align:center;margin-top:8px}
+</style></head><body>
+<header><img src="/icons/icon-192.png" alt=""><h1>Dev Billing</h1><p>Stemo Enterprises · estimates, SOWs, bills, monthly &amp; licensing</p></header>
+<main>
+<div class="card"><button class="btn" id="install" hidden>⬇ Install the app</button><div id="done">✓ Installed — look for Dev Billing on your home screen or desktop.</div>
+<a class="btn alt" href="/">Open in browser</a><p class="mut" style="text-align:center;margin:10px 0 0">Same PIN, same data on every device.</p></div>
+<div class="card" id="ios"><h2>📱 iPhone / iPad</h2><ol><li>Open this page in <b>Safari</b>.</li><li>Tap the <b>Share</b> button (square with the arrow).</li><li>Tap <b>Add to Home Screen</b>, then <b>Add</b>.</li></ol></div>
+<div class="card" id="android"><h2>🤖 Android</h2><ol><li>Open this page in <b>Chrome</b>.</li><li>Tap <b>⬇ Install the app</b> above, or the <b>⋮</b> menu → <b>Install app</b> / <b>Add to Home screen</b>.</li></ol></div>
+<div class="card" id="desktop"><h2>💻 Windows / Mac</h2><ol><li>Open this page in <b>Chrome</b> or <b>Edge</b>.</li><li>Click <b>⬇ Install the app</b> above, or the install icon at the right end of the address bar.</li><li>It opens in its own window and goes in your Start menu / Applications.</li></ol></div>
+</main>
+<script>
+if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js');
+const ua=navigator.userAgent,id=/iPhone|iPad|iPod/.test(ua)?'ios':/Android/.test(ua)?'android':'desktop';document.getElementById(id).classList.add('hl');document.getElementById(id).parentNode.insertBefore(document.getElementById(id),document.querySelector('main .card').nextSibling);
+let ev=null;addEventListener('beforeinstallprompt',e=>{e.preventDefault();ev=e;document.getElementById('install').hidden=false});
+document.getElementById('install').onclick=async()=>{if(!ev)return;ev.prompt();const r=await ev.userChoice;if(r.outcome==='accepted'){document.getElementById('install').hidden=true;document.getElementById('done').style.display='block'}ev=null};
+addEventListener('appinstalled',()=>{document.getElementById('install').hidden=true;document.getElementById('done').style.display='block'});
+if(matchMedia('(display-mode: standalone)').matches){document.getElementById('done').style.display='block'}
+</script></body></html>

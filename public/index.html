@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Dev Billing — Estimates, SOW, Invoices &amp; Monthly</title>
+<link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><meta name="theme-color" content="#101626"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Dev Billing">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -117,6 +118,7 @@ html,body{overscroll-behavior-y:contain}
     <button data-act="saveNow" id="navSave" title="Save changes">💾 Save</button>
     <button data-act="refresh" id="navRef" title="Refresh">⟳ Refresh</button>
     <button data-act="settings" id="navSet">Settings</button>
+    <button data-act="getApp" id="navApp" title="Install on phone or computer">⬇ Get the app</button>
   </div>
   <div class="sync" id="sync">Loading…</div>
 </div></header>
@@ -719,6 +721,7 @@ const ACT={
  home(){S.view='home';closeOv();render();scrollTo(0,0)},
  settings(){S.view='settings';render();scrollTo(0,0)},
  hist(){S.view='hist';render();scrollTo(0,0)},
+ getApp(){if(window.__RENDER_HOST)location.href='/download';else window.open('https://dev-billing.onrender.com/download','_blank')},
  fillGit(){const p=cur(),r=fillFromGit(p,true);if(!r){toast('Link a GitHub repo first — pick it under “GitHub & Render link” below');const el=document.querySelector('[data-add=link]');if(el){el.scrollIntoView({block:'center'});el.focus()}return}touch(p);render();toast(r)},
  async lookup(){const p=cur(),q=(p.client.company||'').trim(),box=$('#lookupBox');if(q.length<2){toast('Type the company name first');return}
   const g=`<a href="https://www.google.com/maps/search/${encodeURIComponent(q+' '+(S.settings.d.near||''))}" target="_blank" rel="noopener">Open in Google Maps ↗</a>`;
@@ -823,6 +826,8 @@ async function doRefresh(){if(refreshing)return;refreshing=true;const b=$('#navR
  addEventListener('touchend',()=>{if(y0==null)return;const go=pull>110;y0=null;pull=0;if(go){ptr().textContent='Refreshing…';doRefresh().then(()=>{ptr().style.transform='translate(-50%,-60px)';ptr().style.opacity=0})}else{ptr().style.transform='translate(-50%,-60px)';ptr().style.opacity=0}},{passive:true});})();
 addEventListener('beforeunload',e=>{if(dirty.size){saveAll();e.preventDefault();e.returnValue=''}});
 
+if(window.__RENDER_HOST&&'serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
+if(matchMedia('(display-mode: standalone)').matches)addEventListener('DOMContentLoaded',()=>{const b=document.getElementById('navApp');if(b)b.style.display='none'});
 /* ================= boot ================= */
 loadLocal();render();setSync();connect();
 </script>

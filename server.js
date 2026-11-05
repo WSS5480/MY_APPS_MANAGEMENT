@@ -47,15 +47,22 @@ function limited(ip) {
   tries.set(ip, t); return t.length >= 10;
 }
 
-const loginPage = (msg = '') => `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Dev Billing — Sign in</title>
+const loginPage = (msg = '') => `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Dev Billing — Sign in</title><link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/icons/apple-touch-icon.png"><meta name="theme-color" content="#101626">
 <style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#101626;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
 form{background:#fff;border-radius:14px;padding:28px;width:min(340px,90vw);box-shadow:0 10px 40px rgba(0,0,0,.3)}h1{margin:0 0 4px;font-size:20px}p{margin:0 0 18px;color:#667085;font-size:14px}
 input{width:100%;box-sizing:border-box;font-size:22px;letter-spacing:6px;text-align:center;padding:12px;border:1px solid #cfd5de;border-radius:10px}
 button{width:100%;margin-top:14px;padding:12px;border:none;border-radius:10px;background:#1f5eff;color:#fff;font-size:16px;font-weight:700;cursor:pointer}.e{color:#c62828;font-size:14px;margin-top:10px;text-align:center}</style></head>
 <body><form method="post" action="/login"><h1>Dev Billing</h1><p>Stemo Enterprises — enter your PIN</p>
-<input name="pin" type="password" inputmode="numeric" autocomplete="current-password" autofocus required><button>Sign in</button>${msg ? `<div class="e">${msg}</div>` : ''}</form></body></html>`;
+<input name="pin" type="password" inputmode="numeric" autocomplete="current-password" autofocus required><button>Sign in</button>${msg ? `<div class="e">${msg}</div>` : ''}<a href="/download" style="display:block;text-align:center;margin-top:14px;color:#1f5eff;font-size:14px;font-weight:600;text-decoration:none">⬇ Get the app</a></form></body></html>`;
 
 app.get('/healthz', (req, res) => res.send('ok'));
+// public files for installing the app (no PIN needed)
+app.get(['/manifest.webmanifest', '/sw.js', '/offline.html', '/download.html'], (req, res) => {
+  if (req.path === '/sw.js') res.set('Service-Worker-Allowed', '/').set('Cache-Control', 'no-cache');
+  res.sendFile(path.join(__dirname, 'public', req.path), { headers: req.path.endsWith('webmanifest') ? { 'Content-Type': 'application/manifest+json' } : {} });
+});
+app.get('/download', (req, res) => res.sendFile(path.join(__dirname, 'public', 'download.html')));
+app.use('/icons', express.static(path.join(__dirname, 'public', 'icons'), { maxAge: '7d' }));
 app.get('/login', (req, res) => res.type('html').send(loginPage(PIN ? '' : 'APP_PIN is not set on the server.')));
 app.post('/login', (req, res) => {
   const ip = req.headers['x-forwarded-for'] || req.ip;
