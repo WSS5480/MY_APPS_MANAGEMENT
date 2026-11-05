@@ -269,14 +269,16 @@ function fix(p){const n=newProject();p.client={...n.client,...(p.client||{})};p.
  ['lines'].forEach(k=>{if(!Array.isArray(p[k]))p[k]=[]});['timeline','schedule'].forEach(k=>{if(!Array.isArray(p.sow[k]))p.sow[k]=[]});['changeOrders','payments'].forEach(k=>{if(!Array.isArray(p.invoice[k]))p.invoice[k]=[]});if(!Array.isArray(p.monthly.items))p.monthly.items=[];if(!Array.isArray(p.links))p.links=[];if(!Array.isArray(p.comps))p.comps=[];p.lic={...n.lic,...(p.lic||{})};if(!Array.isArray(p.lic.items))p.lic.items=[];return p}
 
 /* ================= calculations ================= */
+const bRate=p=>num(p&&p.buildRate)>0?num(p.buildRate):0;
+const lineRate=(p,l)=>bRate(p)||num(l.rate);
 function calcEst(p){let labor=0,hrs=0,exp=0;const cx=num(p.complexity)||1;
- const lines=p.lines.map(l=>{let a;if(l.type==='exp'){a=num(l.qty)*num(l.cost);exp+=a}else{a=num(l.hours)*num(l.rate);labor+=a;hrs+=num(l.hours)}return a});
+ const lines=p.lines.map(l=>{let a;if(l.type==='exp'){a=num(l.qty)*num(l.cost);exp+=a}else{a=num(l.hours)*lineRate(p,l);labor+=a;hrs+=num(l.hours)}return a});
  const laborAdj=labor*cx,cont=laborAdj*num(p.contingency)/100,sub=laborAdj+cont+exp,disc=p.discType==='amt'?Math.min(num(p.discount),sub):sub*num(p.discount)/100,total=sub-disc;
  const low=Math.max(0,laborAdj+exp-disc);
  return{lines,labor,hrs,hrsAdj:hrs*cx,cx,laborAdj,cxAdj:laborAdj-labor,cont,exp,sub,disc,total,low,deposit:total*num(p.depositPct)/100}}
 function actualHrs(l,cx){return (l.actual===''||l.actual==null)?r2(num(l.hours)*cx):num(l.actual)}
 function calcBill(p){const E=calcEst(p),inv=p.invoice;const rows=[];let base=0;
- if(inv.mode==='actual'){p.lines.forEach(l=>{if(l.type==='exp'){const a=num(l.qty)*num(l.cost);rows.push({desc:l.desc,detail:`${fh(l.qty)} × ${money(l.cost)}`,amt:a});base+=a}else{const ah=actualHrs(l,E.cx),a=ah*num(l.rate);rows.push({desc:l.desc,detail:`${fh(ah)} hrs × ${money(l.rate)}/hr`,amt:a});base+=a}})}
+ if(inv.mode==='actual'){p.lines.forEach(l=>{if(l.type==='exp'){const a=num(l.qty)*num(l.cost);rows.push({desc:l.desc,detail:`${fh(l.qty)} × ${money(l.cost)}`,amt:a});base+=a}else{const ah=actualHrs(l,E.cx),a=ah*lineRate(p,l);rows.push({desc:l.desc,detail:`${fh(ah)} hrs × ${money(lineRate(p,l))}/hr`,amt:a});base+=a}})}
  else{rows.push({desc:`${p.name||'Project'} — complete build per approved estimate / SOW`,detail:'Fixed price'+(E.disc?` · includes ${money(E.disc)} discount${p.discLabel?' ('+esc(p.discLabel)+')':''}`:''),amt:E.total});base=E.total}
  let co=0;const cos=inv.changeOrders.map(c=>{const a=num(c.hours)*num(c.rate);co+=a;return a});
  const credit=num(inv.credit),pre=base+co-credit,tax=pre*num(inv.tax)/100,total=pre+tax,arv=inv.arId&&S.invoices&&S.invoices[inv.arId],paid=arv?invCalc(arv).paid:inv.payments.reduce((s,x)=>s+num(x.amount),0);
@@ -297,7 +299,7 @@ function calcLic(p){const L=p.lic;let once=0,mo=0;const items=L.items.map(it=>{c
 function calcMap(p){const E=calcEst(p),B=calcBill(p),M=calcMo(p),m={};
  E.lines.forEach((a,i)=>m['line.'+i]=money(a));
  Object.assign(m,{'est.labor':money(E.labor),'est.cxAdj':money(E.cxAdj),'est.cont':money(E.cont),'est.exp':money(E.exp),'est.disc':E.disc?'-'+money(E.disc):money(0),'est.total':money(E.total),'est.low':money(E.low),'est.hrs':fh(E.hrsAdj)+' hrs','est.deposit':money(E.deposit),'est.weeks':fh(E.hrsAdj/(num(S.settings.d.hpw)||25))+' wks'});
- p.lines.forEach((l,i)=>{if(l.type!=='exp'){const ah=actualHrs(l,E.cx);m['act.'+i]=money(ah*num(l.rate));m['acth.'+i]=fh(ah)}});
+ p.lines.forEach((l,i)=>{if(l.type!=='exp'){const ah=actualHrs(l,E.cx);m['act.'+i]=money(ah*lineRate(p,l));m['acth.'+i]=fh(ah)}});
  B.cos.forEach((a,i)=>m['co.'+i]=money(a));
  Object.assign(m,{'bill.base':money(B.base),'bill.co':money(B.co),'bill.credit':B.credit?'-'+money(B.credit):money(0),'bill.tax':money(B.tax),'bill.total':money(B.total),'bill.paid':B.paid?'-'+money(B.paid):money(0),'bill.balance':money(B.balance),'bill.acthrs':fh(B.actHrs)+' hrs','bill.var':(B.base-E.total>=0?'+':'')+money(B.base-E.total)});
  M.items.forEach((x,i)=>{m['mo.pr.'+i]=money(x.pr)+'/mo';m['mo.m.'+i]=money(x.m)+'/mo'});
@@ -445,11 +447,13 @@ function rEst(p){const groups={};p.lines.forEach((l,i)=>{const ph=PHASES.include
   if(l.type==='exp')return `<div class="line exp"><div class="top"><input data-k="lines.${i}.desc" value="${esc(l.desc)}" placeholder="Expense / pass-through (license, domain purchase…)"><button class="x" data-act="rmLine" data-i="${i}" title="Remove">×</button></div>
    <div class="grid" style="margin-top:8px"><label class="f">Phase${phSel}</label>${F('Qty',`lines.${i}.qty`,l.qty,'number')}${F('Cost each ($)',`lines.${i}.cost`,l.cost,'number')}<label class="f">Amount<div class="amt" style="padding:9px 0" data-c="line.${i}"></div></label></div></div>`;
   const isMod=MODS.some(m=>norm(m[1])===norm(l.desc));return `<div class="line${isMod?' added':''}"><div class="top">${isMod?'<span class="addtag">✓ Module</span>':''}<input data-k="lines.${i}.desc" value="${esc(l.desc)}" placeholder="Feature / task"><button class="x" data-act="rmLine" data-i="${i}" title="Remove">×</button></div>
-   <div class="grid" style="margin-top:8px"><label class="f">Phase${phSel}</label><label class="f">Role<select data-k="lines.${i}.rateId" data-role="${i}">${roleOpts(l.rateId)}</select></label>${F('Hours',`lines.${i}.hours`,l.hours,'number')}${F('Rate ($/hr)',`lines.${i}.rate`,l.rate,'number')}<label class="f">Amount<div class="amt" style="padding:9px 0" data-c="line.${i}"></div></label></div></div>`};
+   <div class="grid" style="margin-top:8px"><label class="f">Phase${phSel}</label><label class="f">Role<select data-k="lines.${i}.rateId" data-role="${i}">${roleOpts(l.rateId)}</select></label>${F('Hours',`lines.${i}.hours`,l.hours,'number')}${bRate(p)?`<label class="f">Rate ($/hr)<input value="${bRate(p)}" disabled title="Set by the build rate"></label>`:F('Rate ($/hr)',`lines.${i}.rate`,l.rate,'number')}<label class="f">Amount<div class="amt" style="padding:9px 0" data-c="line.${i}"></div></label></div></div>`};
  return `<div class="card"><h2>Pricing settings</h2><div class="grid">
+  <label class="f">Build rate ($/hr)<input type="number" inputmode="decimal" step="any" data-k="buildRate" data-rr value="${esc(p.buildRate||'')}" placeholder="Per role (${S.settings.rates.map(r=>money0(r.rate)).join(' / ')})"></label>
   <label class="f">Complexity<select data-k="complexity" data-num>${CX.map(([v,l])=>`<option value="${v}" ${num(p.complexity)===v?'selected':''}>${l}</option>`).join('')}</select></label>
   ${F('Contingency %','contingency',p.contingency,'number')}${F('Deposit to start %','depositPct',p.depositPct,'number')}</div>
-  <div class="sm mut" style="margin-top:8px">Complexity multiplies labor hours. Contingency is a buffer for unknowns, shown to the client as its own line.</div></div>
+  <div class="row" style="margin-top:8px">${[0,...S.settings.rates.map(r=>num(r.rate))].filter((v,i,a)=>a.indexOf(v)===i).map(v=>`<button class="btn sm${(num(p.buildRate)||0)===v?' p':''}" data-act="setBRate" data-v="${v}">${v?money0(v)+'/hr':'Per role'}</button>`).join('')}</div>
+  <div class="sm mut" style="margin-top:8px">${bRate(p)?`Every labor line in this build is billed at <b>${money0(bRate(p))}/hr</b>. Clear the build rate to go back to per-role rates.`:'Leave the build rate blank to price each line by its role.'} Complexity multiplies labor hours. Contingency is a buffer for unknowns, shown to the client as its own line.</div></div>
  <div class="card"><h2>🏷 Discount</h2><div class="grid">
   <label class="f">Discount type<select data-k="discType" data-rr><option value="pct" ${p.discType!=='amt'?'selected':''}>Percent (%)</option><option value="amt" ${p.discType==='amt'?'selected':''}>Dollar amount ($)</option></select></label>
   ${F(p.discType==='amt'?'Discount ($)':'Discount (%)','discount',p.discount,'number')}
@@ -500,7 +504,7 @@ function rBill(p){const inv=p.invoice,E=calcEst(p);const dueAuto=addDays(inv.dat
   <label class="chk card" style="margin:0;cursor:pointer"><input type="radio" name="bm" data-k="invoice.mode" value="actual" data-rr ${inv.mode==='actual'?'checked':''}><span><b>Actual hours</b><br><span class="sm mut">Bill real hours worked per line item</span></span></label></div></div>
  ${inv.mode==='actual'?`<div class="card"><h2>Actual hours</h2><div class="sm mut">Blank = estimated hours (with complexity). Enter real hours to override.</div>
   ${p.lines.map((l,i)=>l.type==='exp'?`<div class="line exp"><div class="row"><span class="grow">${esc(l.desc||'Expense')}</span><span class="amt" data-c="line.${i}"></span></div></div>`:`<div class="line"><div class="row"><b class="grow">${esc(l.desc||'Item')}</b><span class="amt" data-c="act.${i}"></span></div>
-   <div class="grid" style="margin-top:8px"><label class="f">Est. hours<div style="padding:9px 0">${fh(num(l.hours)*E.cx)}</div></label>${F('Actual hours',`lines.${i}.actual`,l.actual==null?'':l.actual,'number','placeholder="'+fh(num(l.hours)*E.cx)+'"')}${F('Rate ($/hr)',`lines.${i}.rate`,l.rate,'number')}</div></div>`).join('')||'<div class="empty">No line items in the estimate.</div>'}
+   <div class="grid" style="margin-top:8px"><label class="f">Est. hours<div style="padding:9px 0">${fh(num(l.hours)*E.cx)}</div></label>${F('Actual hours',`lines.${i}.actual`,l.actual==null?'':l.actual,'number','placeholder="'+fh(num(l.hours)*E.cx)+'"')}${bRate(p)?`<label class="f">Rate ($/hr)<input value="${bRate(p)}" disabled title="Set by the build rate"></label>`:F('Rate ($/hr)',`lines.${i}.rate`,l.rate,'number')}</div></div>`).join('')||'<div class="empty">No line items in the estimate.</div>'}
   <div class="tot"><span>Actual hours total</span><b data-c="bill.acthrs"></b></div><div class="tot"><span>vs. estimate</span><b data-c="bill.var"></b></div></div>`:''}
  ${rTracked(p)}
  <div class="card"><div class="row"><h2 class="grow" style="margin:0">Change orders / extra work</h2><button class="btn sm" data-act="addCO">+ Change order</button></div>
@@ -880,7 +884,7 @@ function buildDoc(kind,p){const s=S.settings,d=s.d,E=calcEst(p),B=calcBill(p),M=
    <div class="d-sm" style="margin-top:4px">Invoices are due within ${fh(d.terms)} days. Late balances may accrue ${fh(d.lateFee)}% per month.</div>`+
   (p.monthly.items.length?H('Ongoing Monthly Services')+moBlock(p,'').replace('<h2></h2>','')+`<div class="d-sm">Monthly services begin at launch${p.monthly.term?' for an initial term of '+fh(p.monthly.term)+' months':''}; either party may cancel with ${fh(d.cancelDays)} days' written notice after the initial term.</div>`:'')+
   H('Assumptions')+ul(lines2list(p.sow.assume))+H('Client Responsibilities')+ul(lines2list(p.sow.resp))+H('Out of Scope')+ul(lines2list(p.sow.oos))+
-  H('Changes to Scope')+`<div>Requests outside this scope will be quoted as a written change order at ${money0(rate('dev'))}/hr (or a fixed price) and require approval before work begins. Change orders may adjust the timeline.</div>`+
+  H('Changes to Scope')+`<div>Requests outside this scope will be quoted as a written change order at ${money0(bRate(p)||rate('dev'))}/hr (or a fixed price) and require approval before work begins. Change orders may adjust the timeline.</div>`+
   H('Acceptance & Warranty')+`<div>The client has 5 business days after delivery to report defects against this scope. Bugs reported within ${fh(d.warranty)} days of launch are fixed at no charge. New features and changes are billed as change orders. ${p.lic.model==='own'?'Upon final payment the client owns the custom code and data created for this project; third-party services remain under their own terms.':`${esc(s.biz.name)} retains all ownership of the software, code and intellectual property. The client owns its own data and receives the right to use the software under the separate Software License Agreement.`}</div>`+
   `<div class="d-sig"><div><div class="d-sigl"></div><b>${esc(s.biz.owner||s.biz.name||'')}</b><div class="d-sm">${s.biz.owner&&s.biz.owner!==s.biz.name?esc(s.biz.name)+' · ':''}Date</div></div><div><div class="d-sigl"></div><b>${esc(p.client.name||'Client')}</b><div class="d-sm">${esc(p.client.company||'')} · Date</div></div></div>`}
  else if(kind==='invoice'){const inv=p.invoice;t='Invoice';fn=slug(p.name)+'-invoice'+(inv.number?'-'+slug(inv.number):'');
@@ -899,7 +903,7 @@ function buildDoc(kind,p){const s=S.settings,d=s.d,E=calcEst(p),B=calcBill(p),M=
   `<h2>Services Included</h2>${p.monthly.items.map((it,i)=>dRow(esc(it.name),money(M.items[i].pr)+'/mo',esc(it.cat)+(it.cycle==='yr'?` · ${money(it.price)} billed yearly`:''))).join('')||'<div class="d-sm">None.</div>'}
   <div class="d-tots">${dRow('<b>Monthly total</b>','<b>'+money(M.price)+'/mo</b>','','d-grand')}${dRow('Annual',money(M.annual))}</div>
   ${p.monthly.notes?`<h2>Details</h2><div>${escBr(p.monthly.notes)}</div>`:''}
-  <h2>Terms</h2><ul><li>Billed monthly in advance${p.monthly.start?' starting '+fmtDate(p.monthly.start):''}; due within ${fh(d.terms)} days of invoice.</li><li>Initial term of ${fh(p.monthly.term)} months, then month-to-month. Either party may cancel with ${fh(d.cancelDays)} days' written notice after the initial term.</li><li>Third-party prices (hosting, domains, APIs) may change; changes will be communicated before the next billing cycle.</li><li>Services may be paused if an invoice is more than 30 days past due.</li><li>Work outside the included services is billed at ${money0(rate('dev'))}/hr with prior approval.</li></ul>
+  <h2>Terms</h2><ul><li>Billed monthly in advance${p.monthly.start?' starting '+fmtDate(p.monthly.start):''}; due within ${fh(d.terms)} days of invoice.</li><li>Initial term of ${fh(p.monthly.term)} months, then month-to-month. Either party may cancel with ${fh(d.cancelDays)} days' written notice after the initial term.</li><li>Third-party prices (hosting, domains, APIs) may change; changes will be communicated before the next billing cycle.</li><li>Services may be paused if an invoice is more than 30 days past due.</li><li>Work outside the included services is billed at ${money0(bRate(p)||rate('dev'))}/hr with prior approval.</li></ul>
   <div class="d-sig"><div><div class="d-sigl"></div><b>${esc(s.biz.owner||s.biz.name||'')}</b><div class="d-sm">${s.biz.owner&&s.biz.owner!==s.biz.name?esc(s.biz.name)+' · ':''}Date</div></div><div><div class="d-sigl"></div><b>${esc(p.client.name||'Client')}</b><div class="d-sm">${esc(p.client.company||'')} · Date</div></div></div>`}
  else if(kind==='licAgree'){const L=p.lic,Lc=calcLic(p),own=L.model==='own',saas=L.model==='saas';t='Software License Agreement';fn=slug(p.name)+'-license-agreement';let n=0;const H=x=>`<h2>${++n}. ${x}</h2>`;
   const svUrls=linkedServices(p).filter(x=>x.url&&x.type!=='postgres').map(x=>x.url);const lic=esc(s.biz.name),cl=esc(p.client.company||p.client.name||'Client');
@@ -1103,6 +1107,7 @@ const ACT={
   touch(p);render();toast(n?`Added ${n} Render service${n==1?'':'s'}`:'Render services already imported')},
  histOpen(t){const id=t.dataset.id;const el=document.getElementById('hd-'+id);if(el)el.style.display=el.style.display==='none'?'block':'none'},
  async new(){const cid=await pickCustomer('New build — which customer?');if(cid===null)return;startProject(cid,'build')},
+ setBRate(t){const p=cur();p.buildRate=+t.dataset.v||'';touch(p);render();toast(p.buildRate?`All labor now ${money0(p.buildRate)}/hr`:'Back to per-role rates')},
  homeMode(t){S.homeMode=t.dataset.m;render()},
  newBuildFor(t){startProject(t.dataset.id||S.cid,'build')},
  newPlanFor(t){startProject(t.dataset.id||S.cid,'plan')},
@@ -1131,7 +1136,7 @@ const ACT={
  rmSched(t){const p=cur();p.sow.schedule.splice(+t.dataset.i,1);touch(p);render()},
  sched3(){const p=cur();p.sow.schedule=[{label:'Deposit — due at signing',pct:40},{label:'Design approval / mid-build',pct:30},{label:'Final payment — due at launch / acceptance',pct:30}];p.depositPct=40;touch(p);render()},
  assignInv(){const p=cur(),d=S.settings.d;p.invoice.number=(d.invPrefix||'')+num(d.nextInv);d.nextInv=num(d.nextInv)+1;queueSave('set');touch(p);render()},
- addCO(){const p=cur();p.invoice.changeOrders.push({desc:'',hours:'',rate:rate('dev')});touch(p);render()},
+ addCO(){const p=cur();p.invoice.changeOrders.push({desc:'',hours:'',rate:bRate(p)||rate('dev')});touch(p);render()},
  rmCO(t){const p=cur();p.invoice.changeOrders.splice(+t.dataset.i,1);touch(p);render()},
  addPay(){const p=cur();p.invoice.payments.push({date:iso(),label:'',amount:''});touch(p);render()},
  addDep(){const p=cur();p.invoice.payments.push({date:iso(),label:'Deposit',amount:r2(calcEst(p).deposit)});touch(p);render()},
