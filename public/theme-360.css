@@ -69,7 +69,8 @@ a { color: var(--accent); }
 
 /* ---- tables ---- */
 table { font-size: .88rem; }
-th { background: var(--bg); color: var(--muted); font: 600 .68rem/1.3 var(--font); letter-spacing: .08em; text-transform: uppercase; padding: .6rem .8rem; border-bottom: 1px solid var(--line); }
+th { background: var(--bg); color: var(--muted); font: 600 .68rem/1.3 var(--font); letter-spacing: .08em; text-transform: uppercase; padding: .6rem .8rem; border-bottom: 1px solid var(--line); text-align: left; } /* a header lines up with its column: text left, numbers (.r) right */
+th.r, td.r { text-align: right; }
 td { padding: .6rem .8rem; border-bottom: 1px solid var(--line); }
 tr.click:hover td, tr.on td { background: var(--hl); }
 tr.team td { border-top: 2px solid var(--line-strong); }
