@@ -371,7 +371,7 @@ function rProject(){const p=cur();
  ${S.tab==='client'?rClient(p):S.tab==='est'?rEst(p):S.tab==='sow'?rSow(p):S.tab==='bill'?rBill(p):S.tab==='lic'?rLic(p):rMo(p)}`}
 const F=(lbl,k,v,type='text',extra='')=>`<label class="f">${lbl}<input type="${type}" data-k="${k}" value="${esc(v)}" ${type==='number'?'inputmode="decimal" step="any"':''} ${extra}></label>`;
 const T=(lbl,k,v,rows=4)=>`<label class="f">${lbl}<textarea data-k="${k}" rows="${rows}">${esc(v)}</textarea></label>`;
-function rClient(p){return `<div class="card"><h2>Project</h2><div class="grid g2">${F('Project name','name',p.name)}${F('Estimate date','estDate',p.estDate,'date')}</div>
+function rClient(p){return `<div class="card"><div class="row"><h2 class="grow" style="margin:0">Project</h2><button class="btn g" data-act="fillGit">⚡ Fill from GitHub &amp; Render</button></div><div style="height:10px"></div><div class="grid g2">${F('Project name','name',p.name)}${F('Estimate date','estDate',p.estDate,'date')}</div>
  <div style="margin-top:10px">${T('What are we building? (short description — used in the estimate & SOW)','desc',p.desc,4)}</div>
  <div class="grid" style="margin-top:10px">${F('Target start','start',p.start,'date')}${F('Target launch','launch',p.launch,'date')}</div></div>
  <div class="card"><h2>Client</h2><div class="grid g2">${F('Contact name','client.name',p.client.name)}<label class="f">Company<div class="row" style="flex-wrap:nowrap"><input data-k="client.company" value="${esc(p.client.company)}" placeholder="Type the company name, then Fill"><button class="btn p" data-act="lookup" title="Look up company info">🔎 Fill</button></div></label>${F('Email','client.email',p.client.email,'email')}${F('Phone','client.phone',p.client.phone,'tel')}${F('Website','client.website',p.client.website||'')}</div><div id="lookupBox"></div>
@@ -682,6 +682,17 @@ function buildDoc(kind,p){const s=S.settings,d=s.d,E=calcEst(p),B=calcBill(p),M=
   ${s.biz.payInfo?`<h2>How to Pay</h2><div>${escBr(s.biz.payInfo)}</div>`:''}<div class="d-foot">Thank you for your business!</div>`}
  return{t,h,fn}}
 let curDoc=null,LOOK=[];
+function fillFromGit(p,force){const hs=p.links.map(id=>S.hist[id]).filter(Boolean);if(!hs.length)return '';
+ const d=x=>x?iso(new Date(x)):'';const first=hs.map(h=>h.first).filter(Boolean).sort()[0],last=hs.map(h=>h.last).filter(Boolean).sort().pop();
+ const live=hs.map(h=>h.goLive).filter(Boolean).sort()[0];let f=[];
+ if(!p.name||p.name==='New App Build'){p.name=hs.map(h=>h.name).join(' + ');f.push('name')}
+ const urls=[...new Set(linkedServices(p).filter(x=>x.url&&x.type!=='postgres'&&x.type!=='cron_job').map(x=>x.url))];
+ const desc=hs.map(h=>h.summary?(hs.length>1?h.name+': ':'')+h.summary:'').filter(Boolean).join('\n')+(urls.length?`\nLive at: ${urls.join(', ')}`:'');
+ const mine=p.desc&&p.desc.trim()&&p.desc!==p.autoDesc;if(desc&&!mine&&p.desc!==desc.trim()){p.desc=p.autoDesc=desc.trim();f.push('description')}
+ if(first&&(force||!p.start)){p.start=d(first);f.push('start');if(force||!p.estDate||p.estDate>p.start){p.estDate=p.start;f.push('estimate date')}}
+ const launch=live&&first&&live<first.slice(0,10)?d(first):(live||d(last));
+ if(launch&&(force||!p.launch)){p.launch=launch>=p.start?launch:p.start;f.push('launch')}
+ return f.length?`Filled ${f.join(', ')} from GitHub & Render`:'Nothing to fill — already filled in'}
 const FREEMAIL=/^(gmail|yahoo|hotmail|outlook|live|aol|icloud|me|msn|comcast|att|sbcglobal|proton|protonmail|ymail|gmx)\./i;
 function fillFromEmail(p){const c=p.client;if(c.website)return false;const m=String(c.email||'').trim().match(/@([a-z0-9.-]+\.[a-z]{2,})$/i);
  if(!m||FREEMAIL.test(m[1]))return false;c.website='https://'+m[1].toLowerCase();touch(p);const el=document.querySelector('[data-k="client.website"]');if(el)el.value=c.website;return true}
@@ -708,6 +719,7 @@ const ACT={
  home(){S.view='home';closeOv();render();scrollTo(0,0)},
  settings(){S.view='settings';render();scrollTo(0,0)},
  hist(){S.view='hist';render();scrollTo(0,0)},
+ fillGit(){const p=cur(),r=fillFromGit(p,true);if(!r){toast('Link a GitHub repo first — pick it under “GitHub & Render link” below');const el=document.querySelector('[data-add=link]');if(el){el.scrollIntoView({block:'center'});el.focus()}return}touch(p);render();toast(r)},
  async lookup(){const p=cur(),q=(p.client.company||'').trim(),box=$('#lookupBox');if(q.length<2){toast('Type the company name first');return}
   const g=`<a href="https://www.google.com/search?q=${encodeURIComponent(q)}" target="_blank" rel="noopener">Search Google instead ↗</a>`;
   if(!window.__RENDER_HOST){box.innerHTML=`<div class="note">Company lookup works in the Render app (dev-billing.onrender.com). ${g}</div>`;return}
@@ -791,7 +803,7 @@ app.addEventListener('change',e=>{const t=e.target;
   if(x[4]==='mk')price=r2(x[2]*(1+mk/100));else if(x[4]==='ret2')price=2*rate('dev');else if(x[4]==='ret5')price=5*rate('dev');else price=x[4];
   p.monthly.items.push({name:x[0],cat:x[1],cycle:x[3],cost:x[2],price});touch(p);render();toast('Added: '+x[0])}
  else if(t.dataset.add==='lic'&&t.value!==''){const x=LIC_PRESETS[+t.value],p=cur();p.lic.items.push({name:x[0],type:x[1],amount:x[2],qty:x[3]});touch(p);render();toast('Added: '+x[0])}
- else if(t.dataset.add==='link'&&t.value){const p=cur();if(!p.links.includes(t.value))p.links.push(t.value);touch(p);render()}
+ else if(t.dataset.add==='link'&&t.value){const p=cur();if(!p.links.includes(t.value))p.links.push(t.value);const r=fillFromGit(p,false);touch(p);render();if(r)toast(r)}
  else if(t.dataset.add==='comp'&&t.value){const p=cur();if(!p.comps.includes(t.value))p.comps.push(t.value);touch(p);render()}
  else if(t.dataset.rr!==undefined){render()}
  else if(t.dataset.k&&t.type==='number'){updateCalc()}});
