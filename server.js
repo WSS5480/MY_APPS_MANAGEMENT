@@ -393,6 +393,16 @@ async function syncPeople(force, wait) {
       if (cur.email !== u.email) changes.email = u.email;
       if (cur.hubActive !== storeActive) { changes.hubActive = storeActive; changes.active = storeActive; } // only a store-side change flips access
       if (Object.keys(changes).length) { Object.assign(cur, changes); pinsChanged = true; }
+      // one PIN per person: a PIN this portal kept for them moves to their store login when that login has none; when the login
+      // already has the same PIN the portal's copy is retired; a different one stays usable (flagged) until an admin sets a PIN under Team
+      if (cur.pin && (cur.pinV == null || cur.pinV !== (u.pin_version || 0))) {
+        try {
+          const r = await hubCall('/api/hub/set-pin', { method: 'POST', body: JSON.stringify({ id: u.id, pin: String(cur.pin) }), wait: 0 });
+          if (r && r.ok && (!r.kept || r.same)) { console.log(`PIN for ${name}: ${r.kept ? 'same as the store login — the portal keeps none of its own now' : 'moved to their store login'}`); cur.pin = ''; cur.pinDup = false; pinsChanged = true; }
+          else if (r && r.ok && r.kept) { if (!cur.pinDup) console.log(`PIN for ${name}: their store login has a different PIN; the portal PIN keeps working until an admin sets a PIN under Team`); cur.pinDup = true; cur.pinV = u.pin_version || 0; pinsChanged = true; }
+          else if (r && r.clash) { if (!cur.pinDup) console.error(`PIN for ${name} can't move to the store (someone there already uses it): their portal PIN still works until an admin sets a store PIN under Team`); cur.pinDup = true; cur.pinV = u.pin_version || 0; pinsChanged = true; }
+        } catch (e) { console.error(`PIN move for ${name} failed: ${e.message}`); } // tried again on the next sync
+      } else if (cur.pin && cur.pinDup && cur.pinV !== undefined && cur.pinV !== (u.pin_version || 0)) { cur.pin = ''; cur.pinDup = false; pinsChanged = true; console.log(`PIN for ${name}: a store PIN was set under Team — the portal's own is retired`); }
     }
     if (!rows.some(r => r.rep === name && r.role !== 'Team')) { rows.push({ rep: name, role: 'Sales Rep', territory: name, metric: 'Revenue', quota: null, counts: 'New + Existing', product_filter: '', carry: false, draw: null, comm_rate: null, comm_floor: 0, pay_kind: '', pay_amount: null, hub: u.id }); rowsChanged = true; }
   }
@@ -435,8 +445,10 @@ app.get(['/sso', '/admin/sso'], async (req, res) => { // /admin/sso keeps the in
 });
 // what the store asks this app for
 app.get('/api/hub/reps', hubAuth, (req, res) => {
-  const p = pins().reps;
-  res.json({ reps: quotaRows().filter(r => r.role !== 'Team').map(r => ({ rep: r.rep, role: r.role, pin: p[r.rep] ? String(p[r.rep].pin || '') : '', active: !(p[r.rep] && p[r.rep].active === false), hub: p[r.rep] ? p[r.rep].hub || null : null })) });
+  const p = pins().reps, emails = new Set(hubPeople.list.map(u => String(u.email || '').toLowerCase()));
+  res.json({ reps: quotaRows().filter(r => r.role !== 'Team').map(r => ({ rep: r.rep, role: r.role, pin: p[r.rep] ? String(p[r.rep].pin || '') : '', active: !(p[r.rep] && p[r.rep].active === false), hub: p[r.rep] ? p[r.rep].hub || null : null, pinDup: !!(p[r.rep] && p[r.rep].pin && p[r.rep].hub && p[r.rep].pinDup) })),
+    // sign-in accounts made in this portal (managers, reps with email sign-in) whose email has no store login yet
+    accounts: Object.values(mgrs()).filter(m => m.active !== false && !emails.has(String(m.email || '').toLowerCase())).map(m => ({ id: m.id, kind: m.kind || 'manager', rep: m.rep || null, name: m.name, email: m.email, can_manage: !!m.can_manage, passkeys: (m.passkeys || []).length })) });
 });
 // Surgical commission per rep for a month (same plan math as the portal's scorecard): rate × (sales − floor), the floor rises by any
 // carried shortfall; quarter to date, month-end at today's pace, estimated pay (draw/base + commission) and the cases behind it.
@@ -583,8 +595,9 @@ app.post('/api/login', async (req, res) => {
   } else {
     const p = pins().reps[who];
     if (repAcct(who)) return res.status(403).json({ error: who + ' signs in with email now. Use the Email sign-in tab.' });
+    // the portal's own PIN: only reps who have no store login yet still have one (a login made under Team carries it over, then it is retired)
     if (p && p.active !== false && pin && p.pin && pin === String(p.pin) && quotaRows().some(r => r.rep === who)) { tries.delete(req.ip); setSession(res, { role: 'rep', rep: who, v: p.v }, req.body.dev); return res.json({ ok: true, role: 'rep' }); }
-    // the one PIN from the store: checked there
+    // a rep with a store login: the one PIN is the store's, checked there
     if (p && p.active !== false && p.hub && pin && hubLinked()) {
       try { const r = await hubCall('/api/hub/check-pin', { method: 'POST', body: JSON.stringify({ id: p.hub, pin }), wait: HUB_WAIT }); if (r.ok) { tries.delete(req.ip); setSession(res, { role: 'rep', rep: who, hub: r.user && r.user.email, v: p.v }, req.body.dev); return res.json({ ok: true, role: 'rep' }); } } catch (e) { return res.status(503).json({ error: "Couldn't reach the store to check your PIN (it may still be waking up). Try again in a minute." }); }
     }
@@ -2142,7 +2155,8 @@ const pubMgr = m => ({ id: m.id, kind: m.kind || 'manager', rep: m.rep || null, 
 function baseUrl(req) { return (process.env.PUBLIC_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, ''); }
 function newSetup(m, req) { const t = crypto.randomBytes(24).toString('base64url'); m.setup_hash = tokHash(t); m.setup_exp = Date.now() + 7 * 864e5; m.setup_secret = null; return baseUrl(req) + '/setup#t=' + t; }
 
-app.get('/api/admin/managers', needApi('owner'), (req, res) => res.json({ managers: Object.values(mgrs()).map(pubMgr), pin_login: !pinOff(), me: req.s.mgr || null, super: isSuper(req.s) }));
+app.get('/api/admin/managers', needApi('owner'), (req, res) => { const emails = new Set(hubPeople.list.filter(u => u.active !== false).map(u => String(u.email || '').toLowerCase()));
+  res.json({ managers: Object.values(mgrs()).map(m => Object.assign(pubMgr(m), { store_login: hubLinked() && emails.has(String(m.email || '').toLowerCase()) })), pin_login: !pinOff(), me: req.s.mgr || null, super: isSuper(req.s), linked: hubLinked() }); });
 app.post('/api/admin/managers', needApi('super'), async (req, res) => {
   const name = String(req.body.name || '').trim().slice(0, 80), email = String(req.body.email || '').trim().toLowerCase().slice(0, 120);
   if (!name || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ error: 'Enter a name and a valid email.' });
@@ -2214,8 +2228,10 @@ app.post('/api/setup/finish', async (req, res) => {
 app.post('/api/login/manager', async (req, res) => {
   const t = throttled(req.ip); if (t.n >= 10) return res.status(429).json({ error: 'Too many tries. Wait 15 minutes and try again.' });
   const email = String(req.body.email || '').trim().toLowerCase(), rec = Object.values(mgrs()).find(m => m.email === email);
-  // no 2-step code (owner request): a portal account with the right password signs straight in
-  if (rec && rec.active !== false && rec.pw && checkPw(req.body.password, rec.pw)) {
+  await syncPeople(false, hubPeople.ok ? 0 : HUB_WAIT).catch(() => {});
+  const storeHas = hubLinked() && hubPeople.list.some(u => String(u.email || '').toLowerCase() === email && u.active !== false);
+  // no 2-step code (owner request): a portal-only account (no store login for this email) with the right password signs straight in
+  if (rec && rec.active !== false && rec.pw && !storeHas && checkPw(req.body.password, rec.pw)) {
     const m = Object.assign({}, mgrs()); m[rec.id] = Object.assign({}, rec, { last_login: new Date().toISOString() }); await saveMgrs(m);
     tries.delete(req.ip); setSession(res, acctSession(rec), req.body.dev); return res.json({ ok: true, role: rec.kind === 'rep' ? 'rep' : 'owner' });
   }
@@ -2285,9 +2301,19 @@ app.post('/api/passkey/login/verify', async (req, res) => {
   const m = Object.assign({}, mgrs()), r2 = Object.assign({}, rec);
   r2.passkeys = rec.passkeys.map(p => p.id === pk.id ? Object.assign({}, p, { counter: v.authenticationInfo.newCounter, last: new Date().toISOString() }) : p); r2.last_login = new Date().toISOString();
   m[r2.id] = r2; await saveMgrs(m);
-  tries.delete(req.ip); setSession(res, acctSession(r2), req.body.dev);
+  tries.delete(req.ip); setSession(res, await hubSessionFor(r2) || acctSession(r2), req.body.dev);
   res.json({ ok: true, role: r2.kind === 'rep' ? 'rep' : 'owner', name: r2.name });
 });
+// one identity: a passkey kept on a portal account signs its owner in as their store login when the email has one (role, apps and
+// name come from Team); the portal-only account only carries the passkey
+async function hubSessionFor(rec) {
+  if (!hubLinked()) return null;
+  await syncPeople(false, 0).catch(() => {});
+  const email = String(rec.email || '').toLowerCase(), u = hubPeople.list.find(x => String(x.email || '').toLowerCase() === email && x.active !== false);
+  if (!u) return null;
+  if (u.role === 'rep') { const name = Object.keys(pins().reps).find(k => pins().reps[k].hub === u.id && pins().reps[k].active !== false); return name ? { role: 'rep', rep: name, hub: u.email, v: (pins().reps[name] || {}).v } : null; }
+  return { role: 'owner', hub: u.email, hubId: u.id, hubName: u.name, hubStaff: u.role !== 'owner', v: adminV() };
+}
 app.get('/api/me/passkeys', needApi(), (req, res) => { const rec = acctOf(req.s); res.json({ manager: !!rec, passkeys: rec ? pubMgr(rec).passkeys : [], available: !!wa }); });
 app.delete('/api/me/passkeys/:pid', needApi(), async (req, res) => {
   const m = Object.assign({}, mgrs()), rec = m[req.s.mgr || req.s.acct]; if (!rec) return res.status(400).json({ error: 'No account.' });

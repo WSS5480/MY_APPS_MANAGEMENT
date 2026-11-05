@@ -150,6 +150,7 @@ header.head.has-who{padding-top:58px}
 
   <section class="card" id="managers">
     <div class="cardhead"><h2>Sign-in accounts · managers &amp; reps</h2><span class="note" id="mg-who" style="margin:0"></span></div>
+    <p class="note" id="mg-linked" hidden>Linked to the store: everyone is added, given a role, PIN and password under <b>Team</b> in the store admin — one login for both apps. The accounts below are from before that; each one marked <b>Store login</b> now signs in with the store password or PIN (Face ID on this phone still works). One marked <b>Portal only</b> keeps working with its own password until a store login with the same email exists.</p>
     <p class="note"><b>Managers</b> can open this Admin page and the team view. <b>Sales reps</b> see only their own portal. Each gets an email setup link, picks a password and signs in with email + password. On their phone they can then sign in with Face ID. <b>Can manage managers</b> lets them add or remove managers and change these settings.</p>
     <div class="scroll"><table id="mg"><thead><tr><th>Person</th><th>Role</th><th>Status</th><th>Face ID devices</th><th>Last sign-in</th><th>Can manage managers</th><th></th></tr></thead><tbody></tbody></table></div>
     <form class="form" id="mg-form" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(12rem,1fr));gap:10px;margin-top:12px;align-items:end">
@@ -1135,14 +1136,16 @@ header.head.has-who{padding-top:58px}
     return Promise.all([fetch('/api/me').then(function (r) { return r.json(); }), fetch('/api/admin/managers').then(function (r) { return r.json(); })]).then(function (a) {
       ME = a[0]; var j = a[1];
       $('#mg-who').textContent = 'Signed in as ' + ME.name + (ME.manager ? '' : ' (COO PIN)');
-      $('#pin-card').hidden = !ME.super; $('#mg-form').hidden = !ME.super;
+      $('#pin-card').hidden = !ME.super; $('#mg-form').hidden = !ME.super || !!j.linked; // linked to the store: people are added under Team there
+      var lk = $('#mg-linked'); if (lk) lk.hidden = !j.linked;
       fillRepSel();
       var b = $('#mg tbody'); b.replaceChildren();
       if (!j.managers.length) { var tr0 = el('tr'), td0 = el('td', 'note', 'No accounts yet. Add yourself first as a Manager with your own email so you can sign in with email + password or Face ID, then invite the others.'); td0.colSpan = 7; tr0.appendChild(td0); b.appendChild(tr0); }
       j.managers.forEach(function (m) {
         var tr = el('tr'), n = el('td'); n.appendChild(el('div', 'strong', m.name + (m.id === j.me ? ' (you)' : ''))); n.appendChild(el('div', 'note', m.email)); tr.appendChild(n);
         tr.appendChild(el('td', '', m.kind === 'rep' ? 'Sales rep · ' + m.rep : 'Manager'));
-        var st = el('td'); st.appendChild(el('span', 'pill ' + (!m.active ? 'mute' : m.pending ? 'warn' : 'ok'), !m.active ? 'Turned off' : m.pending ? 'Waiting for setup' : 'Active · 2-step on')); tr.appendChild(st);
+        var st = el('td'); st.appendChild(el('span', 'pill ' + (!m.active ? 'mute' : m.store_login ? 'ok' : m.pending ? 'warn' : 'ok'), !m.active ? 'Turned off' : m.store_login ? 'Store login' : m.pending ? 'Waiting for setup' : 'Portal only'));
+        if (m.active && j.linked) st.appendChild(el('div', 'note', m.store_login ? 'Signs in with the store password or PIN; Face ID still works' : 'No store login yet — add them under Team in the store admin (same email)')); tr.appendChild(st);
         tr.appendChild(el('td', '', m.passkeys.length ? m.passkeys.map(function (p) { return p.label; }).join(', ') : '—'));
         tr.appendChild(el('td', '', fmtDate(m.last_login)));
         var cm = el('td'), cb = el('input'); cb.type = 'checkbox'; cb.checked = m.can_manage; cb.disabled = !j.super || m.id === j.me; cb.hidden = m.kind === 'rep'; cb.setAttribute('aria-label', 'Can manage managers');
