@@ -7,7 +7,7 @@ const { E, ROLES, GROUPS, INTERNAL } = require('./lib/meta');
 const logic = require('./lib/logic');
 const { AppErr } = logic;
 
-const VERSION = '1.0.0';
+const VERSION = '1.0.2';
 const SECRET = process.env.SESSION_SECRET || (process.env.DATABASE_URL && !/localhost|\/tmp\//.test(process.env.DATABASE_URL) ? (console.warn('[boot] SESSION_SECRET not set — using a random secret (sessions reset on restart)'), crypto.randomBytes(32).toString('hex')) : 'mna-dev-secret-local');
 const app = express();
 app.disable('x-powered-by');
@@ -460,8 +460,8 @@ app.post('/api/admin/reset-demo', wrap(async (req, res) => {
 }));
 
 app.use('/api', (req, res) => res.status(404).json({ code: 'NF', msg: ['Ruta no encontrada.', 'Route not found.'] }));
-app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1h', setHeaders: (res, p) => { if (p.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache'); } }));
-app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+app.use(express.static(path.join(__dirname, 'public'), { setHeaders: res => res.setHeader('Cache-Control', 'no-cache') }));
+app.get('*', (req, res) => { res.setHeader('Cache-Control', 'no-cache'); res.sendFile(path.join(__dirname, 'public', 'index.html')); });
 
 // central error handler
 app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
