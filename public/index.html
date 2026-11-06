@@ -574,7 +574,7 @@ function rLic(p){const L=p.lic;const presets=LIC_PRESETS.map((x,i)=>`<option val
   <div class="tot"><span>Client's total monthly (services + license)</span><b data-c="all.mo"></b></div>
   <div class="grid" style="margin-top:10px">${F('License invoice #','lic.invNo',L.invNo)}</div>
   <div style="margin-top:10px">${T('Extra terms / notes for the agreement','lic.notes',L.notes,3)}</div>
-  <div class="row" style="margin-top:12px"><button class="btn p" data-act="doc" data-kind="licAgree">📄 Software License Agreement</button>${combinedMoLic(p)?'':`<button class="btn" data-act="doc" data-kind="licInv">📄 License invoice</button>${L.arId&&S.invoices[L.arId]?`<button class="btn" data-act="openAR">📌 In A/R: ${esc(S.invoices[L.arId].number)} (${invCalc(S.invoices[L.arId]).st})</button>`:`<button class="btn g" data-act="postLic">📌 Post license invoice to A/R</button>`}`}</div>
+  <div class="row" style="margin-top:12px"><button class="btn p" data-act="doc" data-kind="licAgree">📄 Software License Agreement</button>${combinedMoLic(p)?'':`<button class="btn" data-act="doc" data-kind="licInv">📄 License invoice</button>${liveInv(L.arId)?`<button class="btn" data-act="openAR">📌 In A/R: ${esc(S.invoices[L.arId].number)} (${invCalc(S.invoices[L.arId]).st})</button><button class="btn sm" data-act="postLic">↻ Update A/R invoice</button>`:`<button class="btn g" data-act="postLic">📌 Post license invoice to A/R</button>`}`}</div>
   <div class="sm mut" style="margin-top:8px">The agreement is a template. Have an attorney review it before you sign with a client.</div></div>${moLicBar(p,'lic')}`}
 
 /* ================= build history (GitHub + Render) ================= */
@@ -645,6 +645,7 @@ function rHistList(){const allow=num(S.settings.d.trackAllow),dr=rate('dev');let
 /* ================= customers · A/R · ledger · banking (modeled on the Ácasa back office) ================= */
 const METHODS=['ACH','Check','Card','Zelle','Wire','Cash','Other'];
 const AR_TYPES={project:'Project',monthly:'Monthly',license:'License',other:'Other'};
+const liveInv=id=>{const v=id&&S.invoices[id];return v&&v.status!=='void'?v:null};
 const ym=d=>String(d||'').slice(0,7);
 const monthLabel=m=>{if(!m)return'';const [y,mo]=m.split('-');return new Date(+y,+mo-1,15).toLocaleDateString('en-US',{month:'long',year:'numeric'})};
 const addMonths=(m,n)=>{const [y,mo]=m.split('-').map(Number);const d=new Date(y,mo-1+n,15);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')};
@@ -680,7 +681,7 @@ function postProjectInvoice(p){const c=p.customerId&&S.customers[p.customerId]||
  const B=calcBill(p),inv=p.invoice;const lines=B.rows.map(r=>({desc:r.desc+(r.detail?' — '+r.detail:''),amount:r2(r.amt),pid:p.id}));
  inv.changeOrders.forEach((co,i)=>lines.push({desc:'Change order: '+(co.desc||'extra work')+` — ${fh(co.hours)} hrs × ${money(co.rate)}`,amount:r2(B.cos[i]),pid:p.id}));
  if(B.credit)lines.push({desc:'Credit / discount',amount:-r2(B.credit),pid:p.id});if(B.tax)lines.push({desc:`Sales tax (${fh(inv.tax)}%)`,amount:r2(B.tax),pid:p.id});
- let v=inv.arId&&S.invoices[inv.arId];
+ let v=liveInv(inv.arId);if(!v&&inv.arId){inv.number=''}
  if(v){if(isClosed(v.date)){toast(monthLabel(ym(v.date))+' is closed — reopen it to change this invoice');return}Object.assign(v,{lines,total:r2(B.total),customerId:c.id,due:inv.due||addDays(v.date,S.settings.d.terms),updated:Date.now()});queueSave('i',v.id);toast('A/R invoice '+v.number+' updated');return v}
  const date=inv.date||iso();if(isClosed(date)){toast(monthLabel(ym(date))+' is closed — change the invoice date or reopen the month');return}
  const number=inv.number||nextInvNo();inv.number=number;const id=uid();
@@ -695,16 +696,19 @@ const combinedMoLic=p=>moOn(p)&&licOn(p)&&p.moLicSeparate!==true;
 function moLines(p){const M=calcMo(p);return p.monthly.items.map((it,i)=>({desc:(it.name||'Service')+(it.cycle==='yr'?' (yearly)':'')+(p.monthly.period?' — '+p.monthly.period:''),amount:r2(it.cycle==='yr'?num(it.price):M.items[i].pr),pid:p.id})).filter(x=>x.amount)}
 function postMoLicInvoice(p){const c=p.customerId&&S.customers[p.customerId]||findOrCreateCustomer(p);if(!c){toast('Add the client company or name first (Client tab)');return}
  const lines=[...moLines(p),...licFirstLines(p)];if(!lines.length){toast('Add monthly services or license fees first');return}
+ const ex=liveInv(p.monthly.arId);if(ex&&ex.id===p.lic.arId){if(isClosed(ex.date)){toast(monthLabel(ym(ex.date))+' is closed — reopen it to change this invoice');return}Object.assign(ex,{lines,total:r2(lines.reduce((a,x)=>a+x.amount,0)),customerId:c.id,period:p.monthly.period||ex.period,updated:Date.now()});queueSave('i',ex.id);touch(p);toast('A/R invoice '+ex.number+' updated');return ex}
+ if(p.monthly.arId||p.lic.arId){p.monthly.invNo='';p.lic.invNo=''}
  const date=iso();if(isClosed(date)){toast('This month is closed');return}const number=p.monthly.invNo||p.lic.invNo||nextInvNo();p.monthly.invNo=number;p.lic.invNo=number;const id=uid();
  S.invoices[id]={id,number,customerId:c.id,type:'monthly',projectIds:[p.id],date,due:addDays(date,num(c.terms)||S.settings.d.terms),period:p.monthly.period||'',lines,total:r2(lines.reduce((a,x)=>a+x.amount,0)),status:'open',notes:'Monthly services + license',created:Date.now()};
  p.lic.arId=id;p.monthly.arId=id;queueSave('i',id);touch(p);toast(`Invoice ${number} (monthly + license) posted to A/R`);return S.invoices[id]}
-function moLicBar(p,where){if(!moOn(p)||!licOn(p))return '';const arv=p.monthly.arId&&p.monthly.arId===p.lic.arId&&S.invoices[p.monthly.arId];
+function moLicBar(p,where){if(!moOn(p)||!licOn(p))return '';const arv=p.monthly.arId===p.lic.arId&&liveInv(p.monthly.arId);
  if(p.moLicSeparate)return `<div class="note" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="grow">Monthly and license are billed on <b>separate</b> invoices.</span><button class="btn sm" data-act="moLicMode">Put them on one invoice</button></div>`;
  return `<div class="card" style="border:2px solid #1f5eff"><div class="row"><div class="grow"><h2 style="margin:0">🧾 One invoice: monthly + license</h2><div class="sm mut">This deal has monthly services and license fees, so they're billed together on one invoice${where==='lic'?' (see the Monthly tab too)':''}.</div></div></div>
-  <div class="row" style="margin-top:10px"><button class="btn p" data-act="doc" data-kind="moLicInv">📄 Combined invoice</button>${arv?`<button class="btn" data-act="openAR">📌 In A/R: ${esc(arv.number)} (${invCalc(arv).st})</button>`:`<button class="btn g" data-act="postMoLic">📌 Post combined invoice to A/R</button>`}<button class="btn sm" data-act="moLicMode">Bill separately instead</button></div></div>`}
+  <div class="row" style="margin-top:10px"><button class="btn p" data-act="doc" data-kind="moLicInv">📄 Combined invoice</button>${arv?`<button class="btn" data-act="openAR">📌 In A/R: ${esc(arv.number)} (${invCalc(arv).st})</button><button class="btn sm" data-act="postMoLic">↻ Update A/R invoice</button>`:`<button class="btn g" data-act="postMoLic">📌 Post combined invoice to A/R</button>`}<button class="btn sm" data-act="moLicMode">Bill separately instead</button></div></div>`}
 function postLicenseInvoice(p){const c=p.customerId&&S.customers[p.customerId]||findOrCreateCustomer(p);if(!c){toast('Add the client company or name first (Client tab)');return}
- const L=p.lic,Lc=calcLic(p);const lines=L.items.map((it,i)=>({desc:(it.name||'License fee')+({once:'',mo:' — first month',yr:' — first year',user:' — first month',loc:' — first month'})[it.type]+(num(it.qty)>1?` (${fh(it.qty)} × ${money(it.amount)})`:''),amount:r2(it.type==='yr'?Lc.items[i].a:Lc.items[i].o||Lc.items[i].m),pid:p.id})).filter(x=>x.amount);
- if(Lc.admin)lines.push({desc:'Administrative fee — first month',amount:r2(Lc.admin),pid:p.id});if(!lines.length){toast('Add license fees first');return}
+ const L=p.lic;const lines=licFirstLines(p);if(!lines.length){toast('Add license fees first');return}
+ const ex=liveInv(L.arId);if(ex){if(isClosed(ex.date)){toast(monthLabel(ym(ex.date))+' is closed — reopen it to change this invoice');return}Object.assign(ex,{lines,total:r2(lines.reduce((a,x)=>a+x.amount,0)),customerId:c.id,updated:Date.now()});queueSave('i',ex.id);toast('A/R invoice '+ex.number+' updated');return ex}
+ if(L.arId)L.invNo='';
  const date=iso();if(isClosed(date)){toast('This month is closed');return}const number=L.invNo||nextInvNo();L.invNo=number;const id=uid();
  S.invoices[id]={id,number,customerId:c.id,type:'license',projectIds:[p.id],date,due:addDays(date,S.settings.d.terms),period:'',lines,total:r2(lines.reduce((a,x)=>a+x.amount,0)),status:'open',notes:'',created:Date.now()};
  L.arId=id;queueSave('i',id);touch(p);toast(`License invoice ${number} posted to A/R`)}
@@ -747,11 +751,19 @@ function rCust(){const c=S.customers[S.cid];if(!c){S.view='custs';return rCusts(
 const kindLabel=k=>({payment:'Payment',reversal:'Payment reversed',refund:'Refund',adjustment:'Adjustment'})[k]||k;
 
 /* ---------- views: A/R ---------- */
+function invProject(v){const p=(v.projectIds||[]).length===1&&S.projects[v.projectIds[0]];if(!p)return null;return p.invoice.arId===v.id||p.lic.arId===v.id||p.monthly.arId===v.id?p:null}
+function invEditor(v){const L=S.invEdit||{lines:[]};return `<div class="card" style="margin:8px 0 0;background:#f5f8ff"><h3 style="margin-top:0">Change ${esc(v.number)}</h3><div class="grid"><label class="f">Invoice #<input id="ie-num" value="${esc(v.number)}"></label><label class="f">Date<input type="date" id="ie-date" value="${esc(v.date||'')}"></label><label class="f">Due<input type="date" id="ie-due" value="${esc(v.due||'')}"></label><label class="f">Type<select id="ie-type">${Object.entries(AR_TYPES).map(([k,l])=>`<option value="${k}" ${v.type===k?'selected':''}>${l}</option>`).join('')}</select></label><label class="f">Period (monthly)<input id="ie-per" value="${esc(v.period||'')}" placeholder="e.g. 2026-12"></label><label class="f">Note<input id="ie-notes" value="${esc(v.notes||'')}"></label></div>
+ <h3>Lines</h3>${L.lines.map((x,i)=>`<div class="row" style="margin-bottom:6px;flex-wrap:nowrap"><input class="grow" data-ie="desc" data-i="${i}" value="${esc(x.desc)}" placeholder="Description" style="min-width:0"><input type="number" step="any" inputmode="decimal" data-ie="amount" data-i="${i}" value="${esc(x.amount)}" oninput="ieTot()" style="width:110px;flex:0 0 110px;text-align:right"><button class="x" data-act="ieRm" data-i="${i}" title="Remove line">×</button></div>`).join('')}
+ <div class="row"><button class="btn sm" data-act="ieAdd">+ Add line</button><div class="grow"></div><b id="ie-tot">${money(L.lines.reduce((a,x)=>a+num(x.amount),0))}</b></div>
+ <div class="row" style="justify-content:flex-end;margin-top:10px"><button class="btn sm" data-act="ieCancel">Cancel</button><button class="btn sm p" data-act="ieSave" data-id="${esc(v.id)}">Save changes</button></div></div>`}
+function ieTot(){let t=0;document.querySelectorAll('[data-ie=amount]').forEach(e=>t+=num(e.value));const b=document.getElementById('ie-tot');if(b)b.textContent=money(t)}
+function ieRead(){(S.invEdit.lines||[]).forEach((x,i)=>{const d=document.querySelector(`[data-ie=desc][data-i="${i}"]`),a=document.querySelector(`[data-ie=amount][data-i="${i}"]`);if(d)x.desc=d.value;if(a)x.amount=a.value})}
 function invCard(v){const c=invCalc(v),cu=S.customers[v.customerId],open=S.payFor===v.id;const ents=invEntries(v.id);
  return `<div class="line"><div class="row"><div class="grow"><b>${esc(v.number)}</b> · ${esc(custName(cu))} <span class="badge">${AR_TYPES[v.type]||v.type}</span><div class="sm mut">${fmtDate(v.date)} · due ${fmtDate(v.due)}${v.period?' · '+monthLabel(v.period):''}${c.st==='Overdue'?` · <b style="color:var(--bad)">${c.days} days late</b>`:''}</div></div>${stBadge(c.st)}</div>
  <div class="nums" style="margin-top:8px"><div>Total<b>${money(c.total)}</b></div><div>Paid<b>${money(c.paid)}</b></div><div>Balance<b>${money(c.bal)}</b></div></div>
  ${ents.length?`<div style="margin-top:6px">${ents.map(e=>`<div class="tot sm"><span>${fmtDate(e.date)} · ${esc(kindLabel(e.kind))} · ${esc(e.method||'')}${e.bankId?' → '+esc(bankLabel(e.bankId)):''}${e.ref?' · '+esc(e.ref):''}${e.matchTx||e.cleared?' <span class="badge b-Paid">✓ in bank</span>':''}</span><span>${money(e.amount)}${e.kind==='payment'&&!e.reversedBy?` <button class="x" style="width:26px;height:26px;font-size:14px" data-act="revPay" data-id="${esc(e.id)}" title="Reverse this payment">×</button>`:''}</span></div>`).join('')}</div>`:''}
- <div class="row" style="margin-top:8px"><button class="btn sm" data-act="viewInv" data-id="${esc(v.id)}">📄 View</button>${c.bal>0?`<button class="btn sm g" data-act="payInv" data-id="${esc(v.id)}">+ Record payment</button>`:''}<button class="btn sm d" data-act="voidInv" data-id="${esc(v.id)}">${v.status==='void'?'Un-void':'Void'}</button></div>
+ <div class="row" style="margin-top:8px"><button class="btn sm" data-act="viewInv" data-id="${esc(v.id)}">📄 View</button>${c.bal>0?`<button class="btn sm g" data-act="payInv" data-id="${esc(v.id)}">+ Record payment</button>`:''}<button class="btn sm" data-act="editInv" data-id="${esc(v.id)}">✏️ Change</button>${invProject(v)?`<button class="btn sm" data-act="refreshInv" data-id="${esc(v.id)}" title="Rebuild the lines from the project as it is now">↻ Update from project</button>`:''}<button class="btn sm d" data-act="voidInv" data-id="${esc(v.id)}">${v.status==='void'?'Un-void':'Void'}</button><button class="btn sm d" data-act="delInv" data-id="${esc(v.id)}">🗑 Delete</button></div>
+ ${S.editInv===v.id?invEditor(v):''}
  ${open?`<div class="card" style="margin:8px 0 0;background:#f6fbf8"><div class="grid"><label class="f">Date<input type="date" id="pf-date" value="${iso()}"></label><label class="f">Amount ($)<input type="number" step="any" inputmode="decimal" id="pf-amt" value="${c.bal}"></label><label class="f">Method<select id="pf-method">${METHODS.map(m=>`<option>${m}</option>`).join('')}</select></label><label class="f">Deposited to<select id="pf-bank"><option value="">— pick account —</option>${bankOpts(S.lastBank)}</select></label><label class="f">Reference / ACH trace #<input id="pf-ref" placeholder="Trace #, check #, confirmation"></label><label class="f">Note<input id="pf-note"></label></div>
   ${(S.settings.banks||[]).length?'':'<div class="sm mut" style="margin-top:6px">Add your bank accounts in Settings to track deposits by account.</div>'}
   <div class="row" style="margin-top:8px"><button class="btn p" data-act="savePay" data-id="${esc(v.id)}">Save payment</button><button class="btn" data-act="payInv" data-id="">Cancel</button></div></div>`:''}</div>`}
@@ -963,7 +975,7 @@ function buildDoc(kind,p){const s=S.settings,d=s.d,E=calcEst(p),B=calcBill(p),M=
   <div class="d-tots"><div class="d-hl">${dRow('<b>AMOUNT DUE</b>','<b style="font-size:16px">'+money(M.price)+'</b>')}</div></div>
   ${s.biz.payInfo?`<h2>How to Pay</h2><div>${escBr(s.biz.payInfo)}</div>`:''}<div class="d-foot">Thank you for your business!</div>`}
  return{t,h,fn}}
-function rArCard(p){const v=p.invoice.arId&&S.invoices[p.invoice.arId];
+function rArCard(p){const v=liveInv(p.invoice.arId);
  if(!v)return `<div class="card"><div class="row"><div class="grow"><h2 style="margin:0">📌 Accounts receivable</h2><div class="sm mut">Post this bill to A/R to track payments, deposits and aging${p.customerId&&S.customers[p.customerId]?' under '+esc(custName(S.customers[p.customerId])):' (a customer account is created from the client info if needed)'}.</div></div><button class="btn g" data-act="postAR">Post to A/R</button></div></div>`;
  const c=invCalc(v);return `<div class="card"><div class="row"><div class="grow"><h2 style="margin:0">📌 In A/R: ${esc(v.number)} ${stBadge(c.st)}</h2><div class="sm mut">Total ${money(c.total)} · paid ${money(c.paid)} · balance ${money(c.bal)}. Record payments in A/R.</div></div><button class="btn sm" data-act="postAR">Update A/R invoice</button><button class="btn sm p" data-act="openAR">Open in A/R</button></div></div>`}
 function startProject(cid,kind){const p=newProject();const c=cid&&S.customers[cid];if(c){p.customerId=c.id;Object.assign(p.client,{company:c.company||'',name:c.name||'',email:c.email||'',phone:c.phone||'',address:c.address||'',website:c.website||''})}
@@ -1147,6 +1159,26 @@ const ACT={
   if(!await askConfirm('Reverse payment?',`Reverse the ${money(e.amount)} payment from ${fmtDate(e.date)}? The original stays in the register and a reversing entry is added (like a bounced ACH or a mistake).`,'Reverse it'))return;
   const r=ledgerAdd({date,kind:'reversal',amount:-num(e.amount),invId:e.invId,invNo:e.invNo,customerId:e.customerId,custName:e.custName,method:e.method,bankId:e.bankId,ref:'Reverses '+fmtDate(e.date)+(e.ref?' · '+e.ref:''),note:'',reverses:e.id});
   e.reversedBy=r.id;if(e.matchTx&&S.banktx[e.matchTx]){S.banktx[e.matchTx].matchId='';queueSave('b',e.matchTx);e.matchTx=''}queueSave('l',e.id);render();toast('Payment reversed')},
+ editInv(t){const v=S.invoices[t.dataset.id];if(isClosed(v.date)){toast(monthLabel(ym(v.date))+' is closed — reopen it first');return}S.editInv=S.editInv===v.id?null:v.id;S.invEdit={lines:(v.lines||[]).map(x=>({...x}))};render()},
+ ieAdd(){ieRead();S.invEdit.lines.push({desc:'',amount:''});render()},
+ ieRm(t){ieRead();S.invEdit.lines.splice(+t.dataset.i,1);render()},
+ ieCancel(){S.editInv=null;S.invEdit=null;render()},
+ async ieSave(t){const v=S.invoices[t.dataset.id];ieRead();const g=id=>document.getElementById(id).value;
+  const lines=S.invEdit.lines.filter(x=>String(x.desc).trim()||num(x.amount)).map(x=>({...x,desc:String(x.desc).trim()||'Item',amount:r2(num(x.amount))}));const total=r2(lines.reduce((a,x)=>a+x.amount,0));
+  const date=g('ie-date')||v.date;if(isClosed(date)){toast(monthLabel(ym(date))+' is closed');return}
+  const paid=invCalc(v).paid;if(total<paid-0.004&&!await askConfirm('Less than what was paid','The new total '+money(total)+' is less than the '+money(paid)+' already paid. The difference shows as a credit. Save anyway?','Save'))return;
+  const num2=g('ie-num').trim()||v.number;if(num2!==v.number&&Object.values(S.invoices).some(x=>x.id!==v.id&&x.number===num2)){toast('Invoice # '+num2+' is already used');return}
+  v.history=(v.history||[]).concat([{at:Date.now(),what:'changed',was:{number:v.number,date:v.date,total:v.total,lines:v.lines}}]).slice(-10);
+  Object.assign(v,{number:num2,date,due:g('ie-due')||v.due,type:g('ie-type')||v.type,period:g('ie-per'),notes:g('ie-notes'),lines,total,updated:Date.now()});
+  invEntries(v.id).forEach(e=>{if(e.invNo!==num2){e.invNo=num2;queueSave('l',e.id)}});
+  S.editInv=null;S.invEdit=null;queueSave('i',v.id);render();toast('Invoice '+num2+' saved')},
+ refreshInv(t){const v=S.invoices[t.dataset.id],p=invProject(v);if(!p)return;if(v.status==='void'){toast('Un-void it first');return}
+  const r=p.invoice.arId===v.id?postProjectInvoice(p):(p.monthly.arId===v.id&&p.lic.arId===v.id)?postMoLicInvoice(p):postLicenseInvoice(p);render()},
+ async delInv(t){const v=S.invoices[t.dataset.id];if(isClosed(v.date)){toast(monthLabel(ym(v.date))+' is closed — reopen it first');return}
+  if(invEntries(v.id).length){toast('It has payments on record — reverse them and Void it instead (payments stay in the books)');return}
+  if(!await askConfirm('Delete invoice?','Delete <b>'+esc(v.number)+'</b> completely? It disappears from A/R. You can post it again from the project.','Delete'))return;
+  Object.values(S.projects).forEach(p=>{let ch=false;if(p.invoice.arId===v.id){p.invoice.arId='';p.invoice.number='';ch=true}if(p.lic.arId===v.id){p.lic.arId='';p.lic.invNo='';ch=true}if(p.monthly.arId===v.id){p.monthly.arId='';p.monthly.invNo='';ch=true}if(ch)touch(p)});
+  delete S.invoices[v.id];queueSave('xi',v.id);if(S.editInv===v.id)S.editInv=null;render();toast('Deleted '+v.number)},
  async voidInv(t){const v=S.invoices[t.dataset.id];if(isClosed(v.date)){toast(monthLabel(ym(v.date))+' is closed — reopen it first');return}
   if(v.status!=='void'){if(invCalc(v).paid>0){toast('Reverse its payments first, then void');return}if(!await askConfirm('Void invoice?','Void <b>'+esc(v.number)+'</b>? It stays on record marked Void and drops out of A/R.','Void'))return;v.status='void'}else v.status='open';
   queueSave('i',v.id);render()},
