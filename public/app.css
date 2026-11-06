@@ -326,11 +326,12 @@ table.tbl{width:100%;border-collapse:collapse;table-layout:auto}
   .side{transform:translateX(-102%);transition:transform .2s;box-shadow:var(--shadow-lg);width:290px}
   .side.open{transform:none}
   .overlay.open{display:block;position:fixed;inset:0;background:rgba(10,22,36,.4);z-index:35}
-  .main{margin-left:0;padding:16px 14px 96px}
+  .main{margin-left:0;padding:16px 14px calc(96px + env(safe-area-inset-bottom, 0px))}
   .userchip .who{display:none}
-  .bottomnav{display:flex;position:fixed;bottom:0;left:0;right:0;height:62px;background:#fff;border-top:1px solid var(--line);z-index:45;padding-bottom:env(safe-area-inset-bottom)}
+  .bottomnav{display:flex;position:fixed;bottom:0;left:0;right:0;height:calc(62px + env(safe-area-inset-bottom, 0px));background:#fff;border-top:1px solid var(--line);z-index:45;padding-bottom:env(safe-area-inset-bottom, 0px)}
   .bottomnav a{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:10.5px;color:var(--muted);font-weight:600;position:relative}
-  .bottomnav a svg{width:21px;height:21px}
+  .bottomnav a svg{width:22px;height:22px;flex:none}
+  .bottomnav a span{flex:none;line-height:1.1}
   .bottomnav a.active{color:var(--accent)}
   .bottomnav .badge{top:6px;right:calc(50% - 20px)}
   .login{grid-template-columns:1fr}
