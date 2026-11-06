@@ -8,7 +8,7 @@ const logic = require('./lib/logic');
 const { AppErr } = logic;
 
 const VERSION = '1.0.0';
-const SECRET = process.env.SESSION_SECRET || 'mna-dev-secret-change-me';
+const SECRET = process.env.SESSION_SECRET || (process.env.DATABASE_URL && !/localhost|\/tmp\//.test(process.env.DATABASE_URL) ? (console.warn('[boot] SESSION_SECRET not set — using a random secret (sessions reset on restart)'), crypto.randomBytes(32).toString('hex')) : 'mna-dev-secret-local');
 const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
@@ -197,7 +197,7 @@ app.get('/api/demo-users', wrap(async (req, res) => {
 app.use('/api', wrap(auth));
 
 app.get('/api/me', wrap(async (req, res) => {
-  const unread = await db.one('SELECT count(*)::int n FROM notifications WHERE read=false AND (user_id=$1 OR role=$2)', [req.user.id, req.user.role]);
+  const unread = await db.one('SELECT count(*)::int n FROM notifications n WHERE n.read=false AND (n.user_id=$1 OR n.role=$2) AND NOT EXISTS (SELECT 1 FROM notification_reads r WHERE r.notification_id=n.id AND r.user_id=$1)', [req.user.id, req.user.role]);
   res.json({ user: req.user, unread: unread.n, version: VERSION });
 }));
 
@@ -236,7 +236,10 @@ app.get('/api/e/:ent', wrap(async (req, res) => {
     const lang = req.query.lang === 'en' ? 1 : 0;
     const esc = v => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
     const head = ['ID', ...(e.statuses ? [lang ? 'Status' : 'Estatus'] : []), ...cols.map(f => f.l[lang])];
-    const lines = rows.map(r => [r.id, ...(e.statuses ? [r.status] : []), ...cols.map(f => f.t === 'ref' ? (refs[f.ref] || {})[r[f.k]] || '' : r[f.k])].map(esc).join(','));
+    const pick = v => (typeof v === 'string' && v.includes(' ‖ ') ? v.split('\n').map(x => x.split(' ‖ ')[lang] || x.split(' ‖ ')[0]).join('\n') : v);
+    const stl = s => { const st = (e.statuses || []).find(x => x.k === s); return st ? st.l[lang] : s; };
+    const optl = (f, v) => { const o = (f.opts || []).find(x => x[0] === v); return o ? o[lang + 1] : v; };
+    const lines = rows.map(r => [r.id, ...(e.statuses ? [stl(r.status)] : []), ...cols.map(f => f.t === 'ref' ? pick((refs[f.ref] || {})[r[f.k]] || '') : f.t === 'select' ? optl(f, r[f.k]) : pick(r[f.k]))].map(esc).join(','));
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${e.k}.csv"`);
     return res.send('﻿' + [head.map(esc).join(','), ...lines].join('\r\n'));
@@ -282,6 +285,7 @@ app.put('/api/e/:ent/:id(\\d+)', wrap(async (req, res) => {
     if (!old) throw new AppErr(['Registro no encontrado.', 'Record not found.'], 404);
     if (logic.isLocked && logic.isLocked(e.k, old)) throw new AppErr(['Este documento ya no se puede modificar en su estatus actual.', 'This document can no longer be edited in its current status.']);
     let data = clean(e, req.body || {}, u, false);
+    if (u.role === 'PROV') { data.supplier_id = u.supplier_id; }
     const merged = Object.assign({}, old, data);
     if (logic.beforeSave) data = Object.assign(data, (await logic.beforeSave(e.k, merged, old, ctx)) || {});
     validate(e, Object.assign({}, old, data));
@@ -339,7 +343,8 @@ app.post('/api/e/:ent/:id(\\d+)/act/:act', wrap(async (req, res) => {
   if (!a || !(a.roles.includes(u.role) || u.role === 'ADMIN')) throw new AppErr(['Acción no permitida.', 'Action not allowed.'], 403);
   const out = await db.tx(async c => {
     const ctx = mkctx(c, u);
-    const row = (await c.query(`SELECT * FROM ${e.k} WHERE id=$1 FOR UPDATE`, [req.params.id])).rows[0];
+    const sc = scope(e, u);
+    const row = (await c.query(`SELECT * FROM ${e.k} WHERE id=$1 ${sc ? 'AND ' + sc.sql : ''} FOR UPDATE`, [req.params.id])).rows[0];
     if (!row) throw new AppErr(['Registro no encontrado.', 'Record not found.'], 404);
     if (a.when && !a.when.includes(row.status)) throw new AppErr(['Acción no disponible en este estatus.', 'Action not available in this status.']);
     const fn = (logic.actions[e.k] || {})[a.k];
@@ -406,18 +411,27 @@ app.post('/api/files', express.raw({ type: '*/*', limit: '10mb' }), wrap(async (
   const r = await db.one('INSERT INTO files(name,mime,size,data,created_by) VALUES($1,$2,$3,$4,$5) RETURNING id, name, size', [decodeURIComponent(name), mime, req.body.length, req.body, req.user.id]);
   res.json(r);
 }));
+async function canFile(u, id) {
+  if (u.role !== 'PROV') return true;
+  const sid = parseInt(u.supplier_id, 10) || -1;
+  const r = await db.one(`SELECT 1 ok FROM files f WHERE f.id=$1 AND (f.created_by=$2
+    OR EXISTS (SELECT 1 FROM supplier_invoices s WHERE s.supplier_id=$3 AND (s.xml=f.id OR s.pdf=f.id))
+    OR EXISTS (SELECT 1 FROM goods_receipts g WHERE g.supplier_id=$3 AND g.photo=f.id))`, [id, u.id, sid]);
+  return !!r;
+}
 app.get('/api/files/:id(\\d+)', wrap(async (req, res) => {
+  if (!await canFile(req.user, req.params.id)) throw new AppErr(['Sin acceso a este archivo.', 'No access to this file.'], 403);
   const f = await db.one('SELECT name, mime, data FROM files WHERE id=$1', [req.params.id]);
   if (!f) throw new AppErr(['Archivo no encontrado.', 'File not found.'], 404);
   res.setHeader('Content-Type', f.mime);
   res.setHeader('Content-Disposition', `${/^image|pdf/.test(f.mime) ? 'inline' : 'attachment'}; filename="${encodeURIComponent(f.name)}"`);
   res.send(f.data);
 }));
-app.get('/api/files/:id(\\d+)/info', wrap(async (req, res) => res.json(await db.one('SELECT id, name, mime, size FROM files WHERE id=$1', [req.params.id]))));
+app.get('/api/files/:id(\\d+)/info', wrap(async (req, res) => { if (!await canFile(req.user, req.params.id)) throw new AppErr(['Sin acceso.', 'No access.'], 403); res.json(await db.one('SELECT id, name, mime, size FROM files WHERE id=$1', [req.params.id])); }));
 
 app.get('/api/dashboard', wrap(async (req, res) => res.json(await logic.dashboard(req.user))));
 app.get('/api/inbox', wrap(async (req, res) => res.json(await logic.inbox(req.user))));
-app.post('/api/notifications/read', wrap(async (req, res) => { await db.q('UPDATE notifications SET read=true WHERE user_id=$1 OR role=$2', [req.user.id, req.user.role]); res.json({ ok: true }); }));
+app.post('/api/notifications/read', wrap(async (req, res) => { await db.q('UPDATE notifications SET read=true WHERE user_id=$1', [req.user.id]); await db.q('INSERT INTO notification_reads(notification_id, user_id) SELECT id, $1 FROM notifications WHERE role=$2 ON CONFLICT DO NOTHING', [req.user.id, req.user.role]); res.json({ ok: true }); }));
 app.get('/api/report/:k', wrap(async (req, res) => {
   const r = logic.REPORTS.find(x => x.k === req.params.k);
   if (!r || !(r.roles.includes(req.user.role) || req.user.role === 'ADMIN')) throw new AppErr(['Reporte no disponible.', 'Report not available.'], 403);

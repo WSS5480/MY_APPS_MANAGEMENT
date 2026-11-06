@@ -4,7 +4,10 @@
   const S = { lang: localStorage.getItem('mna_lang') || 'es', meta: null, me: null, unread: 0, opts: {}, sideOpen: false, openGroups: JSON.parse(localStorage.getItem('mna_groups') || '[]') };
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
-  const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const escR = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  // bilingual stored text: "español ‖ English" per line
+  const P = v => (typeof v === 'string' && v.includes(' ‖ ') ? v.split('\n').map(x => { const a = x.split(' ‖ '); return S.lang === 'en' ? (a[1] != null ? a[1] : a[0]) : a[0]; }).join('\n') : v);
+  const esc = v => escR(P(v));
   const L = a => (Array.isArray(a) ? (a[S.lang === 'en' ? 1 : 0] != null ? a[S.lang === 'en' ? 1 : 0] : a[0]) : (a == null ? '' : a));
 
   // ── UI dictionary (Guatemalan Spanish: formal "usted") ──
@@ -244,7 +247,7 @@
     return `<div class="vbars">${items.map(i => `<div class="vbar"><div class="col" style="height:${Math.max(2, (+i.v || 0) / max * 100)}%"><span>${f(i.v)}</span></div><div class="x">${esc(L(i.label))}</div></div>`).join('')}</div>`;
   }
   function gantt(inits) {
-    const wk = Array.from({ length: 16 }, (_, i) => `<div>${t('week')}${i + 1}</div>`).join('');
+    const wk = Array.from({ length: 16 }, (_, i) => `<div data-w="${i + 1}">${t('week')}${i + 1}</div>`).join('');
     const ST = { pendiente: ['Pendiente', 'Pending'], en_curso: ['En curso', 'In progress'], en_riesgo: ['En riesgo', 'At risk'], terminada: ['Terminada', 'Completed'] };
     return `<div class="gantt"><div class="weeks"><div></div>${wk}</div>${inits.map(i => `<div class="row"><div class="nm">${esc(i.code)} · ${esc(i.name)}<small>${esc(i.owner || '')}</small></div><div style="grid-column:${(+i.week_from || 1) + 1} / ${(+i.week_to || 1) + 2}"><div class="bar ${esc(i.status)}" title="${esc(L(ST[i.status] || [i.status, i.status]))}"><div class="p" style="width:${+i.pct || 0}%"></div><span style="position:relative">${F.pct(i.pct || 0)} · ${esc(L(ST[i.status] || [i.status, i.status]))}</span></div></div></div>`).join('')}</div>`;
   }
@@ -323,7 +326,7 @@
     const filt = e.fields.filter(f => f.filter && (f.t === 'select' || f.t === 'ref' || f.t === 'text'));
     const fopts = {};
     for (const f of filt) fopts[f.k] = f.t === 'select' ? f.opts.map(o => [o[0], S.lang === 'en' ? o[2] : o[1]]) : f.t === 'ref' ? [...new Set(data.rows.map(r => r[f.k]).filter(Boolean))].map(id => [String(id), ((data.refs[f.ref] || {})[id]) || '#' + id]) : [...new Set(data.rows.map(r => r[f.k]).filter(Boolean))].sort().map(v => [v, v]);
-    const titleField = e.fields.find(f => f.k === e.title) || cols[0];
+    const titleField = e.fields.find(f => f.k === e.title && f.list) || e.fields.find(f => f.k === e.title) || cols[0];
     $('#main').innerHTML = `<div class="ph"><div class="t"><div class="crumbs">${esc(L((S.meta.groups.find(g => g[0] === e.g) || []).slice(1, 3)))}</div><h1>${esc(L(e.l))}</h1></div>
       <div class="acts">${e.canWrite ? `<button class="btn" id="impBtn">${ic('up')}${esc(t('import'))}</button>` : ''}<a class="btn" href="/api/e/${ent}?format=csv&lang=${S.lang}&${serverQ}">${ic('down')}${esc(t('export'))}</a>${e.canWrite ? `<a class="btn pri" href="#/e/${ent}/new${serverQ ? '?' + serverQ : ''}">${ic('plus')}${esc(t('new'))}</a>` : ''}</div></div>
       ${e.statuses ? `<div class="tabs" id="tabs"></div>` : ''}
@@ -379,7 +382,8 @@
     const optMap = {};
     if (editable) await Promise.all([...new Set(refFields.map(f => f.ref))].map(async r => { if (S.meta.entities[r]) optMap[r] = await opts(r, ent === 'loads' && r === 'orders' ? 'listo,confirmado,programado' : ent === 'supplier_invoices' && r === 'goods_receipts' ? 'registrada' : ''); }));
     const lines = (row.lines || []).map(l => Object.assign({}, l));
-    const title = isNew ? (S.lang === 'en' ? 'New ' : 'Nuevo: ') + L(e.one) : (row[e.title] ? (e.fields.find(f => f.k === e.title).t === 'ref' ? disp(e.fields.find(f => f.k === e.title), row[e.title], d.refs) : esc(row[e.title])) : L(e.one) + ' #' + row.id);
+    const tf = e.fields.find(f => f.k === e.title);
+    const title = isNew ? (S.lang === 'en' ? 'New — ' : 'Nuevo registro — ') + esc(L(e.one)) : (tf && row[e.title] ? (tf.t === 'ref' || tf.t === 'select' ? disp(tf, row[e.title], d.refs) : esc(row[e.title])) : esc(L(e.one)) + ' #' + row.id);
     const flows = isNew ? [] : (e.flow || []).filter(f => f.from.includes(row.status));
     const actions = isNew ? [] : (e.actions || []).filter(a => !a.when || a.when.includes(row.status));
     const statusSteps = e.statuses ? e.statuses.filter(s => !['cancelado', 'rechazada', 'rechazado', 'cancelada', 'excepcion', 'retenido', 'por_aprobar', 'parcial', 'bloqueado', 'inactivo', 'obsoleta', 'en_riesgo', 'vencido', 'agotado', 'cotizacion'].includes(s.k) || s.k === row.status) : [];
@@ -398,16 +402,16 @@
       let input;
       const val = v == null ? '' : v;
       switch (f.t) {
-        case 'longtext': input = `<textarea id="f_${f.k}" name="${f.k}">${esc(val)}</textarea>`; break;
+        case 'longtext': input = `<textarea id="f_${f.k}" name="${f.k}">${escR(val)}</textarea>`; break;
         case 'select': input = `<select id="f_${f.k}" name="${f.k}"><option value=""></option>${f.opts.map(o => `<option value="${esc(o[0])}" ${String(val) === o[0] ? 'selected' : ''}>${esc(S.lang === 'en' ? o[2] : o[1])}</option>`).join('')}</select>`; break;
         case 'ref': { const op = optMap[f.ref] || []; const has = op.some(o => o.id === v); input = `<select id="f_${f.k}" name="${f.k}"><option value=""></option>${!has && v ? `<option value="${v}" selected>${esc(((d.refs || {})[f.ref] || {})[v] || '#' + v)}</option>` : ''}${op.map(o => `<option value="${o.id}" ${o.id === v ? 'selected' : ''}>${esc(o.t)}</option>`).join('')}</select>`; break; }
         case 'bool': input = `<label class="chk"><input type="checkbox" id="f_${f.k}" name="${f.k}" ${v ? 'checked' : ''}> ${esc(t('yes'))}</label>`; break;
         case 'date': input = `<input type="date" id="f_${f.k}" name="${f.k}" value="${esc(String(val).slice(0, 10))}">`; break;
         case 'datetime': input = `<input type="datetime-local" id="f_${f.k}" name="${f.k}" value="${val ? new Date(new Date(val).getTime() - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 16) : ''}">`; break;
-        case 'num': case 'money': case 'pct': case 'int': input = `<input type="number" step="${f.t === 'int' ? '1' : 'any'}" inputmode="decimal" class="num" id="f_${f.k}" name="${f.k}" value="${esc(val)}">`; break;
+        case 'num': case 'money': case 'pct': case 'int': input = `<input type="number" step="${f.t === 'int' ? '1' : 'any'}" inputmode="decimal" class="num" id="f_${f.k}" name="${f.k}" value="${escR(val)}">`; break;
         case 'pin': input = `<input type="password" inputmode="numeric" maxlength="6" id="f_${f.k}" name="pin" autocomplete="new-password">`; break;
-        case 'file': input = `<div class="filebox" data-file="${f.k}"><input type="hidden" name="${f.k}" value="${esc(val)}"><span class="fv">${v ? fileView(v) : ''}</span><label class="btn sm">${ic(f.k === 'photo' ? 'camera' : 'up')}${esc(f.k === 'photo' ? t('takePhoto') : t('upload'))}<input type="file" hidden ${f.k === 'photo' ? 'accept="image/*" capture="environment"' : f.accept ? `accept="${f.accept}"` : 'accept=".pdf,.xml,image/*"'}></label></div>`; break;
-        default: input = `<input type="text" id="f_${f.k}" name="${f.k}" value="${esc(val)}">`;
+        case 'file': input = `<div class="filebox" data-file="${f.k}"><input type="hidden" name="${f.k}" value="${escR(val)}"><span class="fv">${v ? fileView(v) : ''}</span><label class="btn sm">${ic(f.k === 'photo' ? 'camera' : 'up')}${esc(f.k === 'photo' ? t('takePhoto') : t('upload'))}<input type="file" hidden ${f.k === 'photo' ? 'accept="image/*" capture="environment"' : f.accept ? `accept="${f.accept}"` : 'accept=".pdf,.xml,image/*"'}></label></div>`; break;
+        default: input = `<input type="text" id="f_${f.k}" name="${f.k}" value="${escR(val)}">`;
       }
       return `<div class="fld ${full ? 'full' : ''}">${label}${input}${help}</div>`;
     };
@@ -438,12 +442,12 @@
       const cell = (l, f, i) => {
         if (!editable || f.ro) return f.t === 'ref' ? disp(f, l[f.k], d.refs) : NUMT.includes(f.t) ? disp(f, l[f.k]) : esc(l[f.k] == null ? '' : l[f.k]);
         if (f.t === 'ref') { const op = optMap[f.ref] || []; const has = op.some(o => o.id === l[f.k]); return `<select data-li="${i}" data-lk="${f.k}"><option value=""></option>${!has && l[f.k] ? `<option value="${l[f.k]}" selected>${esc(((d.refs || {})[f.ref] || {})[l[f.k]] || '#' + l[f.k])}</option>` : ''}${op.map(o => `<option value="${o.id}" ${o.id === l[f.k] ? 'selected' : ''}>${esc(o.t)}</option>`).join('')}</select>`; }
-        return `<input data-li="${i}" data-lk="${f.k}" ${NUMT.includes(f.t) ? 'type="number" step="any" inputmode="decimal" class="num"' : 'type="text"'} value="${esc(l[f.k] == null ? '' : l[f.k])}">`;
+        return `<input data-li="${i}" data-lk="${f.k}" ${NUMT.includes(f.t) ? 'type="number" step="any" inputmode="decimal" class="num"' : 'type="text"'} value="${escR(l[f.k] == null ? '' : l[f.k])}">`;
       };
       const totF = lf.find(f => f.k === 'total' || f.k === 'amount');
       const tot = totF ? lines.reduce((s, l) => s + (+l[totF.k] || 0), 0) : null;
       $('#lines').innerHTML = `<table><thead><tr><th>#</th>${lf.map(f => `<th class="${NUMT.includes(f.t) ? 'num' : ''}">${esc(L(f.l))}</th>`).join('')}${editable ? '<th></th>' : ''}</tr></thead><tbody>${lines.map((l, i) => `<tr><td class="muted">${i + 1}</td>${lf.map(f => `<td class="${NUMT.includes(f.t) && (!editable || f.ro) ? 'num' : ''}">${cell(l, f, i)}</td>`).join('')}${editable ? `<td><button class="xbtn" data-rm="${i}" aria-label="x">${ic('x')}</button></td>` : ''}</tr>`).join('') || `<tr><td colspan="${lf.length + 2}" class="muted">—</td></tr>`}</tbody></table>
-        ${lines.map((l, i) => `<div class="lcard"><div class="lr"><label>#${i + 1}</label><div style="text-align:right">${editable ? `<button class="xbtn" data-rm="${i}">${ic('x')}</button>` : ''}</div></div>${lf.map(f => `<div class="lr"><label>${esc(L(f.l))}</label>${!editable || f.ro ? `<div class="ro">${cell(l, f, i)}</div>` : cell(l, f, i)}</div>`).join('')}</div>`).join('')}
+        ${lines.map((l, i) => `<div class="lcard"><div class="lr"><label>#${i + 1}</label><div style="text-align:right">${editable ? `<button class="xbtn" data-rm="${i}">${ic('x')}</button>` : ''}</div></div>${lf.map(f => `<div class="lr ${f.t === 'ref' ? 'wide' : ''}"><label>${esc(L(f.l))}</label>${!editable || f.ro ? `<div class="ro">${cell(l, f, i)}</div>` : cell(l, f, i)}</div>`).join('')}</div>`).join('')}
         ${tot != null ? `<div class="tot"><span class="muted">${esc(t('total'))}</span><span class="pill-num">${F.money(tot)}</span></div>` : ''}
         ${editable ? `<button class="btn sm" id="addLine" style="margin-top:8px">${ic('plus')}${esc(t('addLine'))}</button>` : ''}`;
       $$('#lines [data-li]').forEach(inp => inp.onchange = () => { const f = lf.find(x => x.k === inp.dataset.lk); const vv = inp.value; lines[+inp.dataset.li][f.k] = vv === '' ? null : (f.t === 'ref' || NUMT.includes(f.t) ? +vv : vv); if (f.t === 'ref') { $$(`#lines [data-li="${inp.dataset.li}"][data-lk="${f.k}"]`).forEach(o => (o.value = vv)); } dirty = true; });
@@ -492,8 +496,9 @@
         const body = { to: b.dataset.to, comment };
         if (ent === 'deliveries') { const vals = collect(); body.photo = vals.photo ? +vals.photo : null; body.received_by = vals.received_by; body.gps = await gps(); }
         b.disabled = true;
-        await api(`/api/e/${ent}/${id}/flow`, { method: 'POST', body });
-        S.opts = {}; toast(L(['Listo: ', 'Done: ']) + b.textContent, 'ok'); refreshMe(); viewDetail(ent, id);
+        const fr = await api(`/api/e/${ent}/${id}/flow`, { method: 'POST', body });
+        const ns = fr.row && fr.row.status; const good = !/retenido|rechaz|excepcion|cancel/.test(ns || '');
+        S.opts = {}; toast(b.textContent + ' → ' + L(statusOf(ent, ns).l), good ? 'ok' : 'err'); refreshMe(); viewDetail(ent, id);
       } catch (er) { b.disabled = false; fail(er); }
     });
     $$('.flowbar [data-act]').forEach(b => b.onclick = async () => {
