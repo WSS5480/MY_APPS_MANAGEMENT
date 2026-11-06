@@ -1,0 +1,10 @@
+{
+  "name": "mna-procesos",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MNA de México — Sistema de Operación de Procesos",
+  "main": "server.js",
+  "engines": { "node": ">=20" },
+  "scripts": { "start": "node server.js", "test": "node test/smoke.js" },
+  "dependencies": { "express": "^4.21.2", "pg": "^8.13.1" }
+}
