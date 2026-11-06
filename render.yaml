@@ -1,0 +1,31 @@
+databases:
+  - name: mna-procesos-db
+    databaseName: mna_procesos_db
+    user: mna_procesos_db_user
+    plan: basic-256mb
+    region: ohio
+    postgresMajorVersion: "16"
+    diskSizeGB: 1
+
+services:
+  - type: web
+    name: mna-procesos
+    runtime: node
+    plan: free
+    region: ohio
+    branch: mna-procesos
+    buildCommand: npm ci
+    startCommand: node server.js
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mna-procesos-db
+          property: connectionString
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: NODE_VERSION
+        value: "22"
+      - key: DEMO_MODE
+        value: "1"
