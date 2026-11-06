@@ -80,6 +80,7 @@ input[type=checkbox],input[type=radio]{width:20px;height:20px;flex:none;margin:0
 .nav button.dirty{background:#f5a623;border-color:#f5a623;color:#101626;font-weight:700}
 #ptr{position:fixed;left:50%;top:0;transform:translate(-50%,-60px);z-index:40;background:#101626;color:#fff;border-radius:20px;padding:8px 16px;font-size:13px;font-weight:600;box-shadow:0 4px 14px rgba(0,0,0,.25);transition:transform .15s,opacity .15s;opacity:0;pointer-events:none}
 html,body{overscroll-behavior-y:contain}
+.cbh{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#6b7385;padding:10px 10px 4px;background:#f6f8fb;position:sticky;top:0;z-index:1}.cbr{display:flex;align-items:center;gap:10px;padding:10px;border-top:1px solid #eef1f6;cursor:pointer}.cbr.on{background:#eefaf3}.cbr input[type=checkbox],.cbo input{width:20px;height:20px;flex:0 0 auto}.cbp{display:flex;align-items:center;gap:4px;flex:0 0 auto}.cbp input{width:64px;padding:6px}.cbo{display:flex;gap:8px;align-items:center;margin-top:8px;font-size:14px}
 .cfbg{position:fixed;inset:0;z-index:70;background:rgba(10,14,25,.6);display:flex;align-items:center;justify-content:center;padding:16px}.cf{background:#fff;border-radius:14px;padding:18px;max-width:420px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.3)}.cf p{margin:0 0 14px;color:#3b4252;line-height:1.45}
 .line.added{border-left:5px solid var(--ok);background:#f3fbf6}.addtag{font-size:11px;font-weight:700;color:var(--ok);text-transform:uppercase;letter-spacing:.3px;margin-left:6px;white-space:nowrap}
 #toast{position:fixed;left:50%;bottom:80px;transform:translateX(-50%);background:#14171f;color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;z-index:60;opacity:0;pointer-events:none;transition:opacity .2s;max-width:90vw;text-align:center}
@@ -388,7 +389,7 @@ function rHome(){const _arOpen=Object.values(S.invoices).map(invCalc).filter(c=>
   if(p.status==='Invoiced'&&!(p.invoice.arId&&S.invoices[p.invoice.arId])){out+=B.balance;nO++}
   coll+=B.paid;
   if(p.monthly.active&&p.status!=='Lost'){const Lc=calcLic(p);mrr+=M.price+Lc.mo;mrrM+=M.margin+Lc.mo;nM++}});
- return `<div class="row" style="margin-top:6px"><h1 class="grow">${S.homeMode==='builds'?'All builds':'Customers'}</h1><button class="btn" data-act="newCust">+ Customer</button><button class="btn p" data-act="new">+ New build</button></div>
+ return `<div class="row" style="margin-top:6px"><h1 class="grow">${S.homeMode==='builds'?'All builds':'Customers'}</h1><button class="btn" data-act="newCust">+ Customer</button><button class="btn" data-act="newFromPast">🧩 From past builds</button><button class="btn p" data-act="new">+ New build</button></div>
  <div class="kpis">
   <div class="kpi"><div class="l">Pipeline (quoted)</div><div class="v">${money0(pipe)}</div><div class="s">${nP} estimate${nP==1?'':'s'} out</div></div>
   <div class="kpi"><div class="l">Active builds</div><div class="v">${money0(active)}</div><div class="s">${nA} approved / in progress</div></div>
@@ -448,7 +449,8 @@ function rEst(p){const groups={};p.lines.forEach((l,i)=>{const ph=PHASES.include
    <div class="grid" style="margin-top:8px"><label class="f">Phase${phSel}</label>${F('Qty',`lines.${i}.qty`,l.qty,'number')}${F('Cost each ($)',`lines.${i}.cost`,l.cost,'number')}<label class="f">Amount<div class="amt" style="padding:9px 0" data-c="line.${i}"></div></label></div></div>`;
   const isMod=MODS.some(m=>norm(m[1])===norm(l.desc));return `<div class="line${isMod?' added':''}"><div class="top">${isMod?'<span class="addtag">✓ Module</span>':''}<input data-k="lines.${i}.desc" value="${esc(l.desc)}" placeholder="Feature / task"><button class="x" data-act="rmLine" data-i="${i}" title="Remove">×</button></div>
    <div class="grid" style="margin-top:8px"><label class="f">Phase${phSel}</label><label class="f">Role<select data-k="lines.${i}.rateId" data-role="${i}">${roleOpts(l.rateId)}</select></label>${F('Hours',`lines.${i}.hours`,l.hours,'number')}${bRate(p)?`<label class="f">Rate ($/hr)<input value="${bRate(p)}" disabled title="Set by the build rate"></label>`:F('Rate ($/hr)',`lines.${i}.rate`,l.rate,'number')}<label class="f">Amount<div class="amt" style="padding:9px 0" data-c="line.${i}"></div></label></div></div>`};
- return `<div class="card"><h2>Pricing settings</h2><div class="grid">
+ return `<div class="card"><div class="row"><div class="grow"><h2 style="margin:0">🧩 Start from past builds</h2><div class="sm mut">${p.combinedFrom&&p.combinedFrom.length?'Combined from: '+p.combinedFrom.map(esc).join(', '):'Pick several past builds and add their hours together into this estimate.'}</div></div><button class="btn p" data-act="combine">Combine past builds</button></div></div>
+ <div class="card"><h2>Pricing settings</h2><div class="grid">
   <label class="f">Build rate ($/hr)<input type="number" inputmode="decimal" step="any" data-k="buildRate" data-rr value="${esc(p.buildRate||'')}" placeholder="Per role (${S.settings.rates.map(r=>money0(r.rate)).join(' / ')})"></label>
   <label class="f">Complexity<select data-k="complexity" data-num>${CX.map(([v,l])=>`<option value="${v}" ${num(p.complexity)===v?'selected':''}>${l}</option>`).join('')}</select></label>
   ${F('Contingency %','contingency',p.contingency,'number')}${F('Deposit to start %','depositPct',p.depositPct,'number')}</div>
@@ -588,7 +590,8 @@ function trackStats(p){const hs=p.links.map(id=>S.hist[id]).filter(Boolean);if(!
  return{hs,hours,allow,billable:r2(hours*(1+allow/100)),commits:hs.reduce((a,h)=>a+num(h.commits),0),sessions:hs.reduce((a,h)=>a+num(h.sessions),0),days:hs.reduce((a,h)=>a+num(h.activeDays),0),
   deploys:svs.reduce((a,s)=>a+num(s.deployCount),0),svs,last:hs.map(h=>h.last).sort().pop()}}
 function compStats(p){const hs=p.comps.map(id=>S.hist[id]).filter(Boolean);if(!hs.length)return null;const allow=num(S.settings.d.trackAllow);
- const v=hs.map(h=>num(h.hours)*(1+allow/100));return{hs,avg:v.reduce((a,b)=>a+b,0)/v.length,min:Math.min(...v),max:Math.max(...v)}}
+ const pc=id=>{const v=num((p.compPct||{})[id]);return v>0?v/100:1};const ids=p.comps.filter(id=>S.hist[id]);
+ const v=ids.map(id=>num(S.hist[id].hours)*(1+allow/100)*pc(id)),sum=v.reduce((a,b)=>a+b,0),avg=sum/v.length,isSum=p.compMode!=='avg'&&hs.length>1;return{hs,avg,sum,isSum,target:isSum?sum:avg,min:Math.min(...v),max:Math.max(...v)}}
 const chip=(txt,act,id)=>`<span class="chipx">${esc(txt)}<button data-act="${act}" data-id="${esc(id)}" title="Remove">×</button></span>`;
 function syncLine(){const m=S.histMeta;if(!m)return '<span class="mut sm">Not synced yet.</span>';return `<span class="mut sm">Last synced ${esc(new Date(m.at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}))} · ${esc(m.source||'GitHub + Render')}</span>`}
 function noHist(){return `<div class="note">Build history hasn't loaded yet. It syncs from GitHub and Render into your account; ask Claude to "sync my build history" if it's empty.</div>`}
@@ -599,14 +602,14 @@ function rLinkCard(p){const has=Object.keys(S.hist).length;const t=trackStats(p)
  ${t?`<div class="kpis" style="margin-top:10px"><div class="kpi"><div class="l">Tracked hours</div><div class="v">${fh(t.hours)}</div><div class="s">${t.sessions} sessions · ${t.commits} commits</div></div><div class="kpi"><div class="l">Billable (+${fh(t.allow)}%)</div><div class="v">${fh(t.billable)}</div><div class="s">${money0(t.billable*rate('dev'))} at dev rate</div></div><div class="kpi"><div class="l">Render</div><div class="v">${t.deploys}</div><div class="s">deploys · ${t.svs.length} service${t.svs.length==1?'':'s'}</div></div></div><div>${syncLine()}</div>`:''}</div>`}
 function rReality(p){const E=calcEst(p),c=compStats(p),t=trackStats(p),has=Object.keys(S.hist).length;if(!has&&!p.comps.length)return '';
  let body='';
- if(c){const diff=E.hrsAdj?(E.hrsAdj-c.avg)/c.avg*100:0;const cls=Math.abs(diff)<=20?'ok':'';
-  body+=`<div class="tot"><span>Your estimate</span><b>${fh(E.hrsAdj)} hrs</b></div><div class="tot"><span>Comparable builds (actual, incl. +${fh(S.settings.d.trackAllow)}%)</span><b>${fh(c.avg)} hrs avg</b></div><div class="tot"><span>Range of comparables</span><span>${fh(c.min)} – ${fh(c.max)} hrs</span></div>
+ if(c){const diff=E.hrsAdj?(E.hrsAdj-c.target)/c.target*100:0;const cls=Math.abs(diff)<=20?'ok':'';
+  body+=`<div class="tot"><span>Your estimate</span><b>${fh(E.hrsAdj)} hrs</b></div><div class="tot"><span>${c.isSum?'These builds together':'Comparable builds'} (actual, incl. +${fh(S.settings.d.trackAllow)}%)</span><b>${fh(c.target)} hrs ${c.isSum?'total':'avg'}</b></div><div class="tot"><span>Range of ${c.isSum?'each build':'comparables'}</span><span>${fh(c.min)} – ${fh(c.max)} hrs</span></div>
   <div class="note ${cls}">${E.hrsAdj?(Math.abs(diff)<=20?`On target — within ${fh(Math.abs(diff))}% of what similar builds actually took.`:diff<0?`You're estimating ${fh(-diff)}% <b>under</b> what similar builds actually took. Consider raising hours or complexity.`:`You're estimating ${fh(diff)}% <b>over</b> similar builds. Fine if this one is bigger — otherwise you may be priced high.`):'Add labor items to compare.'}</div>
-  <div class="row"><button class="btn sm" data-act="matchComps">Scale my hours to match (${fh(c.avg)} hrs)</button></div>`}
+  <div class="row"><button class="btn sm" data-act="matchComps">Scale my hours to match (${fh(c.target)} hrs)</button>${c.hs.length>1?`<button class="btn sm" data-act="compMode">${c.isSum?'Compare to the average instead':'Add them together instead'}</button>`:''}</div>`}
  if(t){const used=E.hrsAdj?t.billable/E.hrsAdj*100:0;body+=`<h3>This build so far (from GitHub)</h3><div class="tot"><span>Tracked + allowance</span><b>${fh(t.billable)} of ${fh(E.hrsAdj)} est. hrs (${fh(used)}%)</b></div>${used>100?'<div class="note">Over the estimate — consider a change order.</div>':''}`}
  return `<div class="card"><h2>📊 Reality check — from your GitHub history</h2>
-  ${has?`<label class="f">Compare to past builds<select data-add="comp"><option value="">+ Pick a similar past app…</option>${histOpts(p.comps)}</select></label>`:noHist()}
-  <div class="row" style="margin:8px 0">${p.comps.map(id=>chip(S.hist[id]?`${S.hist[id].name} (${fh(S.hist[id].hours)}h)`:id,'rmComp',id)).join('')}</div>${body}</div>`}
+  ${has?`<label class="f">Compare to past builds (hours add together)<select data-add="comp"><option value="">+ Add a past build…</option>${histOpts(p.comps)}</select></label>`:noHist()}
+  <div class="row" style="margin:8px 0">${p.comps.map(id=>chip(S.hist[id]?`${S.hist[id].name} (${fh(S.hist[id].hours)}h${num((p.compPct||{})[id])>0&&num(p.compPct[id])!==100?' × '+fh(p.compPct[id])+'%':''})`:id,'rmComp',id)).join('')}</div>${body}</div>`}
 function rTracked(p){const t=trackStats(p);if(!t)return Object.keys(S.hist).length?`<div class="card"><h2>⏱ Tracked build time</h2><div class="sm mut">Link this project to its GitHub repo on the Client tab to bill from real build time.</div></div>`:'';
  return `<div class="card"><h2>⏱ Tracked build time (GitHub + Render)</h2>
   <div class="tot"><span>Hours from commit sessions</span><b>${fh(t.hours)} hrs</b></div>
@@ -715,7 +718,7 @@ function rCust(){const c=S.customers[S.cid];if(!c){S.view='custs';return rCusts(
  <div class="kpis"><div class="kpi"><div class="l">Balance due</div><div class="v">${money(k.bal)}</div><div class="s">${k.over?money(k.over)+' overdue':'nothing overdue'}</div></div><div class="kpi"><div class="l">Monthly recurring</div><div class="v">${money(k.mrr)}/mo</div><div class="s">${rec.length} recurring charge${rec.length==1?'':'s'}</div></div><div class="kpi"><div class="l">Billed (all time)</div><div class="v">${money(k.billed)}</div><div class="s">${invs.length} invoice${invs.length==1?'':'s'}</div></div><div class="kpi"><div class="l">Paid (all time)</div><div class="v">${money(k.paid)}</div><div class="s">last ${k.last?fmtDate(k.last):'—'}</div></div></div>
  <div class="card"><h2>Profile</h2><div class="grid g2">${CF('Company','company',c.company)}${CF('Contact name','name',c.name)}${CF('Email','email',c.email,'email')}${CF('Billing email (if different)','billEmail',c.billEmail,'email')}${CF('Phone','phone',c.phone,'tel')}${CF('Website','website',c.website)}${CF('Payment terms (days, blank = default)','terms',c.terms,'number')}</div>
   <div class="grid g2" style="margin-top:10px"><label class="f">Billing address<textarea data-cu="address" rows="3">${esc(c.address||'')}</textarea></label><label class="f">Notes<textarea data-cu="notes" rows="3">${esc(c.notes||'')}</textarea></label></div></div>
- <div class="card"><div class="row"><h2 class="grow" style="margin:0">🛠 Builds (${ps.filter(p=>p.kind!=='plan').length})</h2><button class="btn sm p" data-act="newBuildFor" data-id="${esc(c.id)}">+ New build</button></div>
+ <div class="card"><div class="row"><h2 class="grow" style="margin:0">🛠 Builds (${ps.filter(p=>p.kind!=='plan').length})</h2><button class="btn sm" data-act="newFromPast" data-id="${esc(c.id)}">🧩 From past builds</button><button class="btn sm p" data-act="newBuildFor" data-id="${esc(c.id)}">+ New build</button></div>
   ${ps.filter(p=>p.kind!=='plan').map(p=>{const E=calcEst(p),M=calcMo(p);const av=p.invoice.arId&&S.invoices[p.invoice.arId];return `<div class="line pcard" data-act="open" data-id="${esc(p.id)}"><div class="row"><b class="grow">${esc(p.name)}</b><span class="badge b-${esc(p.status)}">${esc(p.status)}</span></div><div class="sm mut" style="margin-top:4px">Estimate ${money0(E.total)}${av?` · Invoice ${esc(av.number)} ${invCalc(av).st}, balance ${money(invCalc(av).bal)}`:''} · Monthly ${money(M.price+calcLic(p).mo)}/mo${p.monthly.active?'':' (off)'}</div></div>`}).join('')||'<div class="sm mut" style="margin-top:8px">No builds yet.</div>'}</div>
  <div class="card"><div class="row"><h2 class="grow" style="margin:0">🔁 Monthly plans (${ps.filter(p=>p.kind==='plan').length})</h2><button class="btn sm p" data-act="newPlanFor" data-id="${esc(c.id)}">+ New monthly plan</button></div>
   <div class="sm mut" style="margin-top:4px">Ongoing services that aren't tied to one build: hosting, support retainers, licenses. Builds can have their own monthly charges too; all of them roll into one monthly invoice below.</div>
@@ -952,6 +955,47 @@ function pickCustomer(title){return new Promise(res=>{const d=document.createEle
  d.addEventListener('click',e=>{const b=e.target.closest('[data-x]');if(!b&&e.target!==d)return;if(!b||b.dataset.x==='0'){d.remove();res(null);return}
   if(sel.value==='__new'){const n=d.querySelector('#pcName').value.trim();if(!n){d.querySelector('#pcName').focus();return}const c=newCustomer({company:n});d.remove();res(c.id)}else{d.remove();res(sel.value)}});
  document.body.appendChild(d);(sel.value==='__new'?d.querySelector('#pcName'):sel).focus()})}
+/* ================= combine past builds into one estimate ================= */
+function pastSources(p){const allow=num(S.settings.d.trackAllow),out=[];
+ Object.values(S.projects).filter(x=>x.id!==p.id&&x.kind!=='plan'&&(x.lines||[]).some(l=>l.type!=='exp'&&num(l.hours))).forEach(x=>{const E=calcEst(x),t=trackStats(x);
+  out.push({key:'p:'+x.id,kind:'p',name:x.name||'Untitled',sub:(x.client&&x.client.company?x.client.company+' · ':'')+'estimate '+fh(E.hrsAdj)+' hrs'+(t?' · actual '+fh(t.billable)+' hrs':''),est:E.hrsAdj,act:t?t.billable:0,src:x})});
+ histList().forEach(h=>{const b=r2(num(h.hours)*(1+allow/100));if(!b)return;out.push({key:'h:'+h.id,kind:'h',name:h.name,sub:'GitHub/Render · '+fh(h.hours)+' hrs tracked → '+fh(b)+' billable',est:b,act:b,src:h})});
+ return out}
+function combineBuilds(p){const src=pastSources(p);if(!src.length){toast('No past builds or estimates with hours yet');return}
+ const sel=new Map();let q='',useAct=true,how='items',skipDup=true;
+ const d=document.createElement('div');d.className='cfbg';
+ const srcHrs=s=>useAct&&s.act?s.act:s.est;
+ const listHtml=()=>{const fold=x=>String(x).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();const f=src.filter(s=>!q||fold(s.name+' '+s.sub).includes(fold(q)));const grp=(k,t)=>{const g=f.filter(s=>s.kind===k);return g.length?`<div class="cbh">${t}</div>`+g.map(s=>{const on=sel.has(s.key);return `<label class="cbr${on?' on':''}"><input type="checkbox" data-k="${esc(s.key)}" ${on?'checked':''}><span class="grow"><b>${esc(s.name)}</b><span class="mut sm" style="display:block">${esc(s.sub)}</span></span>${on?`<span class="cbp"><input type="number" inputmode="decimal" data-pct="${esc(s.key)}" value="${sel.get(s.key)}" min="1" max="500">%</span>`:''}</label>`}).join(''):''};
+  return (grp('p','Your past estimates')+grp('h','Past builds (GitHub & Render)'))||'<div class="mut sm" style="padding:10px">No matches.</div>'};
+ const total=()=>{let h=0;sel.forEach((pct,k)=>{const s=src.find(x=>x.key===k);if(s)h+=srcHrs(s)*pct/100});const r=bRate(p)||rate('dev');return{h:r2(h),r}};
+ const paint=()=>{d.querySelector('#cbList').innerHTML=listHtml();const t=total();d.querySelector('#cbTot').innerHTML=sel.size?`<b>${sel.size} build${sel.size==1?'':'s'} · ${fh(t.h)} hrs</b> <span class="mut">≈ ${money0(t.h*t.r)} at ${money0(t.r)}/hr</span>`:'<span class="mut">Check the builds this new one is made of.</span>';d.querySelector('[data-x="1"]').disabled=!sel.size};
+ d.innerHTML=`<div class="cf" style="max-width:560px;max-height:88vh;display:flex;flex-direction:column"><h2 style="margin-top:0">🧩 Combine past builds</h2>
+  <div class="sm mut" style="margin-bottom:8px">Check every past build this one is like. Their hours are added together into this estimate. Use % when only part of a build applies.</div>
+  <input id="cbQ" placeholder="Search past builds…" style="margin-bottom:8px">
+  <div id="cbList" style="overflow:auto;flex:1 1 auto;min-height:min(42vh,360px);border:1px solid #e3e7ef;border-radius:10px"></div>
+  <label class="f" style="margin-top:10px">Add to this estimate as<select id="cbHow"><option value="items">Their line items (itemized)</option><option value="one">One line per past build</option></select></label>
+  <label class="cbo"><input type="checkbox" id="cbAct" checked> Use real tracked hours when a past build has them</label>
+  <label class="cbo"><input type="checkbox" id="cbDup" checked> Same item in more than one build: count it once (keep the bigger hours)</label>
+  <div id="cbTot" style="margin-top:10px"></div>
+  <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" data-x="0">Cancel</button><button class="btn p" data-x="1">Add to estimate</button></div></div>`;
+ d.addEventListener('input',e=>{const t=e.target;if(t.id==='cbQ'){q=t.value.trim().toLowerCase();paint();t.focus()}else if(t.dataset.pct){sel.set(t.dataset.pct,Math.max(1,num(t.value)||100));const tt=total();d.querySelector('#cbTot').querySelector('b')&&(d.querySelector('#cbTot').innerHTML=`<b>${sel.size} build${sel.size==1?'':'s'} · ${fh(tt.h)} hrs</b> <span class="mut">≈ ${money0(tt.h*tt.r)} at ${money0(tt.r)}/hr</span>`)}});
+ d.addEventListener('change',e=>{const t=e.target;if(t.dataset.k){t.checked?sel.set(t.dataset.k,100):sel.delete(t.dataset.k);paint()}else if(t.id==='cbAct'){useAct=t.checked;paint()}else if(t.id==='cbDup')skipDup=t.checked;else if(t.id==='cbHow')how=t.value});
+ d.addEventListener('click',e=>{const b=e.target.closest('[data-x]');if(!b&&e.target!==d)return;if(!b||b.dataset.x==='0'){d.remove();return}
+  if(!sel.size)return;d.remove();applyCombine(p,[...sel].map(([k,pct])=>({s:src.find(x=>x.key===k),pct})).filter(x=>x.s),{how,useAct,skipDup})});
+ document.body.appendChild(d);paint()}
+function applyCombine(p,picks,o){const add=[],names=[];const dev=S.settings.rates.find(r=>r.id==='dev')?'dev':(S.settings.rates[0]||{}).id;
+ const push=l=>{const k=norm(l.desc);const ex=o.skipDup&&(add.find(a=>norm(a.desc)===k)||p.lines.find(a=>norm(a.desc)===k&&a.type!=='exp'));
+  if(ex){if(num(l.hours)>num(ex.hours)){ex.hours=l.hours}if(add.includes(ex)&&l.from&&!String(ex.from||'').includes(l.from))ex.from=(ex.from?ex.from+' + ':'')+l.from;return}add.push(l)};
+ picks.forEach(({s,pct})=>{const f=pct/100;names.push(s.name+(pct!==100?` (${pct}%)`:''));
+  if(s.kind==='h'||o.how==='one'){const hrs=r2((o.useAct&&s.act?s.act:s.est)*f);add.push({id:uid(),type:'labor',phase:'Build',desc:`Based on our ${s.name} build${pct!==100?` (${pct}% of it)`:''}`,hours:hrs,rateId:dev,rate:rate(dev),from:s.name});return}
+  const x=s.src,cx=num(x.complexity)||1,labor=x.lines.filter(l=>l.type!=='exp'&&num(l.hours));const est=labor.reduce((a,l)=>a+num(l.hours)*cx,0)||1;
+  const scale=f*cx*(o.useAct&&s.act?s.act/est:1);   // real tracked hours spread across its items
+  labor.forEach(l=>push({id:uid(),type:'labor',phase:PHASES.includes(l.phase)?l.phase:'Build',desc:l.desc,hours:r2(num(l.hours)*scale),rateId:l.rateId||dev,rate:num(l.rate)||rate(l.rateId||dev),from:s.name}));
+  x.lines.filter(l=>l.type==='exp').forEach(l=>{if(!add.some(a=>a.type==='exp'&&norm(a.desc)===norm(l.desc))&&!p.lines.some(a=>a.type==='exp'&&norm(a.desc)===norm(l.desc)))add.push({...l,id:uid()})})});
+ add.forEach(l=>{if(l.from)delete l.from;p.lines.push(l)});
+ p.compPct=p.compPct||{};picks.forEach(({s,pct})=>{if(s.kind==='h'){if(!p.comps.includes(s.src.id))p.comps.push(s.src.id);if(pct!==100)p.compPct[s.src.id]=pct;else delete p.compPct[s.src.id]}else(s.src.links||[]).forEach(id=>{if(!p.comps.includes(id))p.comps.push(id)})});
+ p.compMode='sum';p.combinedFrom=names;touch(p);S.tab='est';render();
+ const h=add.reduce((a,l)=>a+(l.type==='exp'?0:num(l.hours)),0);toast(`Added ${add.length} item${add.length==1?'':'s'} · ${fh(h)} hrs from ${picks.length} build${picks.length==1?'':'s'}`)}
 let curDoc=null,LOOK=[];
 function copyOpts(p,what){const ps=Object.values(S.projects).filter(x=>x.id!==p.id&&(what==='desc'?(x.desc||'').trim():((x.sow&&x.sow.overview)||x.desc||'').trim()));
  const hs=histList().filter(h=>h.pro||h.summary).sort((a,b)=>a.name.localeCompare(b.name));
@@ -1097,8 +1141,11 @@ const ACT={
  rmLic(t){const p=cur();p.lic.items.splice(+t.dataset.i,1);touch(p);render()},
  rmLink(t){const p=cur();p.links=p.links.filter(x=>x!==t.dataset.id);touch(p);render()},
  rmComp(t){const p=cur();p.comps=p.comps.filter(x=>x!==t.dataset.id);touch(p);render()},
+ combine(){combineBuilds(cur())},
+ compMode(){const p=cur();p.compMode=p.compMode==='avg'?'sum':'avg';touch(p);render()},
+ async newFromPast(t){const cid=t.dataset.id||await pickCustomer('New estimate from past builds');if(!cid)return;startProject(cid,'build');S.tab='est';render();combineBuilds(cur())},
  matchComps(){const p=cur(),E=calcEst(p),c=compStats(p);if(!c||!E.hrsAdj){toast('Pick comparables and add labor items first');return}
-  const f=c.avg/E.hrsAdj;p.lines.forEach(l=>{if(l.type!=='exp')l.hours=r2(num(l.hours)*f)});touch(p);render();toast('Hours scaled ×'+fh(f)+' to match comparables')},
+  const f=c.target/E.hrsAdj;p.lines.forEach(l=>{if(l.type!=='exp')l.hours=r2(num(l.hours)*f)});touch(p);render();toast('Hours scaled ×'+fh(f)+' to match comparables')},
  fillTracked(){const p=cur(),E=calcEst(p),t=trackStats(p);if(!t){toast('Link a GitHub repo on the Client tab first');return}
   const lab=p.lines.filter(l=>l.type!=='exp');const base=lab.reduce((a,l)=>a+num(l.hours),0);if(!lab.length||!base){toast('Add labor items to the estimate first');return}
   lab.forEach(l=>{l.actual=r2(t.billable*num(l.hours)/base)});p.invoice.mode='actual';touch(p);render();toast(fh(t.billable)+' tracked hrs spread across '+lab.length+' items')},
