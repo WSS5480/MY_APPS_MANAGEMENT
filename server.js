@@ -23,7 +23,20 @@ async function init() {
   await pool.query(`CREATE INDEX IF NOT EXISTS docs_col ON docs(col)`);
   await pool.query(`CREATE TABLE IF NOT EXISTS shares (
     token TEXT PRIMARY KEY, title TEXT, html TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS pdfs (
+    token TEXT PRIMARY KEY, name TEXT NOT NULL, data BYTEA NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())`);
+  await pool.query(`DELETE FROM pdfs WHERE created_at < now() - interval '90 days'`).catch(() => {});
 }
+// saved PDFs get a real link so phones can open / save them (iPhone apps can't save a PDF made on the page)
+async function savePdf(req, buf) {
+  if (!Buffer.isBuffer(buf) || buf.length < 100 || buf.slice(0, 4).toString() !== '%PDF') return null;
+  const name = String(req.query.name || 'document.pdf').replace(/[^\w .()-]+/g, '').replace(/\s+/g, ' ').trim().slice(0, 120) || 'document.pdf';
+  const token = crypto.randomBytes(24).toString('base64url');
+  await pool.query('INSERT INTO pdfs(token,name,data) VALUES($1,$2,$3)', [token, /\.pdf$/i.test(name) ? name : name + '.pdf', buf]);
+  const base = (req.headers['x-forwarded-proto'] || req.protocol) + '://' + req.headers.host;
+  return base + '/p/' + token + '/' + encodeURIComponent(/\.pdf$/i.test(name) ? name : name + '.pdf');
+}
+const rawPdf = express.raw({ type: ['application/pdf', 'application/octet-stream'], limit: '25mb' });
 
 const app = express();
 app.disable('x-powered-by');
@@ -70,6 +83,22 @@ app.get('/d/:token', async (req, res) => {
   if (!r.rows[0]) return res.status(404).type('html').send('<p style="font-family:sans-serif;padding:30px">This document link is no longer available.</p>');
   res.set('Cache-Control', 'no-store').set('X-Robots-Tag', 'noindex').type('html').send(r.rows[0].html);
 });
+app.get('/p/:token/:name', async (req, res) => {
+  if (!/^[A-Za-z0-9_-]{20,64}$/.test(req.params.token)) return res.status(404).send('Not found');
+  const r = await pool.query('SELECT name, data FROM pdfs WHERE token=$1', [req.params.token]).catch(() => ({ rows: [] }));
+  if (!r.rows[0]) return res.status(404).type('html').send('<p style="font-family:sans-serif;padding:30px">This PDF link has expired. Open the document again and tap PDF.</p>');
+  const n = r.rows[0].name.replace(/"/g, '');
+  res.set('Content-Type', 'application/pdf').set('Cache-Control', 'private, max-age=3600').set('X-Robots-Tag', 'noindex')
+     .set('Content-Disposition', (req.query.dl ? 'attachment' : 'inline') + '; filename="' + n + '"; filename*=UTF-8\'\'' + encodeURIComponent(n)).send(r.rows[0].data);
+});
+// the no-login document page can save its own PDF (only for a real share link)
+app.post('/d/:token/pdf', rawPdf, async (req, res) => {
+  if (!/^[A-Za-z0-9_-]{20,64}$/.test(req.params.token)) return res.status(404).json({ error: 'nf' });
+  const r = await pool.query('SELECT 1 FROM shares WHERE token=$1', [req.params.token]).catch(() => ({ rows: [] }));
+  if (!r.rows[0]) return res.status(404).json({ error: 'nf' });
+  const url = await savePdf(req, req.body); if (!url) return res.status(400).json({ error: 'bad pdf' });
+  res.json({ url });
+});
 app.get('/download', (req, res) => res.sendFile(path.join(__dirname, 'public', 'download.html')));
 app.get('/vendor/html2pdf.js', (req, res) => res.set('Cache-Control', 'public, max-age=604800').type('js').sendFile(path.join(__dirname, 'node_modules', 'html2pdf.js', 'dist', 'html2pdf.bundle.min.js')));
 app.use('/icons', express.static(path.join(__dirname, 'public', 'icons'), { maxAge: '7d' }));
@@ -114,6 +143,10 @@ api.get('/col', async (req, res) => {
   if (!COLS.has(req.query.c)) return res.status(400).json({ error: 'col' });
   const r = await pool.query('SELECT path, data, updated_at FROM docs WHERE col=$1 ORDER BY path', [req.query.c]);
   res.json(r.rows.map(x => ({ id: x.path.split('/')[1], data: x.data, updated: x.updated_at })));
+});
+api.post('/pdf', rawPdf, async (req, res) => {
+  const url = await savePdf(req, req.body); if (!url) return res.status(400).json({ error: 'bad pdf' });
+  res.json({ url });
 });
 api.post('/share', async (req, res) => {
   const { title, html } = req.body || {};
