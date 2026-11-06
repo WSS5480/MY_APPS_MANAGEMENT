@@ -549,7 +549,7 @@ function rMo(p){const m=p.monthly;
   <div class="tot"><span>Contract value (${fh(m.term)} mo)</span><span data-c="mo.contract"></span></div>
   <div class="grid" style="margin-top:10px">${F('Monthly invoice #','monthly.invNo',m.invNo)}${F('Billing period (e.g. December 2026)','monthly.period',m.period)}</div>
   <div style="margin-top:10px">${T('Notes (what support includes, response times, etc.)','monthly.notes',m.notes,3)}</div>
-  <div class="row" style="margin-top:12px"><button class="btn p" data-act="doc" data-kind="moAgree">📄 Monthly services agreement</button><button class="btn" data-act="doc" data-kind="moInv">📄 Monthly invoice</button><button class="btn" data-act="tab" data-t="lic">Next: Licensing →</button></div></div>`}
+  <div class="row" style="margin-top:12px"><button class="btn p" data-act="doc" data-kind="moAgree">📄 Monthly services agreement</button>${combinedMoLic(p)?'':'<button class="btn" data-act="doc" data-kind="moInv">📄 Monthly invoice</button>'}<button class="btn" data-act="tab" data-t="lic">Next: Licensing →</button></div></div>${moLicBar(p,'mo')}`}
 
 
 /* ================= licensing ================= */
@@ -574,8 +574,8 @@ function rLic(p){const L=p.lic;const presets=LIC_PRESETS.map((x,i)=>`<option val
   <div class="tot"><span>Client's total monthly (services + license)</span><b data-c="all.mo"></b></div>
   <div class="grid" style="margin-top:10px">${F('License invoice #','lic.invNo',L.invNo)}</div>
   <div style="margin-top:10px">${T('Extra terms / notes for the agreement','lic.notes',L.notes,3)}</div>
-  <div class="row" style="margin-top:12px"><button class="btn p" data-act="doc" data-kind="licAgree">📄 Software License Agreement</button><button class="btn" data-act="doc" data-kind="licInv">📄 License invoice</button>${L.arId&&S.invoices[L.arId]?`<button class="btn" data-act="openAR">📌 In A/R: ${esc(S.invoices[L.arId].number)} (${invCalc(S.invoices[L.arId]).st})</button>`:`<button class="btn g" data-act="postLic">📌 Post license invoice to A/R</button>`}</div>
-  <div class="sm mut" style="margin-top:8px">The agreement is a template. Have an attorney review it before you sign with a client.</div></div>`}
+  <div class="row" style="margin-top:12px"><button class="btn p" data-act="doc" data-kind="licAgree">📄 Software License Agreement</button>${combinedMoLic(p)?'':`<button class="btn" data-act="doc" data-kind="licInv">📄 License invoice</button>${L.arId&&S.invoices[L.arId]?`<button class="btn" data-act="openAR">📌 In A/R: ${esc(S.invoices[L.arId].number)} (${invCalc(S.invoices[L.arId]).st})</button>`:`<button class="btn g" data-act="postLic">📌 Post license invoice to A/R</button>`}`}</div>
+  <div class="sm mut" style="margin-top:8px">The agreement is a template. Have an attorney review it before you sign with a client.</div></div>${moLicBar(p,'lic')}`}
 
 /* ================= build history (GitHub + Render) ================= */
 const PLAN_COST={free:0,starter:7,standard:25,pro:85,'0.5c-512mb':7,'1c-2g':25,'2c-4g':85};
@@ -688,6 +688,20 @@ function postProjectInvoice(p){const c=p.customerId&&S.customers[p.customerId]||
  inv.arId=id;queueSave('i',id);
  (inv.payments||[]).forEach(x=>{if(num(x.amount))ledgerAdd({date:x.date||date,kind:'payment',amount:r2(num(x.amount)),invId:id,invNo:number,customerId:c.id,custName:custName(c),method:/ach/i.test(x.label)?'ACH':/check|chk/i.test(x.label)?'Check':/zelle/i.test(x.label)?'Zelle':/card|stripe/i.test(x.label)?'Card':'Other',bankId:'',ref:x.label||'',note:'Moved from project payments'})});
  inv.payments=[];touch(p);toast(`Invoice ${number} posted to A/R for ${custName(c)}`);return v}
+function licFirstLines(p){const L=p.lic,Lc=calcLic(p);const lines=L.items.map((it,i)=>({desc:(it.name||'License fee')+({once:'',mo:' — first month',yr:' — first year',user:' — first month',loc:' — first month'})[it.type]+(num(it.qty)>1?` (${fh(it.qty)} × ${money(it.amount)})`:''),amount:r2(it.type==='yr'?Lc.items[i].a:Lc.items[i].o||Lc.items[i].m),pid:p.id})).filter(x=>x.amount);
+ if(Lc.admin)lines.push({desc:'Administrative fee — first month',amount:r2(Lc.admin),pid:p.id});return lines}
+const moOn=p=>(p.monthly.items||[]).some(it=>num(it.price)),licOn=p=>(p.lic.items||[]).some(it=>num(it.amount));
+const combinedMoLic=p=>moOn(p)&&licOn(p)&&p.moLicSeparate!==true;
+function moLines(p){const M=calcMo(p);return p.monthly.items.map((it,i)=>({desc:(it.name||'Service')+(it.cycle==='yr'?' (yearly)':'')+(p.monthly.period?' — '+p.monthly.period:''),amount:r2(it.cycle==='yr'?num(it.price):M.items[i].pr),pid:p.id})).filter(x=>x.amount)}
+function postMoLicInvoice(p){const c=p.customerId&&S.customers[p.customerId]||findOrCreateCustomer(p);if(!c){toast('Add the client company or name first (Client tab)');return}
+ const lines=[...moLines(p),...licFirstLines(p)];if(!lines.length){toast('Add monthly services or license fees first');return}
+ const date=iso();if(isClosed(date)){toast('This month is closed');return}const number=p.monthly.invNo||p.lic.invNo||nextInvNo();p.monthly.invNo=number;p.lic.invNo=number;const id=uid();
+ S.invoices[id]={id,number,customerId:c.id,type:'monthly',projectIds:[p.id],date,due:addDays(date,num(c.terms)||S.settings.d.terms),period:p.monthly.period||'',lines,total:r2(lines.reduce((a,x)=>a+x.amount,0)),status:'open',notes:'Monthly services + license',created:Date.now()};
+ p.lic.arId=id;p.monthly.arId=id;queueSave('i',id);touch(p);toast(`Invoice ${number} (monthly + license) posted to A/R`);return S.invoices[id]}
+function moLicBar(p,where){if(!moOn(p)||!licOn(p))return '';const arv=p.monthly.arId&&p.monthly.arId===p.lic.arId&&S.invoices[p.monthly.arId];
+ if(p.moLicSeparate)return `<div class="note" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><span class="grow">Monthly and license are billed on <b>separate</b> invoices.</span><button class="btn sm" data-act="moLicMode">Put them on one invoice</button></div>`;
+ return `<div class="card" style="border:2px solid #1f5eff"><div class="row"><div class="grow"><h2 style="margin:0">🧾 One invoice: monthly + license</h2><div class="sm mut">This deal has monthly services and license fees, so they're billed together on one invoice${where==='lic'?' (see the Monthly tab too)':''}.</div></div></div>
+  <div class="row" style="margin-top:10px"><button class="btn p" data-act="doc" data-kind="moLicInv">📄 Combined invoice</button>${arv?`<button class="btn" data-act="openAR">📌 In A/R: ${esc(arv.number)} (${invCalc(arv).st})</button>`:`<button class="btn g" data-act="postMoLic">📌 Post combined invoice to A/R</button>`}<button class="btn sm" data-act="moLicMode">Bill separately instead</button></div></div>`}
 function postLicenseInvoice(p){const c=p.customerId&&S.customers[p.customerId]||findOrCreateCustomer(p);if(!c){toast('Add the client company or name first (Client tab)');return}
  const L=p.lic,Lc=calcLic(p);const lines=L.items.map((it,i)=>({desc:(it.name||'License fee')+({once:'',mo:' — first month',yr:' — first year',user:' — first month',loc:' — first month'})[it.type]+(num(it.qty)>1?` (${fh(it.qty)} × ${money(it.amount)})`:''),amount:r2(it.type==='yr'?Lc.items[i].a:Lc.items[i].o||Lc.items[i].m),pid:p.id})).filter(x=>x.amount);
  if(Lc.admin)lines.push({desc:'Administrative fee — first month',amount:r2(Lc.admin),pid:p.id});if(!lines.length){toast('Add license fees first');return}
@@ -936,6 +950,13 @@ function buildDoc(kind,p){const s=S.settings,d=s.d,E=calcEst(p),B=calcBill(p),M=
   ${Lc.admin?dRow('Administrative fee (first month)',money(Lc.admin)):''}`;
   const due=L.items.reduce((a,it,i)=>a+(it.type==='yr'?Lc.items[i].a:Lc.items[i].o||Lc.items[i].m),0)+Lc.admin;
   h+=`<div class="d-tots"><div class="d-hl">${dRow('<b>AMOUNT DUE</b>','<b style="font-size:16px">'+money(due)+'</b>')}</div></div>${s.biz.payInfo?`<h2>How to Pay</h2><div>${escBr(s.biz.payInfo)}</div>`:''}<div class="d-foot">Thank you for your business!</div>`}
+ else if(kind==='moLicInv'){t='Invoice — Monthly + License';fn=slug(p.name)+'-monthly-license-invoice'+(p.monthly.period?'-'+slug(p.monthly.period):'');const dt=iso();
+  const ml=moLines(p),ll=licFirstLines(p),tot=r2([...ml,...ll].reduce((a,x)=>a+x.amount,0));
+  h=dHead('INVOICE',[['Invoice #',p.monthly.invNo||p.lic.invNo||'—'],['Date',fmtDate(dt)],['Due',fmtDate(addDays(dt,d.terms))],['Period',p.monthly.period||''],['Software',p.name]],p,'Bill to')+
+  `<h2>Monthly Services${p.monthly.period?' — '+esc(p.monthly.period):''}</h2>${ml.map(x=>dRow(esc(x.desc),money(x.amount))).join('')||'<div class="d-sm">None.</div>'}
+  <h2>License &amp; Fees</h2>${ll.map(x=>dRow(esc(x.desc),money(x.amount))).join('')||'<div class="d-sm">None.</div>'}
+  <div class="d-tots">${dRow('Monthly services',money(ml.reduce((a,x)=>a+x.amount,0)))}${dRow('License & fees',money(ll.reduce((a,x)=>a+x.amount,0)))}<div class="d-hl">${dRow('<b>AMOUNT DUE</b>','<b style="font-size:16px">'+money(tot)+'</b>')}</div></div>
+  ${s.biz.payInfo?`<h2>How to Pay</h2><div>${escBr(s.biz.payInfo)}</div>`:''}<div class="d-foot">Thank you for your business!</div>`}
  else{t='Monthly Invoice';fn=slug(p.name)+'-monthly-invoice'+(p.monthly.period?'-'+slug(p.monthly.period):'');const dt=iso();
   h=dHead('INVOICE',[['Invoice #',p.monthly.invNo||'—'],['Date',fmtDate(dt)],['Due',fmtDate(addDays(dt,d.terms))],['Period',p.monthly.period||'']],p,'Bill to')+
   `<h2>Monthly Services${p.monthly.period?' — '+esc(p.monthly.period):''}</h2>${p.monthly.items.map((it,i)=>dRow(esc(it.name),money(M.items[i].pr))).join('')||'<div class="d-sm">None.</div>'}
@@ -1111,6 +1132,8 @@ const ACT={
   const v=createMonthly(c.id,per,S.genSel||[]);if(v){S.docInv=v.id;render();openDoc('arInv')}},
  postAR(){const p=cur();const v=postProjectInvoice(p);if(v){render()}},
  postLic(){postLicenseInvoice(cur());render()},
+ postMoLic(){postMoLicInvoice(cur());render()},
+ moLicMode(){const p=cur();p.moLicSeparate=!p.moLicSeparate;touch(p);render();toast(p.moLicSeparate?'Monthly and license will bill separately':'Monthly and license now on one invoice')},
  openAR(){S.view='ar';S.arTab='inv';S.arF='All';const p=cur();S.arC=p&&p.customerId||'';render();scrollTo(0,0)},
  arTab(t){S.arTab=t.dataset.t;S.payFor=null;render();scrollTo(0,0)},
  viewInv(t){S.docInv=t.dataset.id;openDoc('arInv')},
