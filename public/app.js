@@ -20,7 +20,7 @@
       enterPin: 'Ingrese su PIN', pinSub: 'Use el PIN de 4 a 6 dígitos que le asignó el administrador.', enter: 'Entrar', clear: 'Borrar', demoUsers: 'Usuarios de demostración', logout: 'Cerrar sesión', resetDemo: 'Restablecer datos de demostración', resetAsk: 'Esto borra todos los datos y vuelve a cargar la demostración. ¿Continuar?', resetDone: 'Datos de demostración restablecidos.',
       heroTitle: 'Toda la operación de Ventas y Contabilidad, en un solo sistema.', heroSub: 'Pedidos, crédito, entregas, facturación, compras, cierre, activos y costos con dueños, políticas y autorizaciones claras.',
       hero1: 'Canal único de pedidos con disponibilidad y fecha factible', hero2: 'Notas de crédito, precios y crédito con autorización digital', hero3: 'Portal de proveedores con conciliación a 3 vías', hero4: 'Cierre en D+5 con calendario de precierre y conciliaciones firmadas', hero5: 'Costo estándar, rentabilidad y activos fijos fuera de Excel',
-      vsBaseline: 'vs. línea base', baseline: 'Línea base', toQuantify: 'Línea base por cuantificar', gapByArea: 'Índice de brecha por área', cnTrend: 'Notas de crédito por mes', pipeline: 'Pedidos en proceso', roadmap: 'Hoja de ruta — 16 semanas', week: 'S', pending: 'Pendientes', notifications: 'Avisos', markRead: 'Marcar como leídos', nothingPending: 'No tiene pendientes. ¡Buen trabajo!',
+      vsBaseline: 'vs. línea base', baseline: 'Línea base', toQuantify: 'Línea base por cuantificar', gapByArea: 'Índice de brecha por área', cnTrend: 'Notas de crédito por mes', salesTrend: 'Venta facturada por mes', pipeline: 'Pedidos en proceso', roadmap: 'Hoja de ruta — 16 semanas', week: 'S', pending: 'Pendientes', notifications: 'Avisos', markRead: 'Marcar como leídos', nothingPending: 'No tiene pendientes. ¡Buen trabajo!',
       valueChains: 'Mapa de procesos de extremo a extremo', legendDone: 'Se hace', legendOpt: 'Oportunidad para optimizar', legendNo: 'No se hace', legendNA: 'No abordado', viewAll: 'Ver todos', subprocesses: 'Subprocesos',
       bankTitle: 'Conciliación bancaria automática', bankRun: 'Ejecutar conciliación automática', bankDesc: 'Compara cada movimiento del estado de cuenta contra cobros y pagos registrados: primero por importe y referencia, luego por importe exacto con ±3 días.', bankRes: 'Movimientos revisados: {a}. Coincidencias sugeridas: {b}.', allAccounts: 'Todas las cuentas', confirmAll: 'Confirmar todas las sugeridas', importStatement: 'Importar estado de cuenta',
       importTitle: 'Importar desde CSV', importHelp: 'La primera fila debe tener los nombres de columna (puede descargar la plantilla). Si alguna fila tiene error, no se importa nada y se le indica qué corregir.', importOk: '{n} registro(s) importado(s).', chooseFile: 'Seleccione el archivo CSV',
@@ -37,7 +37,7 @@
       enterPin: 'Enter your PIN', pinSub: 'Use the 4–6 digit PIN assigned by your administrator.', enter: 'Sign in', clear: 'Clear', demoUsers: 'Demo users', logout: 'Sign out', resetDemo: 'Reset demo data', resetAsk: 'This erases all data and reloads the demo. Continue?', resetDone: 'Demo data reset.',
       heroTitle: 'All of Sales and Accounting, in one system.', heroSub: 'Orders, credit, deliveries, billing, purchasing, close, fixed assets and costing — with clear owners, policies and approvals.',
       hero1: 'Single order channel with availability and feasible date', hero2: 'Credit notes, pricing and credit with digital approval', hero3: 'Supplier portal with 3-way match', hero4: 'Close by D+5 with pre-close calendar and signed reconciliations', hero5: 'Standard cost, profitability and fixed assets out of Excel',
-      vsBaseline: 'vs. baseline', baseline: 'Baseline', toQuantify: 'Baseline to be quantified', gapByArea: 'Gap index by area', cnTrend: 'Credit notes per month', pipeline: 'Orders in process', roadmap: 'Roadmap — 16 weeks', week: 'W', pending: 'Pending', notifications: 'Notifications', markRead: 'Mark as read', nothingPending: 'Nothing pending. Great job!',
+      vsBaseline: 'vs. baseline', baseline: 'Baseline', toQuantify: 'Baseline to be quantified', gapByArea: 'Gap index by area', cnTrend: 'Credit notes per month', salesTrend: 'Invoiced sales per month', pipeline: 'Orders in process', roadmap: 'Roadmap — 16 weeks', week: 'W', pending: 'Pending', notifications: 'Notifications', markRead: 'Mark as read', nothingPending: 'Nothing pending. Great job!',
       valueChains: 'End-to-end process map', legendDone: 'Done in system', legendOpt: 'Needs optimization', legendNo: 'Not done', legendNA: 'Not covered', viewAll: 'View all', subprocesses: 'Subprocesses',
       bankTitle: 'Automatic bank reconciliation', bankRun: 'Run automatic matching', bankDesc: 'Compares every bank line to recorded receipts and payments: first by amount and reference, then exact amount within ±3 days.', bankRes: 'Lines checked: {a}. Suggested matches: {b}.', allAccounts: 'All accounts', confirmAll: 'Confirm all suggested', importStatement: 'Import bank statement',
       importTitle: 'Import from CSV', importHelp: 'The first row must contain column names (download the template). If any row has an error nothing is imported and you are told what to fix.', importOk: '{n} record(s) imported.', chooseFile: 'Choose the CSV file',
@@ -129,7 +129,7 @@
   const go = h => { if (location.hash === h) render(); else location.hash = h; };
 
   // ── navigation ──
-  const PRIMARY = { VTA: '#/e/orders', ATC: '#/e/orders', GV: '#/e/orders', CHOF: '#/e/deliveries', PROV: '#/e/supplier_invoices', ALM: '#/e/goods_receipts', PROD: '#/e/production_orders', LOG: '#/e/loads', FACT: '#/r/billing_queue', COB: '#/e/receipts', CONT: '#/e/close_tasks', CXP: '#/e/supplier_invoices', COMP: '#/e/requisitions', COST: '#/r/profitability', DIR: '#/diag', ADMIN: '#/diag' };
+  const PRIMARY = { VTA: '#/e/orders', ATC: '#/e/orders', GV: '#/e/orders', CHOF: '#/e/deliveries', PROV: '#/e/supplier_invoices', ALM: '#/e/goods_receipts', PROD: '#/e/production_orders', LOG: '#/e/loads', FACT: '#/r/billing_queue', COB: '#/e/receipts', CONT: '#/e/close_tasks', CXP: '#/e/supplier_invoices', COMP: '#/e/requisitions', COST: '#/r/profitability', DIR: '#/r/sales', ADMIN: '#/r/sales' };
   function navHtml() {
     const m = S.meta; const cur = location.hash || '#/';
     const a = (h, label, icon, cls = '') => `<a class="single ${cls} ${cur === h || (h !== '#/' && cur.startsWith(h)) ? 'active' : ''}" href="${h}">${ic(icon)}<span>${esc(label)}</span></a>`;
@@ -143,9 +143,8 @@
       const reps = m.reports.filter(r => r.g === g);
       if (!ents.length && !reps.length) continue;
       if (S.me.role === 'CHOF' && g !== 'logistica') continue;
-      const open = S.openGroups.includes(g) || (g === 'diagnostico' && cur.startsWith('#/diag')) || ents.some(e => cur.startsWith('#/e/' + e.k)) || reps.some(r => cur.startsWith('#/r/' + r.k));
+      const open = S.openGroups.includes(g) || ents.some(e => cur.startsWith('#/e/' + e.k)) || reps.some(r => cur.startsWith('#/r/' + r.k));
       h += `<div class="grp ${open ? 'open' : ''}" data-g="${g}"><div class="ghead">${ic(icon)}<span>${esc(S.lang === 'en' ? en : es)}</span>${ic('chev', 'chev')}</div><div class="items">`;
-      if (g === 'diagnostico') h += `<a href="#/diag" class="${cur.startsWith('#/diag') ? 'active' : ''}">${esc(S.lang === 'en' ? 'Overview & process map' : 'Resumen y mapa de procesos')}</a>`;
       for (const e of ents) { const hr = '#/e/' + e.k; h += `<a href="${hr}" class="${cur.split('?')[0] === hr || cur.startsWith(hr + '/') ? 'active' : ''}">${esc(L(e.l))}</a>`; }
       if (g === 'finanzas' && ['ADMIN', 'CONT', 'CXP'].includes(S.me.role)) h += `<a href="#/bankmatch" class="${cur.startsWith('#/bankmatch') ? 'active' : ''}">${esc(t('bankTitle'))}</a>`;
       if (reps.length) { h += `<div class="sub">${esc(t('reports'))}</div>`; for (const r of reps) { const hr = '#/r/' + r.k; h += `<a href="${hr}" class="${cur.startsWith(hr) ? 'active' : ''}">${esc(L(r.l))}</a>`; } }
@@ -157,8 +156,8 @@
   function shell(content) {
     const u = S.me; const ini = u.name.replace(/[^A-Za-zÁÉÍÓÚÑáéíóúñ ]/g, '').split(' ').filter(Boolean).slice(0, 2).map(x => x[0]).join('').toUpperCase();
     const cur = location.hash || '#/';
-    const prim = PRIMARY[u.role] || '#/diag';
-    const primLabel = prim.startsWith('#/e/') && ENT(prim.slice(4)) ? L(ENT(prim.slice(4)).l) : prim.startsWith('#/r/') ? t('reports') : t('diag');
+    const prim = PRIMARY[u.role] || '#/r/sales';
+    const primLabel = prim.startsWith('#/e/') && ENT(prim.slice(4)) ? L(ENT(prim.slice(4)).l) : t('reports');
     $('#app').innerHTML = `<div class="shell">
       <header class="hdr">
         <button class="iconbtn menu-btn" id="menuBtn" aria-label="${esc(t('menu'))}">${ic('menu')}</button>
@@ -173,7 +172,7 @@
       <nav class="bottomnav">
         <a href="#/" class="${cur === '#/' || cur === '' ? 'active' : ''}">${ic('grid')}<span>${esc(t('home'))}</span></a>
         <a href="#/inbox" class="${cur.startsWith('#/inbox') ? 'active' : ''}">${ic('inbox')}<span>${esc(t('pending'))}</span>${S.unread ? `<span class="badge">${S.unread > 99 ? '99+' : S.unread}</span>` : ''}</a>
-        <a href="${prim}" class="${cur.startsWith(prim) ? 'active' : ''}">${ic(prim.includes('deliver') ? 'truck' : prim.includes('/r/') ? 'report' : prim.includes('diag') ? 'map' : 'receipt')}<span>${esc(primLabel.length > 14 ? primLabel.slice(0, 13) + '…' : primLabel)}</span></a>
+        <a href="${prim}" class="${cur.startsWith(prim) ? 'active' : ''}">${ic(prim.includes('deliver') ? 'truck' : prim.includes('/r/') ? 'report' : 'receipt')}<span>${esc(primLabel.length > 14 ? primLabel.slice(0, 13) + '…' : primLabel)}</span></a>
         <a href="javascript:void 0" id="bnMenu">${ic('menu')}<span>${esc(t('menu'))}</span></a>
       </nav></div>`;
     const toggle = v => { S.sideOpen = v; $('#side').classList.toggle('open', v); $('#ovl').classList.toggle('open', v); };
@@ -231,7 +230,7 @@
       const d = +k.v - +k.base; const better = k.lowerBetter ? d < 0 : d > 0;
       const val = k.t === 'pct' ? F.num(Math.abs(d)) + ' pts' : k.t === 'money' ? F.money(Math.abs(d)) : F.num(Math.abs(d));
       delta = `<span class="delta ${d === 0 ? 'neutral' : better ? 'good' : 'bad'}">${d < 0 ? '▼' : d > 0 ? '▲' : '='} ${val} ${esc(t('vsBaseline'))}</span>`;
-    } else if (k.k && ['cn', 'dfr', 'hours'].includes(k.k)) delta = `<span class="delta neutral">${esc(t('toQuantify'))}</span>`;
+    }
     const v = k.t === 'money' ? F.money(k.v) : k.t === 'pct' ? F.pct(k.v) : k.t === 'day' ? (k.v == null ? '—' : 'D+' + k.v) : k.t === 'text' ? esc(k.v) : F.num(k.v);
     return `<${k.href ? `a href="${k.href}"` : 'div'} class="kpi ${k.tone ? 'tone-' + k.tone : ''}"><div class="l">${esc(L(k.l))}</div><div class="v">${v}</div>${k.sub ? `<div class="s">${esc(L(k.sub))}</div>` : ''}${delta}</${k.href ? 'a' : 'div'}>`;
   }
@@ -259,14 +258,13 @@
     const PS = ['cotizacion', 'borrador', 'por_aprobar', 'retenido', 'confirmado', 'en_produccion', 'listo', 'programado', 'en_ruta', 'entregado'];
     const hello = S.lang === 'en' ? 'Hello' : 'Buen día';
     $('#main').innerHTML = `<div class="ph"><div class="t"><div class="crumbs">${esc(t('brand'))}</div><h1>${hello}, ${esc(S.me.name.split(' ')[0] === 'Dr.' ? S.me.name : S.me.name.split(' ')[0])}</h1><div class="desc">${esc(new Date().toLocaleDateString(loc(), { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))}</div></div>
-      <div class="acts"><a class="btn" href="#/diag">${ic('map')}${esc(t('diag'))}</a>${ENT('orders') && ENT('orders').canWrite ? `<a class="btn pri" href="#/e/orders/new">${ic('plus')}${esc(L(ENT('orders').one))}</a>` : ''}</div></div>
+      <div class="acts">${ENT('orders') && ENT('orders').canWrite ? `<a class="btn pri" href="#/e/orders/new">${ic('plus')}${esc(L(ENT('orders').one))}</a>` : ''}</div></div>
       <div class="kpis">${d.kpis.map(kpiTile).join('')}</div>
       <div class="grid g2">
         <div class="card"><div class="ch"><h3>${esc(t('inbox'))}</h3><a class="btn sm ghost" href="#/inbox">${esc(t('viewAll'))}</a></div><div class="inbox">${ib.items.length ? ib.items.slice(0, 8).map(i => `<a href="${i.href}"><span class="n">${i.n}</span><span class="lbl">${esc(L(i.l))}</span>${ic('chev', 'i14')}</a>`).join('') : `<div class="empty">${ic('check')}<div>${esc(t('nothingPending'))}</div></div>`}</div></div>
-        <div class="card"><div class="ch"><h3>${esc(t('gapByArea'))}</h3><a class="btn sm ghost" href="#/r/gap">${esc(t('viewAll'))}</a></div><div class="cb">${hbars(d.gap.slice().sort((a, b) => b.v2 - a.v2), 'pct', [['Diagnóstico sep-2026', 'Baseline Sep-2026'], ['Hoy', 'Today']])}</div></div>
+        <div class="card"><div class="ch"><h3>${esc(t('pipeline'))}</h3><a class="btn sm ghost" href="#/e/orders">${esc(t('viewAll'))}</a></div><div class="cb">${hbars(PS.map(s => ({ label: statusOf('orders', s).l, v: (d.pipeline.find(p => p.status === s) || {}).c || 0 })).filter(x => x.v), 'num')}</div></div>
+        <div class="card"><div class="ch"><h3>${esc(t('salesTrend'))}</h3><a class="btn sm ghost" href="#/r/sales">${esc(t('viewAll'))}</a></div><div class="cb">${vbars(d.s6, 'money')}</div></div>
         <div class="card"><div class="ch"><h3>${esc(t('cnTrend'))}</h3><a class="btn sm ghost" href="#/r/credit_notes">${esc(t('viewAll'))}</a></div><div class="cb">${vbars(d.cn6, 'num')}</div></div>
-        <div class="card"><div class="ch"><h3>${esc(t('pipeline'))}</h3><a class="btn sm ghost" href="#/e/orders">${esc(t('viewAll'))}</a></div><div class="cb"><div class="hbars">${hbars(PS.map(s => ({ label: statusOf('orders', s).l, v: (d.pipeline.find(p => p.status === s) || {}).c || 0 })).filter(x => x.v), 'num')}</div></div></div>
-        <div class="card span2"><div class="ch"><h3>${esc(t('roadmap'))}</h3><a class="btn sm ghost" href="#/e/initiatives">${esc(t('viewAll'))}</a></div><div class="cb">${gantt(d.initiatives)}</div></div>
       </div>`;
   }
 
@@ -277,24 +275,6 @@
       <div class="grid g2"><div class="card"><div class="ch"><h3>${esc(t('pending'))}</h3></div><div class="inbox">${ib.items.length ? ib.items.map(i => `<a href="${i.href}"><span class="n">${i.n}</span><span class="lbl">${esc(L(i.l))}</span>${ic('chev', 'i14')}</a>`).join('') : `<div class="empty">${ic('check')}<div>${esc(t('nothingPending'))}</div></div>`}</div></div>
       <div class="card"><div class="ch"><h3>${esc(t('notifications'))}</h3></div><div class="notes">${ib.notes.length ? ib.notes.map(n => `<div class="it ${n.read ? '' : 'unread'}">${n.link ? `<a href="${esc(n.link)}">` : ''}<b>${esc(n.title)}</b>${n.link ? '</a>' : ''}<div>${esc(n.body || '')}</div><small>${F.datetime(n.ts)}</small></div>`).join('') : `<div class="empty">${esc(t('noRows'))}</div>`}</div></div></div>`;
     $('#mr').onclick = async () => { await api('/api/notifications/read', { method: 'POST' }); S.unread = 0; viewInbox(); };
-  }
-
-  // ── DIAGNOSTIC ──
-  async function viewDiag() {
-    shell(`<div class="boot"><div class="spinner"></div></div>`);
-    const [rep, sp, ini] = await Promise.all([api('/api/report/gap'), api('/api/e/subprocesses'), api('/api/e/initiatives')]);
-    const CH = [['o2c', 'Order to Cash'], ['p2p', 'Procure to Pay'], ['p2prod', 'Plan to Produce'], ['r2r', 'Record to Report']];
-    const own = (ini.refs.users || {});
-    $('#main').innerHTML = `<div class="ph"><div class="t"><div class="crumbs">Baseline Consulting · ${S.lang === 'en' ? 'Sales & Accounting vs SAP B1 best practices' : 'Ventas y Contabilidad vs. mejores prácticas SAP B1'}</div><h1>${esc(t('diag'))}</h1><div class="desc">${S.lang === 'en' ? 'Each of the 55 assessed subprocesses is mapped to the module that solves it. As owners move them to "Done", the gap index recalculates live.' : 'Cada uno de los 55 subprocesos evaluados está ligado al módulo que lo resuelve. Conforme los dueños los pasan a "Se hace", el índice de brecha se recalcula en vivo.'}</div></div>
-      <div class="acts"><a class="btn" href="#/e/subprocesses">${esc(t('subprocesses'))}</a><a class="btn" href="#/r/gap">${ic('report')}${esc(t('gapByArea'))}</a></div></div>
-      <div class="kpis">${rep.kpis.map(kpiTile).join('')}</div>
-      <div class="grid g2">
-        <div class="card"><div class="ch"><h3>${esc(t('gapByArea'))}</h3></div><div class="cb">${hbars(rep.charts[0].items, 'pct', rep.charts[0].series)}<div class="note">${esc(L(rep.note))}</div></div></div>
-        <div class="card"><div class="ch"><h3>${esc(t('roadmap'))}</h3></div><div class="cb">${gantt(ini.rows.map(i => Object.assign({}, i, { owner: own[i.owner_id] })))}</div></div>
-        <div class="card span2"><div class="ch"><h3>${esc(t('valueChains'))}</h3><div class="legend" style="margin:0"><span><i style="background:#B5E2CB"></i>${esc(t('legendDone'))}</span><span><i style="background:#F2DDB0"></i>${esc(t('legendOpt'))}</span><span><i style="background:#F3C7C7"></i>${esc(t('legendNo'))}</span><span><i style="background:#E3E8EE"></i>${esc(t('legendNA'))}</span></div></div><div class="cb">
-          ${CH.map(([k, n]) => `<div class="chain"><h4>${esc(n)} <span class="chip plain">${sp.rows.filter(r => r.chain === k).length}</span></h4><div class="flow">${sp.rows.filter(r => r.chain === k).map(r => `<a class="node ${esc(r.current)}" href="#/e/subprocesses/${r.id}" title="${esc(r.finding || '')}"><b>${esc(r.ref)}</b>${esc(r.name)}</a>`).join('')}</div></div>`).join('')}
-        </div></div>
-      </div>`;
   }
 
   // ── PORTAL & DRIVER homes ──
@@ -599,7 +579,6 @@
     try {
       if (!p[0]) return await viewDashboard();
       if (p[0] === 'inbox') return await viewInbox();
-      if (p[0] === 'diag') return await viewDiag();
       if (p[0] === 'bankmatch') return await viewBankMatch();
       if (p[0] === 'audit') return await viewAudit();
       if (p[0] === 'e' && p[1] && p[2]) return await viewDetail(p[1], p[2]);

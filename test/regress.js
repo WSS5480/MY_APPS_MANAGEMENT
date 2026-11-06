@@ -32,6 +32,4 @@ const ok = (c, m) => { if (!c) { console.log('  ✗ ' + m); process.exitCode = 1
   const v = (await as('5480', 'GET', '/api/opts/users')).j; void v;
   const csv = await fetch(BASE + '/api/e/invoices?format=csv&lang=en', { headers: { cookie: S['5480'] } }).then(r => r.text());
   ok(/Paid|Open/.test(csv) && !/,pagada,/.test(csv), 'CSV export uses status labels');
-  const sp = await fetch(BASE + '/api/e/subprocesses?format=csv&lang=en', { headers: { cookie: S['5480'] } }).then(r => r.text());
-  ok(/Standard \/ actual costing/.test(sp) && !/‖/.test(sp), 'CSV picks English names');
 })();

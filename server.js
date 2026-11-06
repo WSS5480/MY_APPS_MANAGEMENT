@@ -117,7 +117,6 @@ async function resolveRefs(e, rows) {
 }
 function labelSql(te) {
   if (te.k === 'products' || te.k === 'customers') return `coalesce(code,'') || ' · ' || coalesce(name,'')`;
-  if (te.k === 'subprocesses') return `ref || ' · ' || name`;
   if (te.k === 'goods_receipts') return `folio || ' · $' || to_char(coalesce(amount,0),'FM999,999,990.00')`;
   if (te.k === 'invoices') return `folio || ' · $' || to_char(coalesce(balance,0),'FM999,999,990.00')`;
   if (te.k === 'supplier_invoices') return `coalesce(left(uuid,8),'#'||id) || ' · $' || to_char(coalesce(total,0),'FM999,999,990.00')`;

@@ -8,7 +8,7 @@ Spanish (Guatemala, formal "usted") with an English switch at the top of every s
 - Env: `DATABASE_URL`, `SESSION_SECRET`, optional `DEMO_MODE=0` to hide demo PINs on the login screen.
 - Tests: `node test/smoke.js` (every module/report for every role) and `node test/flows.js` (end-to-end workflows).
 
-Modules: diagnostic & roadmap (live gap index), sales (orders/quotes, blanket orders, promotions, price approvals, credit notes, segmentation, forecast),
+Modules: sales (orders/quotes, blanket orders, promotions, price approvals, credit notes, segmentation, forecast),
 warehouse & production (stock, capture lag, lots, production orders, WIP, settlement), logistics (load planning, driver delivery confirmation with photo/GPS, freight vs actual, double freight),
 billing & collections (billing queue, invoices, cash application, A/R aging, credit scoring), purchasing (requisitions, POs, goods receipts, supplier portal with CFDI XML + 3-way match, payments),
 finance & close (pre-close calendar, close tasks, bank reconciliation auto-match, balance sheet reconciliations with dual signature, intercompany, payroll, DIOT, e-accounting XML),
