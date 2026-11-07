@@ -207,6 +207,38 @@ function privateRoutes(ctx) {
     if (!r.ok || j.success === false) throw new Error('VinAudit: ' + (j.error || r.status));
     await audit(pool, req.user.name, 'history', 'vehicle', null, vin); res.json(j); }));
 
+  // ---- free vehicle report: federal decode + recalls + owner complaints (+ VinAudit title history when connected) ----
+  const nhtsa = async u => { const r = await fetch(u, { signal: AbortSignal.timeout(15000) }); if (!r.ok) throw new Error('NHTSA ' + r.status); return r.json(); };
+  app.get('/api/vinreport/:vin', W(async (req, res) => { if (!can(req.user, 'vehicle') && !can(req.user, 'appraisal')) return deny(res);
+    const vin = String(req.params.vin).toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, ''); if (vin.length !== 17) throw new Error('VIN must be 17 characters');
+    let d; try { d = ((await nhtsa(`https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/${vin}?format=json`)).Results || [])[0] || {}; }
+    catch (e) { throw new Error('Couldn’t reach the federal VIN service — check the connection and try again'); }
+    const pick = k => (d[k] && d[k] !== 'Not Applicable' && d[k] !== '0') ? String(d[k]).trim() : '';
+    const specs = { year: pick('ModelYear'), make: pick('Make'), model: pick('Model'), trim: [pick('Trim'), pick('Series')].filter(Boolean).join(' '), body: pick('BodyClass'), doors: pick('Doors'),
+      drive: pick('DriveType'), engine: [pick('DisplacementL') && Number(pick('DisplacementL')).toFixed(1) + 'L', pick('EngineCylinders') && pick('EngineCylinders') + '-cyl', pick('EngineConfiguration'), pick('Turbo') === 'Yes' ? 'turbo' : '', pick('EngineHP') && pick('EngineHP') + ' hp'].filter(Boolean).join(' '),
+      fuel: [pick('FuelTypePrimary'), pick('ElectrificationLevel')].filter(Boolean).join(' / '), transmission: [pick('TransmissionSpeeds') && pick('TransmissionSpeeds') + '-speed', pick('TransmissionStyle')].filter(Boolean).join(' '),
+      plant: [pick('PlantCompanyName'), pick('PlantCity'), pick('PlantState'), pick('PlantCountry')].filter(Boolean).join(', '), gvwr: pick('GVWR'), maker: pick('Manufacturer'),
+      safety: [pick('ABS') && 'ABS: ' + pick('ABS'), pick('ESC') && 'Stability control: ' + pick('ESC'), pick('BackupCamera') && 'Backup camera: ' + pick('BackupCamera')].filter(Boolean).join(' · '),
+      note: pick('ErrorCode') && pick('ErrorCode') !== '0' ? pick('ErrorText') : '' };
+    const out = { vin, specs, recalls: [], complaints: { total: 0, top: [] }, history: null, historyNote: '' };
+    if (specs.year && specs.make && specs.model) {
+      const q = `make=${encodeURIComponent(specs.make)}&model=${encodeURIComponent(specs.model)}&modelYear=${specs.year}`;
+      const hybrid = /hybrid|electric|phev|bev/i.test(specs.fuel), diesel = /diesel/i.test(specs.fuel), manual = /manual/i.test(specs.transmission), auto = /auto/i.test(specs.transmission);
+      try { const r = await nhtsa('https://api.nhtsa.gov/recalls/recallsByVehicle?' + q);
+        out.recalls = (r.results || []).map(x => { const t = (x.Summary || '') + ' ' + (x.Component || '');
+          const notThis = (!hybrid && /\b(4xe|phev|plug-in hybrid|hybrid electric|high.voltage battery)\b/i.test(t)) || (!diesel && /\bdiesel\b/i.test(t)) || (auto && /manual transmission/i.test(t)) || (manual && /automatic transmission/i.test(t));
+          return { campaign: x.NHTSACampaignNumber, date: x.ReportReceivedDate, component: x.Component, summary: x.Summary, risk: x.Consequence, fix: x.Remedy, likelyNotThis: notThis }; })
+          .sort((a, b) => a.likelyNotThis - b.likelyNotThis); } catch (e) { out.recallNote = 'Recall list unavailable right now'; }
+      try { const r = await nhtsa('https://api.nhtsa.gov/complaints/complaintsByVehicle?' + q); const res2 = r.results || []; const by = {};
+        res2.forEach(x => String(x.components || 'Other').split(',').forEach(c => { c = c.trim(); by[c] = (by[c] || 0) + 1; }));
+        out.complaints = { total: res2.length, crashes: res2.filter(x => x.crash).length, fires: res2.filter(x => x.fire).length, top: Object.entries(by).sort((a, b) => b[1] - a[1]).slice(0, 6) }; } catch (e) {}
+    }
+    const va = (await secrets(ctx)).vinaudit || {};
+    if (va.key) { try { const u = new URL('https://api.vinaudit.com/pullreport.php'); for (const [k, v] of Object.entries({ id: 'dms-' + vin + '-' + today(), vin, user: va.user || '', pass: va.pass || '', key: va.key, format: 'json' })) u.searchParams.set(k, v);
+        const r = await fetch(u, { signal: AbortSignal.timeout(20000) }); const j = await r.json().catch(() => ({})); if (r.ok && j.success !== false) out.history = j; else out.historyNote = 'VinAudit: ' + (j.error || r.status); } catch (e) { out.historyNote = 'VinAudit didn’t answer'; } }
+    else out.historyNote = 'Title, accident and service history need a paid report — connect VinAudit in Settings → Integrations, or use the Carfax / AutoCheck buttons.';
+    await audit(pool, req.user.name, 'vin report', 'vehicle', null, vin); res.json(out); }));
+
   // ---- appraisals -> trade-in on a deal, or a purchase into inventory ----
   app.post('/api/appraisal/:id/market', W(async (req, res) => { if (!can(req.user, 'appraisal')) return deny(res); const a = await need(pool, req.params.id, 'appraisal', req.user); if (!a.data.vin) throw new Error('Add the VIN first');
     const m = await marketPrice(a.data.vin, a.data.miles); await tx(async c => { const x = await getRec(c, a.id); x.data.market = { price: m.price, msrp: m.msrp, checked: today() }; await put(c, 'appraisal', x.store_id, x.data, x.id); });
