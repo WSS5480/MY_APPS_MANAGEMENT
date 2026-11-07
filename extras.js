@@ -249,7 +249,7 @@ function privateRoutes(ctx) {
       if (d.status !== 'open') throw new Error('This appraisal was already used');
       if (!(num(d.offer) > 0)) throw new Error('Enter the offer (what you are paying)');
       const stock = 'S' + (await ctx.nextNum(c, 'stock', 10001));
-      const v = await put(c, 'vehicle', a.store_id, { vin: d.vin, year: d.year, make: d.make, model: d.model, trim: d.trim, miles: d.miles, color: d.color, cost: num(d.offer), paid_with: req.body.paid_with === 'ap' ? 'ap' : 'cash', price: d.retail_target || '', source: 'Bought from appraisal ' + d.number, cond: 'used', status: 'in_stock', stock, acquired: today(), recon: [], photos: d.photos || [] });
+      const v = await put(c, 'vehicle', a.store_id, { vin: d.vin, year: d.year, make: d.make, model: d.model, trim: d.trim, body: d.body, engine: d.engine, drive: d.drive, transmission: d.transmission, fuel: d.fuel, history: d.hist || null, recalls: d.recalls || null, miles: d.miles, color: d.color, cost: num(d.offer), paid_with: req.body.paid_with === 'ap' ? 'ap' : 'cash', price: d.retail_target || '', source: 'Bought from appraisal ' + d.number, cond: 'used', status: 'in_stock', stock, acquired: today(), recon: [], photos: d.photos || [] });
       await ctx.postVehicleCost(c, v, req.user);
       d.status = 'bought'; d.vehicle_id = v.id; await put(c, 'appraisal', a.store_id, d, a.id); await audit(c, req.user.name, 'buy', 'appraisal', a.id, v.id); return v; });
     res.json(out); }));
