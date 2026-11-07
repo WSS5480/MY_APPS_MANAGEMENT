@@ -160,6 +160,7 @@ const ACCOUNTS = [
   ['5000', 'Vehicle Cost of Sales', 'expense', 'Used'], ['5200', 'F&I Product Cost', 'expense', 'F&I'], ['5400', 'Parts Cost of Sales', 'expense', 'Parts'],
   ['6000', 'Floorplan Interest', 'expense', 'Overhead'], ['6100', 'Bad Debt / Charge-offs', 'expense', 'BHPH'], ['6200', 'Repo Expense', 'expense', 'BHPH'],
   ['6300', 'Warranty Chargebacks', 'expense', 'Service'], ['6900', 'Other Overhead', 'expense', 'Overhead'],
+  ['1500', 'Due from Affiliated Stores', 'asset', ''], ['2500', 'Due to Affiliated Stores', 'liability', ''], ['6950', 'Cash Over / Short', 'expense', 'Overhead'],
 ];
 
 async function init() {
@@ -178,11 +179,13 @@ async function init() {
     await c.query(`CREATE TABLE IF NOT EXISTS audit (id BIGSERIAL PRIMARY KEY, at TIMESTAMPTZ NOT NULL DEFAULT now(), who TEXT, action TEXT, kind TEXT, ref BIGINT, detail TEXT)`);
     await c.query(`CREATE TABLE IF NOT EXISTS tokens (token TEXT PRIMARY KEY, kind TEXT NOT NULL, ref BIGINT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now())`);
     const { rows } = await c.query(`SELECT count(*)::int n FROM rec WHERE kind='account'`);
-    if (!rows[0].n) for (const [no, name, type, dept] of ACCOUNTS) await c.query(`INSERT INTO rec(kind,data) VALUES('account',$1)`, [{ no, name, type, dept }]);
+    const have = new Set((await c.query(`SELECT data->>'no' no FROM rec WHERE kind='account'`)).rows.map(r => r.no)); // add any standard account that's missing (also on upgrades)
+    for (const [no, name, type, dept] of ACCOUNTS) if (!have.has(no)) await c.query(`INSERT INTO rec(kind,data) VALUES('account',$1)`, [{ no, name, type, dept }]);
     const s = await c.query(`SELECT count(*)::int n FROM rec WHERE kind='store'`);
     if (!s.rows[0].n) await c.query(`INSERT INTO rec(kind,data) VALUES('store',$1)`, [{ name: '' }]);
     const st = await c.query(`SELECT count(*)::int n FROM rec WHERE kind='settings'`);
     if (!st.rows[0].n) await c.query(`INSERT INTO rec(kind,data) VALUES('settings',$1)`, [{ dealer_name: '', pay_link: '', phone: '', sms_reminder: 'Hi {first}, this is {dealer}. Your payment of {amount} was due {due}. Pay at {paylink} or call {phone}.', lead_reply: 'Thanks for your interest in the {vehicle}, {first}! When is a good time to come see it? — {dealer}' }]);
+    await extras.init(c);
   } finally { c.release(); }
 }
 async function nextNum(c, name, start) {
@@ -208,6 +211,8 @@ async function post(c, { date, store, memo, src, ref, who, lines }) {
   const dr = r2(L.reduce((s, l) => s + l[1], 0)), cr = r2(L.reduce((s, l) => s + l[2], 0));
   if (Math.abs(dr - cr) > 0.009) throw new Error(`Entry out of balance (${dr} vs ${cr}) — ${memo}`);
   if (!L.length) return null;
+  const lock = (await c.query(`SELECT data->>'closed_through' d FROM rec WHERE kind='settings' LIMIT 1`)).rows[0];
+  if (lock && lock.d && String(date || today()) <= lock.d) throw new Error(`The books are closed through ${lock.d} — post this in an open period or ask the owner to reopen`);
   const entry = 'J' + (await nextNum(c, 'entry', 1001));
   for (const [a, d, k] of L) await c.query(`INSERT INTO jrnl(entry,date,store_id,acct,debit,credit,memo,src,ref,by_user) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, [entry, date || today(), store || null, a, d, k, memo, src, ref || null, who]);
   return entry;
@@ -243,6 +248,7 @@ const limited = ip => { const now = Date.now(), t = (tries.get(ip) || []).filter
 // ---------- app ----------
 // every route runs through W so a thrown error becomes a clear message instead of a crash
 const W = fn => (req, res) => Promise.resolve(fn(req, res)).catch(e => { console.error(e); res.status(400).json({ error: e.message }); });
+const deny = (res, msg = 'Your role can’t do that') => res.status(403).json({ error: msg });
 const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
@@ -332,7 +338,7 @@ app.get('/api/public/inspection/:token', W(async (req, res) => {
   if (!rows[0]) return res.status(404).json({ error: 'This link has expired — ask the service advisor for a new one.' });
   const ro = await getRec(pool, rows[0].ref); const s = (await list(pool, 'settings'))[0];
   if (!ro || ro.data.status === 'closed') return res.status(410).json({ error: 'This repair order is closed.' });
-  res.json({ ro: ro.data.number, vehicle: ro.data.vehicle_label, dealer: s.data.dealer_name, items: (ro.data.inspection || []).map((x, i) => ({ i, item: x.item, status: x.status, note: x.note, price: x.price, approved: x.approved })) });
+  res.json({ ro: ro.data.number, vehicle: ro.data.vehicle_label, dealer: s.data.dealer_name, items: (ro.data.inspection || []).map((x, i) => ({ i, item: x.item, status: x.status, note: x.note, price: x.price, approved: x.approved, photos: (x.photos || []).filter(p => /^data:image\//.test(p)).slice(0, 4) })) });
 }));
 app.post('/api/public/inspection/:token', W(async (req, res) => {
   const { rows } = await pool.query(`SELECT * FROM tokens WHERE token=$1 AND kind='ro' AND created_at > now() - interval '7 days'`, [req.params.token]);
@@ -345,6 +351,11 @@ app.post('/api/public/inspection/:token', W(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// ---------- add-on modules (website, forms, payroll, bank rec, …) live in extras.js ----------
+const extras = require('./extras');
+const CTX = () => ({ app, pool, W, deny, can, need, postVehicleCost, getRec, list, put, post, tx, audit, nextNum, num, r2, today, addDays, daysBetween, loanStatus, buildSchedule, crypto, WRITE, ROLES, limited, tries, calcDeal, get vehCostOf() { return vehCostOf; }, get READ_KINDS() { return READ_KINDS; }, get SAVE_KINDS() { return SAVE_KINDS; } });
+extras.publicRoutes(CTX());
+
 // ---------- everything below needs sign-in ----------
 app.use(async (req, res, next) => {
   try {
@@ -356,11 +367,11 @@ app.use(async (req, res, next) => {
 });
 app.get('/', (req, res) => res.sendFile(pub('index.html')));
 app.get('/app.js', (req, res) => res.sendFile(pub('app.js')));
+app.get('/app2.js', (req, res) => res.sendFile(pub('app2.js')));
 app.get('/api/me', W(async (req, res) => { const s = (await list(pool, 'settings'))[0]; res.json({ user: req.user, roles: ROLES, write: WRITE, settings: s && s.data, code_sender_ready: codeSenderReady() }); }));
 
-const deny = (res, msg = 'Your role can’t do that') => res.status(403).json({ error: msg });
 
-const READ_KINDS = new Set(['store', 'customer', 'vehicle', 'lead', 'deal', 'loan', 'payment', 'cnote', 'ro', 'part', 'claim', 'product', 'lender', 'account', 'appt', 'settings', 'user']);
+var READ_KINDS = new Set(['store', 'customer', 'vehicle', 'lead', 'deal', 'loan', 'payment', 'cnote', 'ro', 'part', 'claim', 'product', 'lender', 'account', 'appt', 'settings', 'user']);
 app.get('/api/list/:kind', W(async (req, res) => {
   const k = req.params.kind; if (!READ_KINDS.has(k)) return res.status(404).json({ error: 'Unknown list' });
   if (k === 'user' && !['owner', 'manager'].includes(req.user.role)) return deny(res);
@@ -373,7 +384,7 @@ app.get('/api/rec/:id', W(async (req, res) => { const r = await getRec(pool, req
   if (!r || r.kind === 'user' || (req.user.store_id && r.store_id && r.kind !== 'store' && Number(r.store_id) !== Number(req.user.store_id))) return res.status(404).json({ error: 'Not found' }); res.json(r); }));
 
 // generic save for the simple kinds
-const SAVE_KINDS = new Set(['store', 'user', 'customer', 'vehicle', 'lead', 'deal', 'ro', 'part', 'product', 'lender', 'account', 'appt', 'settings']);
+var SAVE_KINDS = new Set(['store', 'user', 'customer', 'vehicle', 'lead', 'deal', 'ro', 'part', 'product', 'lender', 'account', 'appt', 'settings']);
 app.post('/api/save/:kind', W(async (req, res) => {
   const k = req.params.kind, u = req.user; if (!SAVE_KINDS.has(k)) return res.status(404).json({ error: 'Unknown record type' });
   if (['store', 'settings', 'user'].includes(k) ? !['owner', 'manager'].includes(u.role) : !can(u, k)) return deny(res);
@@ -435,6 +446,14 @@ app.post('/api/save/:kind', W(async (req, res) => {
       for (const o of oldRecon) if (!kept.has(o.id)) { if (o.from_ro) throw new Error('Recon from a repair order can’t be removed here'); data.recon_removed = [...data.recon_removed, { ...o, removed: today() }]; }
     }
     if (k === 'lead' && !old) data.created = today();
+    if (k === 'store') { // automatic late fees only apply to payments that go late after the setting is turned on
+      if (data.auto_late_fee === true) data.auto_late_fee_since = old && old.data.auto_late_fee === true && old.data.auto_late_fee_since ? old.data.auto_late_fee_since : today(); else delete data.auto_late_fee_since; }
+    if (k === 'settings' && old) { data.closed_through = old.data.closed_through; data.feed_token = old.data.feed_token; } // changed only through their own owner-only actions
+    if (k === 'appraisal' && old && ['bought', 'traded'].includes(old.data.status)) throw new Error('This appraisal was already used');
+    if (k === 'appraisal') { if (!old) { data.number = 'A' + (await nextNum(c, 'appraisal', 1001)); data.created_by = u.name; data.status = 'open'; } else { data.number = old.data.number; data.status = old.data.status; data.market = old.data.market; }
+      data.photos = (data.photos || []).filter(p => typeof p === 'string' && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(p)).slice(0, 12); }
+    if (k === 'bill') { if (old && old.data.posted) throw new Error('Posted bills are locked'); data.posted = false; }
+    if (k === 'vehicle') { data.warranty = ['as_is', 'implied', 'warranty'].includes(data.warranty) ? data.warranty : (old ? old.data.warranty : undefined); }
     const rec = await put(c, k, store, data, id);
     if (k === 'vehicle') await postVehicleCost(c, rec, u);
     await audit(c, u.name, id ? 'update' : 'create', k, rec.id, JSON.stringify(data).slice(0, 500));
@@ -877,6 +896,7 @@ app.get('/api/export', W(async (req, res) => {
   res.set('Content-Disposition', `attachment; filename="dealer-export-${today()}.json"`).json({ exported: new Date().toISOString(), records: recs, journal: j });
 }));
 
+extras.privateRoutes(CTX());
 app.use((err, req, res, next) => { console.error(err); res.status(500).json({ error: 'Server error' }); });
 
 if (require.main === module) init().then(() => app.listen(PORT, () => console.log('Dealer System on ' + PORT))).catch(e => { console.error(e); process.exit(1); });

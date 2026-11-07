@@ -223,6 +223,85 @@ async function books() { const tb = await api('/api/trial'); const d = tb.reduce
   await expectErr(() => api('/api/rec/' + vN.id), 'N4 other-store record hidden');
   ok((await api('/api/list/vehicle')).every(v => !v.store_id || String(v.store_id) === String(s2.id)), 'N4 lists show only their store');
   cookie = ownerCk;
+  // ===== phase 2 =====
+  const rawGet = async p => { const r = await fetch(BASE + p, { headers: { cookie } }); return { status: r.status, text: await r.text() }; };
+  // website + lead routing
+  await api('/api/save/user', { data: { name: 'Rep One', role: 'sales', pin: '1111', active: true } }); await api('/api/save/user', { data: { name: 'Rep Two', role: 'sales', pin: '2222', active: true } });
+  const setr = (await api('/api/list/settings'))[0]; await api('/api/save/settings', { id: setr.id, data: { ...setr.data, lead_routing: 'round_robin', dealer_name: 'Test Motors' } });
+  const site = await (await fetch(BASE + '/api/site/inventory')).json(); ok(Array.isArray(site) && site.length > 0 && !('cost' in site[0]), `P website lists ${site.length} units without cost`);
+  const keep2 = cookie; cookie = '';
+  const l1 = await api('/api/site/lead', { first: 'Web', last: 'Buyer', phone: '9565551111', consent: true, vehicle_id: site[0].id, message: 'Is it available?' });
+  const l2 = await api('/api/site/lead', { first: 'Web2', last: 'Buyer', phone: '9565552222', consent: true, type: 'credit_app', employer: 'HEB', income: 3200 });
+  cookie = keep2; const leads = await api('/api/list/lead'); const L1 = leads.find(x => x.id === l1.id), L2 = leads.find(x => x.id === l2.id);
+  ok(L1 && L2 && L1.data.owner && L2.data.owner && L1.data.owner !== L2.data.owner, `P website leads rotate: ${L1.data.owner} / ${L2.data.owner}`);
+  ok(L2.data.credit_app && L2.data.credit_app.employer === 'HEB', 'P credit application saved on the lead');
+  await expectErr(() => api('/api/site/lead', { first: 'x', phone: '1', consent: false }), 'P lead without consent refused');
+  const st2 = (await api('/api/list/settings'))[0]; const feed = await rawGet('/feed/inventory.csv?token=' + st2.data.feed_token);
+  ok(feed.status === 200 && feed.text.startsWith('DealerName') && feed.text.split('\n').length > 2, 'P listing feed CSV');
+  ok((await rawGet('/feed/inventory.csv?token=wrong')).status === 404, 'P feed refused without the token');
+  ok((await rawGet('/status')).status === 200, 'P status page');
+  // appraisal -> buy into inventory
+  const ap = await api('/api/save/appraisal', { store_id: store.id, data: { vin: '3VWDP7AJ7DM000001', year: 2013, make: 'VW', model: 'Jetta', miles: 98000, offer: 3500 } });
+  const inv0p = (await books()).bal('1300'); const bought = await api(`/api/appraisal/${ap.id}/buy`, { paid_with: 'cash' });
+  ok(bought.data.stock && near((await books()).bal('1300'), inv0p + 3500), 'P appraisal bought into inventory at the offer');
+  await expectErr(() => api(`/api/appraisal/${ap.id}/buy`, {}), 'P appraisal can’t be used twice');
+  // e-signature
+  const anyDeal = (await api('/api/list/deal'))[0]; const sr = await api('/api/sign/request', { ref: anyDeal.id, title: 'Bill of sale', html: '<h2>Bill of Sale</h2><p>Test document with enough text to sign.</p>' });
+  const stok = sr.url.split('/').pop(); const keep3 = cookie; cookie = '';
+  await expectErr(() => api('/api/public/sign/' + stok, { consent: false, name: 'X', sig: 'x' }), 'P signing needs e-sign consent');
+  const png = 'data:image/png;base64,' + 'A'.repeat(400); await api('/api/public/sign/' + stok, { consent: true, name: 'Maria Lopez', sig: png });
+  await expectErr(() => api('/api/public/sign/' + stok, { consent: true, name: 'Again', sig: png }), 'P a document can only be signed once');
+  cookie = keep3; const sl = await api('/api/sign/list/' + anyDeal.id); ok(sl[0] && sl[0].signer === 'Maria Lopez' && sl[0].doc_hash, 'P signed document kept with signer and fingerprint');
+  // automatic late fees
+  const vLF = await newCar(); const dLF = await api('/api/save/deal', { store_id: store.id, data: { customer_id: custR.id, vehicle_id: vLF.id, type: 'bhph', interest_method: 'simple', price: 6000, doc_fee: 0, apr: 18, term: 24, frequency: 'monthly', first_due: sp(0, -45), sale_date: sp(0, -75), trade: {} } });
+  const LLF = (await api(`/api/deal/${dLF.id}/deliver`, {})).loan; const stc = await api('/api/rec/' + store.id); await api('/api/save/store', { id: store.id, data: { ...stc.data, auto_late_fee: true } });
+  const lf1 = await api('/api/late-fees/run', {}); ok(lf1.assessed === 0, 'P turning on late fees doesn’t charge old missed payments');
+  const stc2 = await api('/api/rec/' + store.id); ok(stc2.data.auto_late_fee_since === T0, 'P late fees start date recorded');
+  // insurance alerts
+  ok((await api('/api/insurance-alerts')).some(x => x.id === LLF.id), 'P account without insurance shows on alerts');
+  // cashier drawer
+  await api(`/api/loan/${LLF.id}/pay`, { amount: 100, method: 'cash', date: T0 }); const dr = await api('/api/drawer?date=' + T0);
+  ok(dr.expectedCash >= 100, 'P drawer expects the cash taken'); const cashB = (await books()).bal('1000');
+  const cl = await api('/api/drawer/close', { date: T0, counted_cash: dr.expectedCash - 5 }); ok(near(cl.over_short, -5) && near((await books()).bal('1000'), cashB - 5), 'P drawer short $5 posted');
+  await expectErr(() => api('/api/drawer/close', { date: T0, counted_cash: 1 }), 'P drawer can’t close twice');
+  // bills
+  const vend = await api('/api/save/vendor', { data: { name: 'Shine Detail' } }); const bill = await api('/api/save/bill', { store_id: store.id, data: { vendor_id: vend.id, number: 'INV9', date: T0, lines: [{ acct: '6900', amount: 250 }] } });
+  const ap0 = (await books()).bal('2000'); await api(`/api/bill/${bill.id}/post`, {}); ok(near((await books()).bal('2000'), ap0 - 250), 'P bill posted to A/P');
+  await expectErr(() => api('/api/save/bill', { id: bill.id, store_id: store.id, data: { ...bill.data, lines: [] } }), 'P posted bill locked');
+  await api(`/api/bill/${bill.id}/pay`, { amount: 250 }); ok(near((await books()).bal('2000'), ap0), 'P bill paid');
+  // bank reconciliation
+  const rec0 = await api('/api/bank/rec'); const one = rec0.bookUncleared.find(x => x.amount > 0);
+  const csvTxt = `Date,Description,Amount\n${one.date},Deposit,${one.amount}\n${one.date},Bank fee,-12.50\n`;
+  const imp = await api('/api/bank/import', { csv: csvTxt }); ok(imp.added === 2, 'P bank statement imported');
+  ok((await api('/api/bank/import', { csv: csvTxt })).added === 0, 'P same statement not imported twice');
+  const auto = await api('/api/bank/auto', {}); const rec1 = await api('/api/bank/rec'); ok(auto.matched >= 1 && rec1.bankUnmatched.length === 1, 'P auto-match clears the deposit, bank fee left to post');
+  // month-end lock
+  await api('/api/close-period', { through: sp(0, -1) });
+  await expectErr(() => api('/api/journal', { date: sp(0, -2), memo: 'old', lines: [{ acct: '6900', debit: 1 }, { acct: '1000', credit: 1 }] }), 'P posting into a closed period refused');
+  const s9 = (await api('/api/list/settings'))[0]; await api('/api/save/settings', { id: s9.id, data: { ...s9.data, closed_through: null } });
+  ok((await api('/api/list/settings'))[0].data.closed_through === sp(0, -1), 'P settings save can’t reopen the books');
+  await api('/api/close-period', { through: null });
+  // exports, OEM, transfer
+  const iif = await rawGet('/api/export/qb'); ok(iif.text.startsWith('!TRNS') && iif.text.includes('ENDTRNS'), 'P QuickBooks IIF export');
+  ok(Array.isArray(await api('/api/report/oem')), 'P factory statement report');
+  const vT = await newCar({ cost: 2000 }); const ic = (await books());
+  await api(`/api/vehicle/${vT.id}/transfer`, { to_store: s2.id }); const icB = await books();
+  ok(icB.balanced && near(icB.bal('1500'), ic.bal('1500') + 2000) && near(icB.bal('2500'), ic.bal('2500') - 2000) && String((await api('/api/rec/' + vT.id)).store_id) === String(s2.id), 'P store transfer with intercompany entries');
+  // payroll + time clock
+  const rep = (await api('/api/list/user')).find(u => u.data.name === 'Rep One'); await api('/api/payplans', { user_id: rep.id, per_unit: 100, pct_front: 20 });
+  const keep4 = cookie; cookie = ''; await api('/login', { pin: '1111' }); await api('/api/clock', { action: 'in' }); await expectErr(() => api('/api/clock', { action: 'in' }), 'P can’t clock in twice'); await api('/api/clock', { action: 'out' });
+  await expectErr(() => api('/api/payroll?from=' + sp(0, -30) + '&to=' + T0), 'P sales rep can’t see payroll'); cookie = keep4;
+  const pr = await api('/api/payroll?from=' + sp(0, -400) + '&to=' + T0); ok(pr.some(r => r.name === 'Rep One' && r.hasPlan), 'P payroll report with pay plans');
+  ok((await rawGet('/api/payroll.csv?from=' + sp(0, -30) + '&to=' + T0)).text.startsWith('Employee'), 'P payroll export CSV');
+  // capacity
+  await api('/api/save/store', { id: store.id, data: { ...(await api('/api/rec/' + store.id)).data, tech_count: 2, tech_hours: 8 } });
+  await api('/api/save/appt', { store_id: store.id, data: { when: T0 + 'T09:00', hours: 3, customer_id: custR.id } }); const cap = await api('/api/capacity?store=' + store.id + '&from=' + T0 + '&days=1');
+  ok(cap.capacity === 16 && cap.days[0].booked >= 3, 'P shop capacity counts booked hours');
+  // integrations: keys never returned whole; not-connected message
+  await api('/api/integrations', { name: 'marketcheck', values: { api_key: 'secretkey123456', zip: '78501' } }); const ik = await api('/api/integrations');
+  ok(ik.marketcheck.api_key === '••••3456' && ik.marketcheck.zip === '78501', 'P integration key masked');
+  ok(!(await api('/api/list/settings'))[0].data.marketcheck, 'P keys not in settings'); await expectErr(() => api('/api/list/secret'), 'P secrets can’t be listed');
+  await expectErr(() => api('/api/media/upload-url', { ro_id: roW.id, ext: 'mp4' }), 'P video storage says not connected');
   // 12. sign-out really ends the session
   const keep = cookie; await api('/logout', {}); cookie = keep; await expectErr(() => api('/api/me'), 'R12 old session refused after sign-out');
   await api('/login', { pin: process.env.OWNER_PIN });

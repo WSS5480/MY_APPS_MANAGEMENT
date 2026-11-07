@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Inventory</title><meta name="theme-color" content="#0f1b2d">
+<style>
+:root{--ink:#132033;--mut:#62708a;--line:#e1e6ee;--acc:#1b5cff}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f3f5f8;color:var(--ink)}
+header{background:#0f1b2d;color:#fff;padding:16px}header .in{max-width:1100px;margin:0 auto;display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center}
+header b{font-size:20px}header a{color:#fff}main{max-width:1100px;margin:0 auto;padding:14px}
+.bar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}.bar input,.bar select{flex:1;min-width:140px;padding:10px;border:1px solid #cdd5e1;border-radius:9px;font:inherit}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.car{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;cursor:pointer;color:inherit;text-decoration:none;display:block}
+.car img,.ph{width:100%;height:180px;object-fit:cover;background:#dde3ec;display:block}.car .b{padding:10px 12px}.car .t{font-weight:800}.car .p{font-size:20px;font-weight:800;margin-top:4px}.mut{color:var(--mut);font-size:14px}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:12px}
+.gal{display:flex;gap:6px;overflow-x:auto}.gal img{height:240px;border-radius:8px}
+label{display:block;font-size:13px;font-weight:700;color:var(--mut);margin:10px 0 4px}input,textarea,select{width:100%;padding:10px;border:1px solid #cdd5e1;border-radius:9px;font:inherit}
+.f{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:0 12px}
+button{border:0;border-radius:10px;padding:12px 18px;background:var(--acc);color:#fff;font-weight:800;font-size:16px;cursor:pointer;margin-top:12px}
+.tabs{display:flex;gap:8px;margin:10px 0}.tabs a{padding:8px 14px;border-radius:999px;background:#e7ecf4;color:var(--ink);text-decoration:none;font-weight:700;cursor:pointer}.tabs a.on{background:var(--ink);color:#fff}
+.err{color:#c42b2b;margin-top:8px}.ok{color:#0d8a4e;font-weight:700}.hp{position:absolute;left:-9999px}
+</style></head>
+<body><header><div class="in"><div><b id="dn">Inventory</b><div class="mut" style="color:#9db0cf" id="tag"></div></div><a id="ph"></a></div></header><main id="m">Loading…</main>
+<script>
+const $=s=>document.querySelector(s),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),money=n=>'$'+Math.round(Number(n)||0).toLocaleString();
+let INFO={},CARS=[];
+async function j(u,b){const r=await fetch(u,{method:b?'POST':'GET',headers:b?{'Content-Type':'application/json'}:{},body:b?JSON.stringify(b):undefined});const x=await r.json().catch(()=>({}));if(!r.ok)throw new Error(x.error||'Something went wrong');return x}
+const title=c=>[c.year,c.make,c.model,c.trim].filter(Boolean).join(' ');
+async function start(){INFO=await j('/api/site/info');$('#dn').textContent=INFO.dealer||'Inventory';$('#tag').textContent=INFO.tagline||'';if(INFO.phone){$('#ph').textContent=INFO.phone;$('#ph').href='tel:'+INFO.phone.replace(/[^\d+]/g,'')}document.title=(INFO.dealer||'')+' — Inventory';
+ CARS=await j('/api/site/inventory');window.addEventListener('popstate',route);route()}
+function route(){const id=location.pathname.split('/')[2];if(id)return car(id);list()}
+function list(){const q=($('#q')||{}).value||'',mk=($('#mk')||{}).value||'',mx=Number(($('#mx')||{}).value||0);
+ const makes=[...new Set(CARS.map(c=>c.make).filter(Boolean))].sort();
+ const show=CARS.filter(c=>(!q||title(c).toLowerCase().includes(q.toLowerCase()))&&(!mk||c.make===mk)&&(!mx||Number(c.price)<=mx));
+ if(!$('#q')){$('#m').innerHTML=`<div class="bar"><input id="q" placeholder="Search year, make, model" oninput="list()"><select id="mk" onchange="list()"><option value="">All makes</option>${makes.map(x=>`<option>${esc(x)}</option>`).join('')}</select><select id="mx" onchange="list()"><option value="">Any price</option>${[5000,10000,15000,20000,30000].map(x=>`<option value="${x}">Under ${money(x)}</option>`).join('')}</select></div><div class="grid" id="g"></div><div class="card" style="margin-top:14px"><b>Don't see what you want?</b>${form('inquiry')}</div>`}
+ $('#g').innerHTML=show.map(c=>`<a class="car" href="/cars/${c.id}" onclick="event.preventDefault();history.pushState(0,'','/cars/${c.id}');route()">${c.photos?`<img loading="lazy" src="/photo/${c.id}/0" alt="">`:'<div class="ph"></div>'}<div class="b"><div class="t">${esc(title(c))}</div><div class="mut">${Number(c.miles||0).toLocaleString()} miles · ${esc(c.color||'')}</div><div class="p">${c.price?money(c.price):'Call for price'}</div></div></a>`).join('')||'<p class="mut">No vehicles match.</p>'}
+async function car(id){let c;try{c=await j('/api/site/vehicle/'+id)}catch(e){$('#m').innerHTML=`<p>${esc(e.message)}</p><a href="/cars">← All inventory</a>`;return}
+ $('#m').innerHTML=`<p><a href="/cars" onclick="event.preventDefault();history.pushState(0,'','/cars');$('#m').innerHTML='';list()">← All inventory</a></p><div class="card"><div class="gal">${Array.from({length:c.photos},(_,i)=>`<img src="/photo/${c.id}/${i}" alt="">`).join('')||'<div class="ph" style="height:200px;width:100%"></div>'}</div>
+ <h1>${esc(title(c))}</h1><div style="font-size:26px;font-weight:800">${c.price?money(c.price):'Call for price'}</div><p class="mut">${Number(c.miles||0).toLocaleString()} miles · ${esc([c.color,c.body,c.engine,c.drive].filter(Boolean).join(' · '))}<br>Stock ${esc(c.stock||'')} · VIN ${esc(c.vin||'')}</p><p>${esc(c.notes||'')}</p></div>
+ <div class="card"><div class="tabs"><a class="on" id="t1" onclick="tab(1,${c.id})">Ask about this car</a>${INFO.credit_app?`<a id="t2" onclick="tab(2,${c.id})">Apply for financing</a>`:''}</div><div id="fx">${form('inquiry',c.id)}</div></div>`;scrollTo(0,0)}
+function tab(n,id){$('#t1').className=n===1?'on':'';$('#t2')&&($('#t2').className=n===2?'on':'');$('#fx').innerHTML=form(n===1?'inquiry':'credit_app',id)}
+function form(type,vid){const ca=type==='credit_app';return `<form onsubmit="send(event,'${type}',${vid||'null'})"><div class="f"><div><label>First name</label><input name="first" required autocomplete="given-name"></div><div><label>Last name</label><input name="last" autocomplete="family-name"></div><div><label>Mobile phone</label><input name="phone" type="tel" autocomplete="tel"></div><div><label>Email</label><input name="email" type="email" autocomplete="email"></div>
+ ${ca?`<div><label>Street address</label><input name="address" autocomplete="street-address"></div><div><label>City</label><input name="city"></div><div><label>State</label><input name="state" maxlength="2"></div><div><label>ZIP</label><input name="zip"></div><div><label>Employer</label><input name="employer"></div><div><label>Monthly income</label><input name="income" inputmode="decimal"></div><div><label>Time on job</label><input name="job_time"></div><div><label>Rent or own (and payment)</label><input name="housing"></div><div><label>Down payment available</label><input name="down" inputmode="decimal"></div>`:''}</div>
+ <label>${ca?'Anything else we should know':'Message'}</label><textarea name="message" rows="3"></textarea><input class="hp" name="website" tabindex="-1" autocomplete="off">
+ <label style="display:flex;gap:8px;align-items:flex-start;font-weight:400;color:var(--ink)"><input type="checkbox" name="consent" style="width:auto;margin-top:3px" required> I agree that ${esc(INFO.dealer||'the dealership')} may contact me by phone, text or email about this request.${ca?' I understand this is not a credit application with a credit check; the dealership will contact me to complete financing.':''}</label>
+ <button>${ca?'Send application':'Send'}</button><div class="err"></div></form>`}
+async function send(e,type,vid){e.preventDefault();const f=e.target,b=Object.fromEntries(new FormData(f));b.consent=!!f.consent.checked;b.type=type;b.vehicle_id=vid;
+ try{await j('/api/site/lead',b);f.outerHTML='<p class="ok">Thanks! We got it and will be in touch shortly.</p>'}catch(x){f.querySelector('.err').textContent=x.message}}
+start().catch(e=>$('#m').textContent=e.message);
+</script></body></html>

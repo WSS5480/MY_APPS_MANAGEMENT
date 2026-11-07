@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><title>Review & sign</title><meta name="theme-color" content="#0f1b2d">
+<style>body{margin:0;background:#f3f5f8;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#132033}.w{max-width:780px;margin:0 auto;padding:14px}
+.c{background:#fff;border:1px solid #e1e6ee;border-radius:12px;padding:14px;margin-bottom:12px}iframe{width:100%;height:60vh;border:1px solid #e1e6ee;border-radius:8px;background:#fff}
+canvas{width:100%;height:170px;border:2px dashed #9aa7bd;border-radius:10px;touch-action:none;background:#fff}input[type=text]{width:100%;box-sizing:border-box;padding:11px;border:1px solid #cdd5e1;border-radius:9px;font-size:16px}
+button{border:0;border-radius:10px;padding:13px 18px;font-weight:800;font-size:16px;cursor:pointer}.go{background:#0d8a4e;color:#fff;width:100%}.sec{background:#e7ecf4;color:#132033}.e{color:#c42b2b;margin-top:8px}
+label{display:flex;gap:10px;align-items:flex-start;margin:10px 0}label input{width:22px;height:22px;flex:none}</style></head>
+<body><div class="w" id="w">Loading…</div>
+<script>
+const t=location.pathname.split('/').pop(),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+fetch('/api/public/sign/'+t).then(r=>r.json()).then(d=>{if(d.error){w.textContent=d.error;return}
+ if(d.signed_at){w.innerHTML=`<div class="c"><h2>Already signed</h2><p>${esc(d.title)} was signed by ${esc(d.signer)} on ${new Date(d.signed_at).toLocaleString()}.</p></div>`;return}
+ w.innerHTML=`<p style="color:#62708a;margin:0">${esc(d.dealer||'')}</p><h2 style="margin:4px 0 10px">${esc(d.title)}</h2><div class="c"><iframe sandbox id="doc"></iframe></div>
+ <div class="c"><b>Consent to sign electronically</b><p style="font-size:14px">You may sign this document electronically instead of on paper. Your electronic signature has the same effect as a handwritten one. You can ask the dealership for a paper copy at no charge, and you may decline to sign electronically and sign on paper instead. To view and keep this document you need a device with a web browser; ask the dealership for a printed or emailed copy.</p>
+ <label><input type="checkbox" id="ok"> I agree to use an electronic signature and have reviewed the document above.</label></div>
+ <div class="c"><b>Your full name</b><input type="text" id="nm" autocomplete="name"><p style="margin:12px 0 6px"><b>Sign below</b> <button class="sec" style="padding:6px 10px;font-size:13px" onclick="clr()">Clear</button></p><canvas id="pad"></canvas>
+ <button class="go" style="margin-top:12px" onclick="send()">Sign</button><div class="e" id="er"></div></div>`;
+ document.getElementById('doc').srcdoc='<!DOCTYPE html><meta charset="utf-8"><body style="font-family:Arial;padding:10px">'+d.html+'</body>';setup()});
+let ctx,drawn=false;
+function setup(){const c=document.getElementById('pad'),r=c.getBoundingClientRect(),dpr=window.devicePixelRatio||1;c.width=r.width*dpr;c.height=r.height*dpr;ctx=c.getContext('2d');ctx.scale(dpr,dpr);ctx.lineWidth=2.4;ctx.lineCap='round';ctx.strokeStyle='#111';
+ let on=false;const p=e=>{const b=c.getBoundingClientRect();return[e.clientX-b.left,e.clientY-b.top]};
+ c.onpointerdown=e=>{on=true;c.setPointerCapture(e.pointerId);const[x,y]=p(e);ctx.beginPath();ctx.moveTo(x,y)};c.onpointermove=e=>{if(!on)return;const[x,y]=p(e);ctx.lineTo(x,y);ctx.stroke();drawn=true};c.onpointerup=()=>on=false}
+function clr(){const c=document.getElementById('pad');ctx.clearRect(0,0,c.width,c.height);drawn=false}
+async function send(){er.textContent='';if(!ok.checked){er.textContent='Please agree to sign electronically';return}if(!nm.value.trim()){er.textContent='Type your full name';return}if(!drawn){er.textContent='Please sign in the box';return}
+ const r=await fetch('/api/public/sign/'+t,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({consent:true,name:nm.value,sig:document.getElementById('pad').toDataURL('image/png')})});const j=await r.json().catch(()=>({}));
+ if(r.ok)w.innerHTML='<div class="c"><h2>Signed — thank you!</h2><p>The dealership has your signed copy. Ask them anytime for a printed or emailed copy.</p></div>';else er.textContent=j.error||'Could not sign'}
+</script></body></html>
