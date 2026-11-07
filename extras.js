@@ -5,7 +5,7 @@
 const path = require('path');
 
 // ---------- small helpers ----------
-const csvCell = v => { const s = v == null ? '' : String(v); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+const csvCell = v => { let s = v == null ? '' : String(v); if (/^[=+\-@\t\r]/.test(s) && !/^-?\d+(\.\d+)?$/.test(s)) s = "'" + s; return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
 const csv = rows => rows.map(r => r.map(csvCell).join(',')).join('\r\n') + '\r\n';
 function parseCsv(text) { // handles quoted fields
   const rows = []; let row = [], cell = '', q = false;
@@ -30,7 +30,7 @@ async function init(c) {
 // ---------- secrets (integration keys) live in their own record and are never sent back whole ----------
 async function secrets(ctx) { const r = (await ctx.list(ctx.pool, 'secret'))[0]; return r ? r.data : {}; }
 const SECRET_FIELDS = {
-  marketcheck: ['api_key', 'zip'], vinaudit: ['user', 'pass', 'key'], r2: ['account_id', 'access_key_id', 'secret_access_key', 'bucket'],
+  marketcheck: ['api_key', 'zip', 'dealer_type'], vinaudit: ['user', 'pass', 'key'], r2: ['account_id', 'access_key_id', 'secret_access_key', 'bucket'],
 };
 
 // ---------- lead routing ----------
@@ -103,7 +103,7 @@ function publicRoutes(ctx) {
   app.get('/api/site/vehicle/:id', W(async (req, res) => { const v = await ctx.getRec(pool, req.params.id);
     if (!v || v.kind !== 'vehicle' || v.data.status !== 'in_stock' || v.data.hide_web) return res.status(404).json({ error: 'This vehicle is no longer available' }); res.json(PUBLIC_VEH(v)); }));
   app.get('/photo/:id/:n', W(async (req, res) => {
-    const v = await ctx.getRec(pool, req.params.id); const p = v && v.kind === 'vehicle' && (v.data.photos || [])[Number(req.params.n)];
+    const v = await ctx.getRec(pool, req.params.id); const p = v && v.kind === 'vehicle' && v.data.status === 'in_stock' && !v.data.hide_web && (v.data.photos || [])[Number(req.params.n)];
     const m = p && /^data:(image\/(?:jpeg|png|webp));base64,(.+)$/.exec(p); if (!m) return res.status(404).end();
     res.set('Content-Type', m[1]).set('Cache-Control', 'public, max-age=3600').send(Buffer.from(m[2], 'base64'));
   }));
@@ -116,13 +116,12 @@ function publicRoutes(ctx) {
     if (!first || (!phone && !email)) throw new Error('Please give your name and a phone number or email');
     if (!b.consent) throw new Error('Please agree to be contacted');
     const out = await ctx.tx(async c => {
-      const veh = b.vehicle_id ? await ctx.getRec(c, b.vehicle_id) : null; const storeId = veh && veh.kind === 'vehicle' ? veh.store_id : (b.store_id ? Number(b.store_id) : null);
+      const veh = b.vehicle_id ? await ctx.getRec(c, b.vehicle_id) : null; const st0 = b.store_id ? await ctx.getRec(c, b.store_id) : null; const storeId = veh && veh.kind === 'vehicle' ? veh.store_id : (st0 && st0.kind === 'store' ? st0.id : null);
       const custs = await ctx.list(c, 'customer'); let cu = custs.find(x => (phone && String(x.data.phone || '').replace(/[^\d+]/g, '') === phone) || (email && (x.data.email || '').toLowerCase() === email.toLowerCase()));
       const app2 = b.type === 'credit_app' ? { employer: String(b.employer || '').slice(0, 80), income: ctx.num(b.income), job_time: String(b.job_time || '').slice(0, 40), housing: String(b.housing || '').slice(0, 80), address: String(b.address || '').slice(0, 120), city: String(b.city || '').slice(0, 60), state: String(b.state || '').slice(0, 2), zip: String(b.zip || '').slice(0, 10), down: ctx.num(b.down) } : null;
-      if (!cu) cu = await ctx.put(c, 'customer', null, { first, last, phone, email, sms_ok: !!b.consent, source: 'Website', ...(app2 || {}) });
-      else if (app2) { Object.assign(cu.data, Object.fromEntries(Object.entries(app2).filter(([, v]) => v !== '' && v !== 0))); await ctx.put(c, 'customer', cu.store_id, cu.data, cu.id); }
+      if (!cu) cu = await ctx.put(c, 'customer', null, { first, last, phone, email, sms_ok: !!b.consent, source: 'Website' }); // an existing customer is never changed from the public form; what they typed stays on the lead
       const owner = await assignLead(ctx, c, storeId);
-      const lead = await ctx.put(c, 'lead', storeId, { customer_id: cu.id, source: 'Website', status: 'new', owner, vehicle_id: veh && veh.kind === 'vehicle' ? veh.id : '', interest: veh ? [veh.data.year, veh.data.make, veh.data.model].join(' ') : '', notes: String(b.message || '').slice(0, 1000), created: ctx.today(), next_followup: ctx.today(), credit_app: app2 ? { ...app2, submitted: new Date().toISOString(), consent: true } : undefined, log: [{ at: new Date().toISOString(), by: 'Website', note: b.type === 'credit_app' ? 'Credit application submitted online' : 'Website inquiry' }] });
+      const lead = await ctx.put(c, 'lead', storeId, { customer_id: cu.id, source: 'Website', status: 'new', owner, vehicle_id: veh && veh.kind === 'vehicle' ? veh.id : '', interest: veh ? [veh.data.year, veh.data.make, veh.data.model].join(' ') : '', notes: String(b.message || '').slice(0, 1000), created: ctx.today(), next_followup: ctx.today(), credit_app: app2 ? { ...app2, first, last, phone, email, submitted: new Date().toISOString(), consent: true } : undefined, log: [{ at: new Date().toISOString(), by: 'Website', note: b.type === 'credit_app' ? 'Credit application submitted online' : 'Website inquiry' }] });
       await ctx.audit(c, 'website', 'lead', 'lead', lead.id, b.type || 'inquiry'); return lead;
     });
     res.json({ ok: true, id: out.id });
@@ -185,18 +184,21 @@ function privateRoutes(ctx) {
   // ---- MarketCheck market price (used for appraisals and price-to-market) ----
   async function marketPrice(vin, miles) {
     const s = (await secrets(ctx)).marketcheck || {}; if (!s.api_key) throw new Error('MarketCheck isn’t connected yet — add the key in Settings → Integrations');
-    const u = new URL('https://mc-api.marketcheck.com/v2/predict/car/us/marketcheck_price');
-    u.searchParams.set('api_key', s.api_key); u.searchParams.set('vin', vin); u.searchParams.set('miles', String(num(miles))); u.searchParams.set('car_type', 'used'); if (s.zip) u.searchParams.set('zip', s.zip);
+    if (!s.zip || !['franchise', 'independent'].includes(s.dealer_type)) throw new Error('Add your ZIP and dealer type (franchise or independent) in Settings → Integrations → MarketCheck');
+    if (!(num(miles) > 0)) throw new Error('Enter the miles first');
+    const u = new URL('https://api.marketcheck.com/v2/predict/car/us/marketcheck_price');
+    for (const [k, v] of Object.entries({ api_key: s.api_key, vin, miles: String(Math.round(num(miles))), dealer_type: s.dealer_type, zip: s.zip })) u.searchParams.set(k, v);
     const r = await fetch(u, { signal: AbortSignal.timeout(15000) }); const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error('MarketCheck: ' + (j.message || r.status));
-    return { price: num(j.marketcheck_price || j.price), msrp: num(j.msrp), raw: j };
+    if (j.marketcheck_price == null) throw new Error('MarketCheck couldn’t price this exact VIN');
+    return { price: num(j.marketcheck_price), msrp: num(j.msrp), raw: j };
   }
-  app.post('/api/market/vehicle/:id', W(async (req, res) => { const v = await need(pool, req.params.id, 'vehicle', req.user); if (!v.data.vin) throw new Error('Add the VIN first');
+  app.post('/api/market/vehicle/:id', W(async (req, res) => { if (!can(req.user, 'vehicle')) return deny(res); const v = await need(pool, req.params.id, 'vehicle', req.user); if (!v.data.vin) throw new Error('Add the VIN first');
     const m = await marketPrice(v.data.vin, v.data.miles);
     await tx(async c => { const x = await getRec(c, v.id); x.data.market = { price: m.price, msrp: m.msrp, checked: today() }; await put(c, 'vehicle', x.store_id, x.data, x.id); });
     res.json({ price: m.price, msrp: m.msrp, toMarket: m.price ? r2(num(v.data.price) / m.price * 100) : null }); }));
   // ---- VinAudit vehicle history (federal title database) ----
-  app.get('/api/history/:vin', W(async (req, res) => {
+  app.get('/api/history/:vin', W(async (req, res) => { if (!can(req.user, 'vehicle') && !can(req.user, 'appraisal')) return deny(res);
     const s = (await secrets(ctx)).vinaudit || {}; if (!s.key) throw new Error('VinAudit isn’t connected yet — add the key in Settings → Integrations');
     const vin = String(req.params.vin).toUpperCase().replace(/[^A-HJ-NPR-Z0-9]/g, ''); if (vin.length !== 17) throw new Error('VIN must be 17 characters');
     const u = new URL('https://api.vinaudit.com/pullreport.php'); const id = 'dms-' + vin + '-' + today();
@@ -206,7 +208,7 @@ function privateRoutes(ctx) {
     await audit(pool, req.user.name, 'history', 'vehicle', null, vin); res.json(j); }));
 
   // ---- appraisals -> trade-in on a deal, or a purchase into inventory ----
-  app.post('/api/appraisal/:id/market', W(async (req, res) => { const a = await need(pool, req.params.id, 'appraisal', req.user); if (!a.data.vin) throw new Error('Add the VIN first');
+  app.post('/api/appraisal/:id/market', W(async (req, res) => { if (!can(req.user, 'appraisal')) return deny(res); const a = await need(pool, req.params.id, 'appraisal', req.user); if (!a.data.vin) throw new Error('Add the VIN first');
     const m = await marketPrice(a.data.vin, a.data.miles); await tx(async c => { const x = await getRec(c, a.id); x.data.market = { price: m.price, msrp: m.msrp, checked: today() }; await put(c, 'appraisal', x.store_id, x.data, x.id); });
     res.json(m); }));
   app.post('/api/appraisal/:id/buy', W(async (req, res) => {
@@ -219,13 +221,13 @@ function privateRoutes(ctx) {
       await ctx.postVehicleCost(c, v, req.user);
       d.status = 'bought'; d.vehicle_id = v.id; await put(c, 'appraisal', a.store_id, d, a.id); await audit(c, req.user.name, 'buy', 'appraisal', a.id, v.id); return v; });
     res.json(out); }));
-  // a deal that used this appraisal as its trade marks it traded on delivery
-  app.post('/api/appraisal/:id/traded', W(async (req, res) => { const a = await need(pool, req.params.id, 'appraisal', req.user); a.data.status = 'traded'; a.data.deal_id = req.body.deal_id; await put(pool, 'appraisal', a.store_id, a.data, a.id); res.json({ ok: true }); }));
 
   // ---- e-signatures: staff prepare a document; the customer signs on their phone or a store tablet ----
   app.post('/api/sign/request', W(async (req, res) => {
     if (!can(req.user, 'deal') && !can(req.user, 'ro')) return deny(res);
-    const b = req.body || {}; const html = String(b.html || ''); if (html.length < 50 || html.length > 400000) throw new Error('Nothing to sign');
+    const b = req.body || {}; let html = String(b.html || ''); if (html.length < 50 || html.length > 400000) throw new Error('Nothing to sign');
+    html = html.replace(/<\s*(script|iframe|object|embed|link|meta|style|form|base)[\s\S]*?(<\s*\/\s*\1\s*>|\/?>)/gi, '').replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+      .replace(/(href|src)\s*=\s*("|')\s*(?!data:image\/)[^"']*\2/gi, '').replace(/javascript:/gi, '');
     const ref = b.ref ? await getRec(pool, b.ref) : null; if (b.ref && (!ref || !mine(req.user, ref))) throw new Error('Not found');
     const token = crypto.randomBytes(18).toString('base64url'), hash = crypto.createHash('sha256').update(html).digest('hex');
     await pool.query(`INSERT INTO signatures(token,ref,kind,title,html,doc_hash,created_by) VALUES($1,$2,$3,$4,$5,$6,$7)`, [token, ref ? ref.id : null, ref ? ref.kind : null, String(b.title || 'Document').slice(0, 120), html, hash, req.user.name]);
@@ -253,7 +255,7 @@ function privateRoutes(ctx) {
     const by = {}; pays.forEach(p => by[p.data.method] = r2((by[p.data.method] || 0) + num(p.data.amount)));
     const { rows } = await c.query(`SELECT src, sum(debit-credit)::float n FROM jrnl WHERE acct='1000' AND date=$1 AND by_user=$2 AND src IN ('parts','ro_pay','ro','deal','wholesale') ${storeId ? 'AND store_id=$3' : ''} GROUP BY src`, storeId ? [date, user, storeId] : [date, user]);
     const other = r2(rows.reduce((s, r) => s + r.n, 0));
-    return { byMethod: by, payments: pays.length, otherCash: other, expectedCash: r2((by.cash || 0) + other) };
+    return { byMethod: by, payments: pays.length, otherCash: other, expectedCash: r2(by.cash || 0) };
   }
   app.get('/api/drawer', W(async (req, res) => { const date = req.query.date || today(), who = mgr(req.user) && req.query.cashier ? req.query.cashier : req.user.name;
     const store = req.user.store_id || req.query.store || null; const exp = await drawerExpected(pool, who, date, store);
@@ -262,7 +264,7 @@ function privateRoutes(ctx) {
   app.post('/api/drawer/close', W(async (req, res) => {
     const date = req.body.date || today(), who = mgr(req.user) && req.body.cashier ? req.body.cashier : req.user.name, store = req.user.store_id || req.body.store_id || null;
     if (req.body.counted_cash === '' || req.body.counted_cash == null) throw new Error('Enter the cash you counted');
-    const out = await tx(async c => {
+    const out = await tx(async c => { await c.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, ['drawer|' + who + '|' + date]);
       if ((await list(c, 'drawer')).some(d => d.data.date === date && d.data.cashier === who && String(d.store_id || '') === String(store || ''))) throw new Error('This drawer is already closed');
       const exp = await drawerExpected(c, who, date, store); const counted = r2(req.body.counted_cash), diff = r2(counted - exp.expectedCash);
       if (diff) await post(c, { date, store, memo: `Drawer ${who} ${date} ${diff > 0 ? 'over' : 'short'}`, src: 'drawer', who: req.user.name, lines: [['1000', diff, 0], ['6950', 0, diff]] });
@@ -273,7 +275,8 @@ function privateRoutes(ctx) {
   // ---- vendor bills (A/P) ----
   app.post('/api/bill/:id/post', W(async (req, res) => { if (!books(req.user)) return deny(res);
     const out = await tx(async c => { const b = await need(c, req.params.id, 'bill', req.user); const d = b.data; if (d.posted) throw new Error('Already posted');
-      const lines = (d.lines || []).filter(l => l.acct && num(l.amount)); if (!lines.length) throw new Error('Add at least one line');
+      const lines = (d.lines || []).filter(l => l.acct || num(l.amount)); if (!lines.length) throw new Error('Add at least one line');
+      if (lines.some(l => !l.acct || !(num(l.amount) > 0))) throw new Error('Every line needs an account and an amount more than 0');
       const accts = new Set((await list(c, 'account')).map(a => a.data.no)); if (lines.some(l => !accts.has(String(l.acct)))) throw new Error('Unknown account on a line');
       const total = r2(lines.reduce((s, l) => s + num(l.amount), 0)); const v = d.vendor_id ? await getRec(c, d.vendor_id) : null;
       d.entry = await post(c, { date: d.date || today(), store: b.store_id, memo: `Bill ${d.number || ''} ${v ? v.data.name : ''}`, src: 'bill', ref: b.id, who: req.user.name, lines: [...lines.map(l => [String(l.acct), num(l.amount), 0]), ['2000', 0, total]] });
@@ -294,12 +297,15 @@ function privateRoutes(ctx) {
     const iD = col('date'), iDesc = col('description', 'memo', 'payee', 'name'), iAmt = col('amount'), iDr = col('debit', 'withdrawal'), iCr = col('credit', 'deposit');
     if (iD < 0 || (iAmt < 0 && (iDr < 0 || iCr < 0))) throw new Error('Couldn’t find Date and Amount (or Debit/Credit) columns');
     const toDate = s => { s = String(s).trim(); let m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s); if (m) return `${m[1]}-${m[2]}-${m[3]}`; m = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/.exec(s); if (m) return `${m[3].length === 2 ? '20' + m[3] : m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}`; return null; };
-    const money = s => { s = String(s || '').replace(/[$,\s]/g, ''); const neg = /^\(.*\)$/.test(s); return (neg ? -1 : 1) * num(s.replace(/[()]/g, '')); };
-    const existing = new Set((await list(pool, 'bankline')).map(b => b.data.key)); let added = 0, skipped = 0;
-    await tx(async c => { for (const r of rows.slice(1)) { const date = toDate(r[iD]); if (!date) { skipped++; continue; }
-      const amount = r2(iAmt >= 0 ? money(r[iAmt]) : money(r[iCr]) - money(r[iDr])); if (!amount) { skipped++; continue; }
-      const desc = iDesc >= 0 ? String(r[iDesc]).slice(0, 200) : ''; const key = `${date}|${amount}|${desc}`; if (existing.has(key)) { skipped++; continue; } existing.add(key);
-      await put(c, 'bankline', req.user.store_id || req.body.store_id || null, { date, amount, desc, key, matched: [] }); added++; } });
+    const money = s => { s = String(s || '').replace(/[$,\s]/g, ''); let neg = false; if (/^\(.*\)$/.test(s)) { neg = true; s = s.slice(1, -1); } if (/-$/.test(s)) { neg = true; s = s.slice(0, -1); } const v = num(s); return neg ? -Math.abs(v) : v; };
+    const store = req.user.store_id || req.body.store_id || null; let added = 0, skipped = 0;
+    await tx(async c => { await c.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, ['bank|' + (store || 'all')]);
+      const have = {}; (await list(c, 'bankline')).filter(b => String(b.store_id || '') === String(store || '')).forEach(b => have[b.data.key] = (have[b.data.key] || 0) + 1); const seen = {};
+      for (const r of rows.slice(1)) { const date = toDate(r[iD]); if (!date) { skipped++; continue; }
+      const amount = r2(iAmt >= 0 ? money(r[iAmt]) : Math.abs(money(r[iCr])) - Math.abs(money(r[iDr]))); if (!amount) { skipped++; continue; }
+      const desc = iDesc >= 0 ? String(r[iDesc]).slice(0, 200) : ''; const key = `${date}|${amount}|${desc}`; seen[key] = (seen[key] || 0) + 1;
+      if (seen[key] <= (have[key] || 0)) { skipped++; continue; } // same line already imported (counts repeats, so two real $20 deposits both stay)
+      await put(c, 'bankline', store, { date, amount, desc, key, matched: [] }); added++; } });
     res.json({ added, skipped }); }));
   app.get('/api/bank/rec', W(async (req, res) => { if (!books(req.user)) return deny(res); const store = req.user.store_id || req.query.store || null;
     const bl = (await list(pool, 'bankline')).filter(b => !store || String(b.store_id || '') === String(store));
@@ -311,7 +317,8 @@ function privateRoutes(ctx) {
   app.post('/api/bank/match', W(async (req, res) => { if (!books(req.user)) return deny(res);
     await tx(async c => { const b = await need(c, req.body.bankline_id, 'bankline', req.user); if ((b.data.matched || []).length) throw new Error('Already matched');
       const ids = (req.body.jrnl_ids || []).map(Number).filter(Boolean); if (!ids.length) throw new Error('Pick the book entries that match');
-      const { rows } = await c.query(`SELECT id, debit::float d, credit::float k, cleared_by FROM jrnl WHERE acct='1000' AND id = ANY($1)`, [ids]);
+      const { rows } = await c.query(`SELECT id, store_id, debit::float d, credit::float k, cleared_by FROM jrnl WHERE acct='1000' AND id = ANY($1) FOR UPDATE`, [ids]);
+      if (rows.some(r => String(r.store_id || '') !== String(b.store_id || ''))) throw new Error('Those entries belong to another store');
       if (rows.length !== ids.length || rows.some(r => r.cleared_by)) throw new Error('Some of those entries are already cleared');
       const sum = r2(rows.reduce((s, r) => s + r.d - r.k, 0)); if (Math.abs(sum - num(b.data.amount)) > 0.009) throw new Error(`Amounts don’t match (book ${sum} vs bank ${b.data.amount})`);
       await c.query(`UPDATE jrnl SET cleared_by=$1 WHERE id = ANY($2)`, [b.id, ids]); b.data.matched = ids; b.data.matched_by = req.user.name; await put(c, 'bankline', b.store_id, b.data, b.id); });
@@ -369,20 +376,23 @@ function privateRoutes(ctx) {
     res.json(Object.values(lines).sort((a, b) => a.line.localeCompare(b.line))); }));
 
   // ---- pay plans, time clock, commissions (exported to the payroll company) ----
-  app.get('/api/payplans', W(async (req, res) => { if (!books(req.user)) return deny(res); res.json(await list(pool, 'payplan')); }));
+  app.get('/api/payplans', W(async (req, res) => { if (!books(req.user)) return deny(res); res.json((await list(pool, 'payplan')).filter(p => mine(req.user, p))); }));
   app.post('/api/payplans', W(async (req, res) => { if (!mgr(req.user)) return deny(res, 'A manager sets pay plans');
     const b = req.body || {}; const u = await getRec(pool, b.user_id); if (!u || u.kind !== 'user') throw new Error('Pick a person');
+    if (String(u.id) === String(req.user.id)) throw new Error('Someone else has to set your own pay plan');
+    if (req.user.store_id && Number(u.data.store_id) !== Number(req.user.store_id)) throw new Error('You can only set pay plans for your own store');
     const d = { user_id: u.id, name: u.data.name, hourly: num(b.hourly), salary: num(b.salary), per_unit: num(b.per_unit), pct_front: num(b.pct_front), pct_back: num(b.pct_back), per_flag_hour: num(b.per_flag_hour), min_per_unit: num(b.min_per_unit), notes: String(b.notes || '').slice(0, 300) };
     const old = (await list(pool, 'payplan')).find(p => Number(p.data.user_id) === u.id);
     const r = await put(pool, 'payplan', u.data.store_id || null, d, old && old.id); await audit(pool, req.user.name, 'payplan', 'user', u.id, JSON.stringify(d)); res.json(r); }));
   app.post('/api/clock', W(async (req, res) => { const act = req.body.action; if (!['in', 'out'].includes(act)) throw new Error('Clock in or out');
     if (req.user.id === 'owner' || req.user.id === 0) throw new Error('The owner login doesn’t use the time clock');
-    const out = await tx(async c => { const open = (await list(c, 'timeclock')).find(t => Number(t.data.user_id) === Number(req.user.id) && !t.data.out);
+    const out = await tx(async c => { await c.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, ['clock|' + req.user.id]); const open = (await list(c, 'timeclock')).find(t => Number(t.data.user_id) === Number(req.user.id) && !t.data.out);
       if (act === 'in') { if (open) throw new Error('You’re already clocked in'); return put(c, 'timeclock', req.user.store_id, { user_id: req.user.id, name: req.user.name, in: new Date().toISOString() }); }
       if (!open) throw new Error('You’re not clocked in'); open.data.out = new Date().toISOString(); open.data.hours = r2((new Date(open.data.out) - new Date(open.data.in)) / 36e5); return put(c, 'timeclock', open.store_id, open.data, open.id); });
     res.json(out.data); }));
   app.get('/api/clock/me', W(async (req, res) => { const t = (await list(pool, 'timeclock')).filter(x => Number(x.data.user_id) === Number(req.user.id)).slice(0, 20); res.json(t.map(x => x.data)); }));
   app.post('/api/clock/fix', W(async (req, res) => { if (!mgr(req.user)) return deny(res); const t = await need(pool, req.body.id, 'timeclock', req.user);
+    if (String(t.data.user_id) === String(req.user.id)) throw new Error('Someone else has to fix your own punches');
     const d = t.data; if (req.body.in) d.in = new Date(req.body.in).toISOString(); if (req.body.out) d.out = new Date(req.body.out).toISOString();
     if (d.out && new Date(d.out) < new Date(d.in)) throw new Error('Out is before in'); d.hours = d.out ? r2((new Date(d.out) - new Date(d.in)) / 36e5) : null; (d.edits = d.edits || []).push({ by: req.user.name, at: new Date().toISOString() });
     await put(pool, 'timeclock', t.store_id, d, t.id); res.json(d); }));
@@ -390,7 +400,8 @@ function privateRoutes(ctx) {
     const from = req.query.from, to = req.query.to; if (!from || !to) throw new Error('Pick the pay period');
     const plans = {}; (await list(pool, 'payplan')).forEach(p => plans[p.data.user_id] = p.data);
     const users = (await list(pool, 'user')).filter(u => u.data.active !== false && (!req.user.store_id || Number(u.data.store_id) === Number(req.user.store_id)));
-    const clock = (await list(pool, 'timeclock')).filter(t => t.data.out && t.data.in.slice(0, 10) >= from && t.data.in.slice(0, 10) <= to);
+    const ld = iso => new Intl.DateTimeFormat('en-CA', { timeZone: process.env.TZ_NAME || 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso));
+    const clock = (await list(pool, 'timeclock')).filter(t => t.data.out && ld(t.data.in) >= from && ld(t.data.in) <= to); // pay periods in local dates
     const deals = (await list(pool, 'deal')).filter(d => d.data.status === 'delivered' && d.data.delivered >= from && d.data.delivered <= to);
     const ros = (await list(pool, 'ro')).filter(r => r.data.status === 'closed' && r.data.closed >= from && r.data.closed <= to);
     return users.map(u => { const p = plans[u.id] || {}; const name = u.data.name;
@@ -407,9 +418,64 @@ function privateRoutes(ctx) {
     res.set('Content-Type', 'text/csv').set('Content-Disposition', `attachment; filename="payroll-${req.query.from}-to-${req.query.to}.csv"`)
       .send(csv([['Employee', 'Role', 'Hours', 'Hourly rate', 'Hourly pay', 'Units sold', 'Front gross', 'Back gross', 'Commission', 'Flag hours', 'Tech pay', 'Salary', 'Total'], ...rows.map(r => [r.name, r.role, r.hours, r.hourly, r.hourlyPay, r.units, r.front, r.back, r.commission, r.flagHours, r.techPay, r.salary, r.total])])); }));
 
+  // ---- CSV downloads for every list ----
+  const CSVS = {
+    inventory: { roles: null, kind: 'vehicle', head: ['Stock', 'VIN', 'Year', 'Make', 'Model', 'Trim', 'Color', 'Miles', 'Status', 'Acquired', 'Days in stock', 'Cost', 'Recon', 'Total cost', 'Price', 'Floorplan lender', 'Floored', 'Store'],
+      row: (v, x) => { const recon = (v.data.recon || []).reduce((s, r) => s + num(r.cost), 0); return [v.data.stock, v.data.vin, v.data.year, v.data.make, v.data.model, v.data.trim, v.data.color, v.data.miles, v.data.status, v.data.acquired, v.data.acquired ? ctx.daysBetween(v.data.acquired, today()) : '', num(v.data.cost), r2(recon), r2(num(v.data.cost) + recon), num(v.data.price), v.data.floorplan_lender || '', num(v.data.posted_floor), x.store(v)]; } },
+    customers: { roles: ['owner','manager','sales','finance','collector','service','accounting'], kind: 'customer', head: u => ['First', 'Last', 'Mobile', 'Email', 'Address', 'City', 'State', 'ZIP', 'Employer', ...(mgr(u) ? ["Driver's license", 'DL state', 'Date of birth', 'Monthly income'] : []), 'OK to text', 'Created'],
+      row: (c, x, u) => [c.data.first, c.data.last, c.data.phone, c.data.email, c.data.address, c.data.city, c.data.state, c.data.zip, c.data.employer, ...(mgr(u) ? [c.data.dl, c.data.dl_state, c.data.dob, c.data.income] : []), c.data.sms_ok === false ? 'No' : 'Yes', String(c.created_at.toISOString ? c.created_at.toISOString() : c.created_at).slice(0, 10)] },
+    leads: { roles: ['owner','manager','sales','finance'], kind: 'lead', head: ['Created', 'Customer', 'Phone', 'Source', 'Status', 'Salesperson', 'Interest', 'Next follow-up', 'Store'],
+      row: (l, x) => { const c = x.cust[l.data.customer_id] || {}; return [l.data.created, [c.first, c.last].filter(Boolean).join(' '), c.phone, l.data.source, l.data.status, l.data.owner, l.data.interest, l.data.next_followup, x.store(l)]; } },
+    deals: { roles: ['owner','manager','sales','finance','accounting'], kind: 'deal', head: ['Deal', 'Status', 'Delivered', 'Type', 'Customer', 'Vehicle', 'Salesperson', 'Price', 'Down', 'Amount financed', 'Payment', 'Term', 'APR', 'Front gross', 'Back gross', 'Total gross', 'Lender', 'Funding', 'Store'],
+      row: (d, x) => { const k = d.data.calc || {}, c = x.cust[d.data.customer_id] || {}; return [d.data.number, d.data.status, d.data.delivered || '', d.data.type, [c.first, c.last].filter(Boolean).join(' '), d.data.vehicle_label, d.data.salesperson, num(k.price || d.data.price), num(k.down || d.data.down), num(k.financed), num(k.payment), k.n || d.data.term || '', k.apr != null ? k.apr : d.data.apr, num(k.front), num(k.back), num(k.gross), d.data.lender || '', d.data.funding || '', x.store(d)]; } },
+    accounts: { roles: ['owner','manager','finance','collector','accounting'], kind: 'loan', head: ['Account', 'Customer', 'Vehicle', 'Status', 'Interest method', 'APR', 'Payments', 'Schedule', 'Payment', 'Balance', 'Past due', 'Days late', 'Next due', 'Payoff today', 'Fees owed', 'Store'], status: true,
+      row: (l, x) => { const s = l.status; return [l.data.account, l.data.customer_label, l.data.vehicle_label, l.data.status, l.data.method, l.data.apr, l.data.term, l.data.frequency, l.data.payment, s.balance, s.pastDue, s.daysLate, s.nextDue || '', s.payoff, s.feesOwed, x.store(l)]; } },
+    payments: { roles: ['owner','manager','finance','collector','accounting'], kind: 'payment', head: ['Date', 'Receipt', 'Account', 'Customer', 'Amount', 'Method', 'Principal', 'Interest', 'Fees', 'Cashier', 'Reference', 'Store'],
+      row: (p, x) => [p.data.date, p.data.receipt, p.data.account, p.data.customer_label, p.data.amount, p.data.method, p.data.principal, p.data.interest, p.data.fees, p.data.cashier, p.data.ref, x.store(p)] },
+    repair_orders: { roles: ['owner','manager','service','parts','accounting'], kind: 'ro', head: ['RO', 'Opened', 'Closed', 'Status', 'Department', 'Customer', 'Vehicle', 'VIN', 'Customer pays', 'Warranty', 'Internal', 'Paid', 'Advisor', 'Store'],
+      row: (r, x) => { const t = r.data.totals || {}; return [r.data.number, r.data.opened, r.data.closed || '', r.data.status, r.data.dept, r.data.customer_label, r.data.vehicle_label, r.data.vin, num(t.customer), num(t.warranty), num(t.internal), r.data.paid ? 'Yes' : 'No', r.data.advisor, x.store(r)]; } },
+    parts: { roles: ['owner','manager','service','parts','accounting'], kind: 'part', head: ['Part #', 'Description', 'Brand', 'Bin', 'On hand', 'Average cost', 'List price', 'Value at cost', 'Reorder at', 'Stock to', 'Vendor', 'Store'],
+      row: (p, x) => [p.data.number, p.data.description, p.data.brand, p.data.bin, num(p.data.qty), num(p.data.cost), num(p.data.price), r2(Math.max(0, num(p.data.qty)) * num(p.data.cost)), p.data.min, p.data.max, p.data.vendor, x.store(p)] },
+    warranty_claims: { roles: ['owner','manager','service','accounting'], kind: 'claim', head: ['RO', 'Opened', 'Manufacturer', 'Claim #', 'Line', 'Amount', 'Status', 'Paid', 'Chargeback', 'Store'],
+      row: (c, x) => [c.data.ro, c.data.opened, c.data.oem, c.data.claim_no || '', c.data.line, c.data.amount, c.data.status, c.data.paid_amount != null ? c.data.paid_amount : '', c.data.chargeback != null ? c.data.chargeback : '', x.store(c)] },
+    appraisals: { roles: ['owner','manager','sales','finance'], kind: 'appraisal', head: ['Appraisal', 'Status', 'VIN', 'Year', 'Make', 'Model', 'Miles', 'Customer', 'Offer', 'Target retail', 'Est. recon', 'Market price', 'Store'],
+      row: (a, x) => [a.data.number, a.data.status, a.data.vin, a.data.year, a.data.make, a.data.model, a.data.miles, a.data.customer, a.data.offer, a.data.retail_target, a.data.recon_estimate, a.data.market ? a.data.market.price : '', x.store(a)] },
+    bills: { roles: ['owner', 'manager', 'accounting'], kind: 'bill', head: ['Vendor', 'Bill #', 'Date', 'Due', 'Status', 'Total', 'Balance', 'Store'],
+      row: (b, x) => [(x.vendor[b.data.vendor_id] || {}).name, b.data.number, b.data.date, b.data.due, b.data.posted ? b.data.status : 'draft', b.data.total != null ? b.data.total : (b.data.lines || []).reduce((s, l) => s + num(l.amount), 0), b.data.balance != null ? b.data.balance : '', x.store(b)] },
+    vendors: { roles: ['owner', 'manager', 'accounting'], kind: 'vendor', head: ['Vendor', 'Terms'], row: v => [v.data.name, v.data.terms] },
+    bank_lines: { roles: ['owner', 'manager', 'accounting'], kind: 'bankline', head: ['Date', 'Description', 'Amount', 'Matched', 'Store'], row: (b, x) => [b.data.date, b.data.desc, b.data.amount, (b.data.matched || []).length ? 'Yes' : 'No', x.store(b)] },
+    time_clock: { roles: ['owner', 'manager', 'accounting'], kind: 'timeclock', head: ['Employee', 'In', 'Out', 'Hours', 'Edited'], row: t => [t.data.name, t.data.in, t.data.out || '', t.data.hours != null ? t.data.hours : '', (t.data.edits || []).length ? 'Yes' : ''] },
+    drawers: { roles: ['owner', 'manager', 'accounting'], kind: 'drawer', head: ['Date', 'Cashier', 'Expected cash', 'Counted', 'Over/short', 'Closed by', 'Store'], row: (d, x) => [d.data.date, d.data.cashier, d.data.expected_cash, d.data.counted_cash, d.data.over_short, d.data.closed_by, x.store(d)] },
+  };
+  app.get('/api/csv/:name', W(async (req, res) => {
+    const name = req.params.name, u = req.user;
+    const send = (rows, file) => res.set('Content-Type', 'text/csv; charset=utf-8').set('Content-Disposition', `attachment; filename="${file}-${today()}.csv"`).send('﻿' + csv(rows));
+    const storeQ = u.store_id || req.query.store || null; const inStore = r => !storeQ || !r.store_id || String(r.store_id) === String(storeQ);
+    if (name === 'trial_balance') { if (!books(u)) return deny(res); const from = req.query.from || '1900-01-01', to = req.query.to || '2999-12-31';
+      const accts = {}; (await list(pool, 'account')).forEach(a => accts[a.data.no] = a.data);
+      const { rows } = await pool.query(`SELECT acct, sum(debit)::float d, sum(credit)::float k FROM jrnl WHERE date BETWEEN $1 AND $2 ${storeQ ? 'AND store_id=$3' : ''} GROUP BY acct ORDER BY acct`, storeQ ? [from, to, storeQ] : [from, to]);
+      return send([['Account', 'Name', 'Type', 'Department', 'Debits', 'Credits', 'Net'], ...rows.map(r => [r.acct, (accts[r.acct] || {}).name, (accts[r.acct] || {}).type, (accts[r.acct] || {}).dept, r2(r.d), r2(r.k), r2(r.d - r.k)])], 'trial-balance'); }
+    if (name === 'chart_of_accounts') { if (!books(u)) return deny(res); } if (name === 'chart_of_accounts') return send([['Number', 'Name', 'Type', 'Department', 'Factory statement line'], ...(await list(pool, 'account')).sort((a, b) => a.data.no > b.data.no ? 1 : -1).map(a => [a.data.no, a.data.name, a.data.type, a.data.dept, a.data.oem_line || ''])], 'chart-of-accounts');
+    if (name === 'audit_log') { if (!mgr(u) || u.store_id) return deny(res); const { rows } = await pool.query(`SELECT at, who, action, kind, ref, detail FROM audit ORDER BY id DESC LIMIT 20000`);
+      return send([['When', 'Who', 'Action', 'Record type', 'Record', 'Detail'], ...rows.map(r => [r.at.toISOString(), r.who, r.action, r.kind, r.ref, r.detail])], 'audit-log'); }
+    if (name === 'collections' && !['owner', 'manager', 'finance', 'collector', 'accounting'].includes(u.role)) return deny(res);
+    if (name === 'collections') { const loans = (await list(pool, 'loan', `AND data->>'status'='active'`)).filter(inStore); const pays = await list(pool, 'payment'); const by = {}; pays.forEach(p => (by[p.data.loan_id] = by[p.data.loan_id] || []).push(p));
+      const cust = {}; (await list(pool, 'customer')).forEach(c => cust[c.id] = c.data);
+      const q = loans.map(l => ({ l, s: ctx.loanStatus(l, by[l.id] || []) })).filter(x => x.s.daysLate > 0).sort((a, b) => b.s.daysLate - a.s.daysLate);
+      return send([['Account', 'Customer', 'Phone', 'Vehicle', 'Days late', 'Bucket', 'Past due', 'Balance', 'Payment', 'Next due', 'Collector'], ...q.map(({ l, s }) => [l.data.account, l.data.customer_label, (cust[l.data.customer_id] || {}).phone, l.data.vehicle_label, s.daysLate, s.bucket, s.pastDue, s.balance, l.data.payment, s.nextDue, l.data.collector || ''])], 'collections'); }
+    const def = CSVS[name]; if (!def) return res.status(404).json({ error: 'Unknown download' });
+    if (def.roles && !def.roles.includes(u.role)) return deny(res);
+    let recs = (await list(pool, def.kind)).filter(inStore).reverse();
+    if (def.status) { const pays = await list(pool, 'payment'); const by = {}; pays.forEach(p => (by[p.data.loan_id] = by[p.data.loan_id] || []).push(p)); recs = recs.map(l => ({ ...l, status: ctx.loanStatus(l, by[l.id] || []) })); }
+    const stores = {}; (await list(pool, 'store')).forEach(s => stores[s.id] = s.data.name); const cust = {}; if (['leads', 'deals'].includes(name)) (await list(pool, 'customer')).forEach(c => cust[c.id] = c.data);
+    const vendor = {}; if (name === 'bills') (await list(pool, 'vendor')).forEach(v => vendor[v.id] = v.data);
+    const x = { store: r => stores[r.store_id] || '', cust, vendor };
+    send([typeof def.head === 'function' ? def.head(u) : def.head, ...recs.map(r => def.row(r, x, u))], name.replace(/_/g, '-'));
+  }));
+
   // ---- shop capacity: booked hours vs technician hours, by day ----
   app.get('/api/capacity', W(async (req, res) => { const store = req.user.store_id || req.query.store || null; const from = req.query.from || today(), days = Math.min(31, num(req.query.days) || 7);
-    const st = store ? await getRec(pool, store) : (await list(pool, 'store'))[0]; const cap = r2(num(st && st.data.tech_count) * num(st && st.data.tech_hours));
+    const sts = store ? [await getRec(pool, store)].filter(Boolean) : await list(pool, 'store'); const cap = r2(sts.reduce((s, st) => s + num(st.data.tech_count) * num(st.data.tech_hours), 0));
     const appts = (await list(pool, 'appt')).filter(a => (!store || String(a.store_id || '') === String(store)) && a.data.status !== 'no_show');
     const out = []; for (let i = 0; i < days; i++) { const d = ctx.addDays(from, i); const booked = r2(appts.filter(a => (a.data.when || '').slice(0, 10) === d).reduce((s, a) => s + num(a.data.hours || 1), 0)); out.push({ date: d, booked, capacity: cap, open: r2(cap - booked) }); }
     res.json({ capacity: cap, set: !!cap, days: out }); }));

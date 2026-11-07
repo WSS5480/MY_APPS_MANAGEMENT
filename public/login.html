@@ -6,7 +6,7 @@ input{width:100%;box-sizing:border-box;font-size:22px;letter-spacing:6px;text-al
 button{width:100%;margin-top:14px;padding:12px;border:none;border-radius:10px;background:#1b5cff;color:#fff;font-size:16px;font-weight:700;cursor:pointer}#e{color:#c42b2b;font-size:14px;margin-top:10px;text-align:center;min-height:18px}
 a{display:block;text-align:center;margin-top:14px;color:#1b5cff;font-size:14px;text-decoration:none}</style></head>
 <body><form id="f"><h1>Dealer System</h1><p id="msg">Enter your PIN</p><input id="pin" type="password" inputmode="numeric" autocomplete="current-password" autofocus required><button id="btn">Sign in</button><div id="e"></div><a href="/pay">Customers: check your balance →</a></form>
-<script>
+<script>try{caches.delete('dms-data-v1')}catch(e){}
 const $=id=>document.getElementById(id);let ticket=null;
 $('f').onsubmit=async e=>{e.preventDefault();$('e').textContent='';
   const r=ticket?await fetch('/login/code',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticket,code:$('pin').value})})

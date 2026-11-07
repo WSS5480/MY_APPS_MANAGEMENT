@@ -20,7 +20,9 @@ pool.on('connect', c => c.query(`SET search_path TO ${SCHEMA}`));
 // ---------- helpers ----------
 const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
 const num = n => Number(n) || 0;
-const today = () => new Date(Date.now() - 6 * 3600e3).toISOString().slice(0, 10); // Central time is close enough for "today"
+const TZ = process.env.TZ_NAME || 'America/Chicago'; // dealership time zone (env TZ_NAME); used for "today" and pay periods
+const localDate = d => new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+const today = () => localDate(new Date());
 const addDays = (d, n) => { const x = new Date(d + 'T12:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
 const addMonths = (d, n) => { const x = new Date(d + 'T12:00:00Z'); const day = x.getUTCDate(); x.setUTCDate(1); x.setUTCMonth(x.getUTCMonth() + n); const last = new Date(Date.UTC(x.getUTCFullYear(), x.getUTCMonth() + 1, 0)).getUTCDate(); x.setUTCDate(Math.min(day, last)); return x.toISOString().slice(0, 10); };
 const daysBetween = (a, b) => Math.round((new Date(b + 'T12:00:00Z') - new Date(a + 'T12:00:00Z')) / 864e5);
@@ -198,8 +200,8 @@ async function need(c, id, kind, user) {
   if (!r || r.kind !== kind || (user && user.store_id && r.store_id && Number(r.store_id) !== Number(user.store_id))) throw new Error('Not found');
   return r;
 }
-async function getRec(c, id) { const { rows } = await c.query(`SELECT * FROM rec WHERE id=$1`, [id]); return rows[0]; }
-async function list(c, kind, where = '', args = []) { const { rows } = await c.query(`SELECT * FROM rec WHERE kind=$1 ${where} ORDER BY id DESC LIMIT 5000`, [kind, ...args]); return rows; }
+async function getRec(c, id) { if (!/^\d{1,15}$/.test(String(id))) return undefined; const { rows } = await c.query(`SELECT * FROM rec WHERE id=$1`, [id]); return rows[0]; }
+async function list(c, kind, where = '', args = []) { const { rows } = await c.query(`SELECT * FROM rec WHERE kind=$1 ${where} ORDER BY id DESC LIMIT 100000`, [kind, ...args]); return rows; }
 async function put(c, kind, store, data, id) {
   if (id) { const { rows } = await c.query(`UPDATE rec SET data=$2, store_id=$3, updated_at=now() WHERE id=$1 AND kind=$4 RETURNING *`, [id, data, store || null, kind]); return rows[0]; }
   const { rows } = await c.query(`INSERT INTO rec(kind,store_id,data) VALUES($1,$2,$3) RETURNING *`, [kind, store || null, data]); return rows[0];
@@ -211,8 +213,10 @@ async function post(c, { date, store, memo, src, ref, who, lines }) {
   const dr = r2(L.reduce((s, l) => s + l[1], 0)), cr = r2(L.reduce((s, l) => s + l[2], 0));
   if (Math.abs(dr - cr) > 0.009) throw new Error(`Entry out of balance (${dr} vs ${cr}) — ${memo}`);
   if (!L.length) return null;
-  const lock = (await c.query(`SELECT data->>'closed_through' d FROM rec WHERE kind='settings' LIMIT 1`)).rows[0];
-  if (lock && lock.d && String(date || today()) <= lock.d) throw new Error(`The books are closed through ${lock.d} — post this in an open period or ask the owner to reopen`);
+  date = date || today();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date)) || isNaN(new Date(date + 'T12:00:00Z'))) throw new Error('Dates must be YYYY-MM-DD');
+  const lock = (await c.query(`SELECT data->>'closed_through' d FROM rec WHERE kind='settings' ORDER BY id LIMIT 1`)).rows[0];
+  if (lock && lock.d && String(date) <= lock.d) throw new Error(`The books are closed through ${lock.d} — post this in an open period or ask the owner to reopen`);
   const entry = 'J' + (await nextNum(c, 'entry', 1001));
   for (const [a, d, k] of L) await c.query(`INSERT INTO jrnl(entry,date,store_id,acct,debit,credit,memo,src,ref,by_user) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, [entry, date || today(), store || null, a, d, k, memo, src, ref || null, who]);
   return entry;
@@ -375,12 +379,15 @@ var READ_KINDS = new Set(['store', 'customer', 'vehicle', 'lead', 'deal', 'loan'
 app.get('/api/list/:kind', W(async (req, res) => {
   const k = req.params.kind; if (!READ_KINDS.has(k)) return res.status(404).json({ error: 'Unknown list' });
   if (k === 'user' && !['owner', 'manager'].includes(req.user.role)) return deny(res);
+  if (['bill', 'vendor'].includes(k) && !['owner', 'manager', 'accounting'].includes(req.user.role)) return deny(res);
   let rows = await list(pool, k);
   if (req.user.store_id && !['store', 'settings', 'account', 'product', 'lender', 'user', 'customer'].includes(k)) rows = rows.filter(r => !r.store_id || Number(r.store_id) === Number(req.user.store_id));
   if (k === 'user') rows = rows.map(r => ({ ...r, data: { ...r.data, pin_hash: undefined, salt: undefined } }));
   res.json(rows);
 }));
 app.get('/api/rec/:id', W(async (req, res) => { const r = await getRec(pool, req.params.id);
+  const BACK = { payplan: ['owner', 'manager', 'accounting'], timeclock: ['owner', 'manager', 'accounting'], drawer: ['owner', 'manager', 'accounting'], bankline: ['owner', 'manager', 'accounting'], bill: ['owner', 'manager', 'accounting'], vendor: ['owner', 'manager', 'accounting'] };
+  if (r && (r.kind === 'secret' || (BACK[r.kind] && !BACK[r.kind].includes(req.user.role)))) return res.status(404).json({ error: 'Not found' });
   if (!r || r.kind === 'user' || (req.user.store_id && r.store_id && r.kind !== 'store' && Number(r.store_id) !== Number(req.user.store_id))) return res.status(404).json({ error: 'Not found' }); res.json(r); }));
 
 // generic save for the simple kinds
@@ -417,6 +424,7 @@ app.post('/api/save/:kind', W(async (req, res) => {
     if (k === 'ro' && old && old.data.status === 'closed') throw new Error('Closed ROs are locked');
     if (k === 'ro') data.inspection = (data.inspection || []).map(x => ({ ...x, id: x.id && /^[a-f0-9]{10}$/.test(x.id) ? x.id : crypto.randomBytes(5).toString('hex') }));
     if (k === 'ro') { const OPEN = ['open', 'waiting_approval', 'in_progress', 'waiting_parts', 'ready']; if (!OPEN.includes(data.status)) data.status = old ? old.data.status : 'open'; }
+    if (k === 'ro') data.videos = (data.videos || []).filter(v => v && typeof v.key === 'string' && (!old ? false : new RegExp('^ro/' + old.id + '/[0-9]+-[a-f0-9]{8}\\.[a-z0-9]{1,5}$').test(v.key))).map(v => ({ key: v.key, at: String(v.at || '').slice(0, 30), by: String(v.by || '').slice(0, 60) }));
     if (k === 'ro' && old) { data.number = old.data.number; data.closed_entry = old.data.closed_entry; data.opened = old.data.opened;
       // the customer's answers on the approval link always win over whatever the advisor's screen had loaded
       const was = old.data.inspection || [];
@@ -431,6 +439,7 @@ app.post('/api/save/:kind', W(async (req, res) => {
       if (!EDITABLE.includes(data.status)) data.status = old ? old.data.status : 'in_stock';
       if (!old) { data.stock = data.stock || ('S' + (await nextNum(c, 'stock', 10001))); data.acquired = data.acquired || today(); }
       data.photos = (data.photos || []).filter(p => typeof p === 'string' && /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(p)).slice(0, 12);
+      data.vin = String(data.vin || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 17);
       if (data.floorplan_lender) { if (!num(data.floorplan_amount)) throw new Error('Enter the floored amount'); if (num(data.floorplan_amount) > num(data.cost)) throw new Error('Floored amount can’t be more than the vehicle cost'); }
       else data.floorplan_amount = 0;
       for (const f of ['posted_cost', 'posted_floor', 'posted_floor_lender', 'posted_credit']) data[f] = old ? old.data[f] : undefined;
@@ -448,6 +457,7 @@ app.post('/api/save/:kind', W(async (req, res) => {
     if (k === 'lead' && !old) data.created = today();
     if (k === 'store') { // automatic late fees only apply to payments that go late after the setting is turned on
       if (data.auto_late_fee === true) data.auto_late_fee_since = old && old.data.auto_late_fee === true && old.data.auto_late_fee_since ? old.data.auto_late_fee_since : today(); else delete data.auto_late_fee_since; }
+    if (k === 'settings' && !old && (await list(c, 'settings')).length) throw new Error('Settings already exist — update them instead');
     if (k === 'settings' && old) { data.closed_through = old.data.closed_through; data.feed_token = old.data.feed_token; } // changed only through their own owner-only actions
     if (k === 'appraisal' && old && ['bought', 'traded'].includes(old.data.status)) throw new Error('This appraisal was already used');
     if (k === 'appraisal') { if (!old) { data.number = 'A' + (await nextNum(c, 'appraisal', 1001)); data.created_by = u.name; data.status = 'open'; } else { data.number = old.data.number; data.status = old.data.status; data.market = old.data.market; }
@@ -483,9 +493,12 @@ app.post('/api/delete/:id', W(async (req, res) => {
   if (!['owner', 'manager'].includes(req.user.role)) return deny(res);
   await tx(async c => {
     const r = await getRec(c, req.params.id); if (!r) throw new Error('Not found');
-    if (['loan', 'payment', 'account', 'settings', 'store'].includes(r.kind)) throw new Error('This kind of record can’t be deleted — it carries accounting history');
+    if (['loan', 'payment', 'account', 'settings', 'store', 'secret', 'drawer', 'payplan', 'timeclock'].includes(r.kind)) throw new Error('This kind of record can’t be deleted — it carries accounting history');
     if (r.kind === 'deal' && r.data.status === 'delivered') throw new Error('Unwind the deal instead of deleting it');
     if (r.kind === 'ro' && r.data.status === 'closed') throw new Error('Closed ROs can’t be deleted');
+    if (r.kind === 'bill' && r.data.posted) throw new Error('Posted bills can’t be deleted');
+    if (r.kind === 'bankline' && (r.data.matched || []).length) throw new Error('Unmatch this bank line first');
+    if (r.kind === 'appraisal' && r.data.status !== 'open') throw new Error('This appraisal was used — it stays on file');
     if (r.kind === 'vehicle' && (num(r.data.posted_cost) || (r.data.recon || []).some(x => num(x.posted_amount)))) throw new Error('This vehicle is on the books — wholesale or sell it instead');
     await c.query(`DELETE FROM rec WHERE id=$1`, [r.id]); await audit(c, req.user.name, 'delete', r.kind, r.id, JSON.stringify(r.data).slice(0, 500));
   });
@@ -551,6 +564,8 @@ app.post('/api/deal/:id/deliver', W(async (req, res) => {
         customer_label: `${cust.data.first} ${cust.data.last}`, principal: k.financed, apr: k.apr, term: k.n, frequency: k.freq, payment: k.payment, first_due: d.first_due, start_date: date, method: d.interest_method,
         status: 'active', fees_assessed: 0, gps: d.gps || null, collector: d.collector || '' });
     }
+    if (d.appraisal_id) { const ap = await getRec(c, d.appraisal_id); if (!ap || ap.kind !== 'appraisal' || ap.data.status !== 'open') throw new Error('The appraisal on this deal was already used — clear it and enter the trade by hand');
+      ap.data.status = 'traded'; ap.data.deal_id = deal.id; await put(c, 'appraisal', ap.store_id, ap.data, ap.id); }
     d.status = 'delivered'; d.delivered = date; d.calc = k; d.loan_id = loan && loan.id; d.funding = d.type === 'outside' ? (d.funding || 'pending') : null;
     await put(c, 'deal', S, d, deal.id); await audit(c, who, 'deliver', 'deal', deal.id, d.number);
     return { deal: d, loan };
@@ -891,7 +906,7 @@ app.get('/api/opportunities', W(async (req, res) => {
 app.get('/api/audit', W(async (req, res) => { if (!['owner', 'manager'].includes(req.user.role)) return deny(res); const { rows } = await pool.query(`SELECT * FROM audit ORDER BY id DESC LIMIT 500`); res.json(rows); }));
 app.get('/api/export', W(async (req, res) => {
   if (!['owner', 'manager', 'accounting'].includes(req.user.role) || req.user.store_id) return deny(res, 'Only an all-stores owner, manager or accountant can export everything');
-  const recs = (await pool.query(`SELECT id,kind,store_id,data,created_at,updated_at FROM rec`)).rows.map(r => r.kind === 'user' ? { ...r, data: { ...r.data, pin_hash: undefined, salt: undefined } } : r);
+  const recs = (await pool.query(`SELECT id,kind,store_id,data,created_at,updated_at FROM rec WHERE kind <> 'secret'`)).rows.map(r => r.kind === 'user' ? { ...r, data: { ...r.data, pin_hash: undefined, salt: undefined } } : r);
   const j = (await pool.query(`SELECT * FROM jrnl ORDER BY id`)).rows;
   res.set('Content-Disposition', `attachment; filename="dealer-export-${today()}.json"`).json({ exported: new Date().toISOString(), records: recs, journal: j });
 }));

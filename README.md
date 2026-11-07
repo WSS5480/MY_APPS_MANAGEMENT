@@ -23,8 +23,25 @@ Env vars: `DATABASE_URL`, `OWNER_PIN`, `SESSION_SECRET`, `API_TOKEN` (optional, 
 | 2026-11-06 | No numbers are prefilled (tax, doc fee, late fee, grace days, labor rate, APR/term). Delivery is refused until the needed setup is entered | Steve: "Blank — dealer enters them" |
 | 2026-11-06 | Hosting: new Render web service (free plan for now) + its own new paid Postgres (Basic-256mb) in the MY APPS workspace | Steve |
 | 2026-11-06 | Name: "Dealer System" is a placeholder; name and selling company to come | Steve: "I'll name it later" |
+| 2026-11-06 | Owner PIN is the same as Dev Billing | Steve |
+| 2026-11-06 | Deployed as Render service dealer-system (free plan) with its own Basic-256mb database; servetrack deleted to make room under the Hobby 25-service cap | Steve |
+| 2026-11-06 | Build the rest: everything that needs no outside account now; each outside connection switches on when its key is pasted into Settings → Integrations | Steve: "Build the rest" |
+| 2026-11-06 | Texting and card/ACH processor still pending | Steve |
+| 2026-11-06 | E-sign: built-in signature pad with e-sign consent (no outside account) | Steve |
+| 2026-11-06 | Payroll: commissions + hours, exported to the payroll company (no tax withholding in-app) | Steve |
+| 2026-11-06 | Paperwork: all states, set per store (generic forms + state fee table + links to official state forms) | Steve |
+| 2026-11-06 | Service video goes to cloud storage (Cloudflare R2 recommended); photos stored in-app now | Steve |
+| 2026-11-06 | Market pricing from a bought data feed (MarketCheck recommended) | Steve |
+| 2026-11-06 | Backups: Render's own database backups only | Steve |
+| 2026-11-06 | Data sources picked: MarketCheck, VinAudit, Cloudflare R2, Telnyx, 700Credit, PassTime, Repay/Stripe, Black Book; RouteOne/OEM/Metro 2 need certification | Steve: "Find a good data source api for all" |
+| 2026-11-06 | Independent reviewers check every phase before it ships | Steve: "Get our trusted reviewers to check once you're done" |
 
 ### Defaults Claude chose that Steve has not reviewed yet
+- Automatic late fees (store setting): one fee per missed installment, only for payments that go late after the setting is turned on.
+- FTC Buyers Guide: the app prints the fill-in details and points to the FTC's official forms (wording and layout are set by federal rule), rather than redrawing the form.
+- Website credit application collects no Social Security number until a credit-pull service is connected.
+- Website leads rotate among salespeople when lead routing is on (off by default).
+- Offline mode is read-only and the cached data is cleared at sign-out.
 - Signed-in session lasts 12 hours (one shift); the trusted-device period is 30 days as decided.
 - Roles: owner, manager, sales, finance, collector, service, parts, accounting — and what each can change.
 - Chart of accounts and department grouping for the P&L.

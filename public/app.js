@@ -11,7 +11,7 @@ const cache = {};
 
 async function api(url, body, method) {
   const r = await fetch(url, { method: method || (body ? 'POST' : 'GET'), headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
-  if (r.status === 401) { location.href = '/login'; throw new Error('Signed out'); }
+  if (r.status === 401) { try { await caches.delete('dms-data-v1'); } catch (e) {} location.href = '/login'; throw new Error('Signed out'); }
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || 'Something went wrong');
   return j;
@@ -58,17 +58,18 @@ const telLink = p => `tel:${String(p || '').replace(/[^\d+]/g, '')}`;
 const PAGES = [
   ['home', 'Dashboard', null], ['inventory', 'Inventory', 'vehicle'], ['leads', 'Leads', 'lead'], ['customers', 'Customers', null], ['appraisals', 'Appraisals', 'appraisal'], ['deals', 'Deals', 'deal'],
   ['accounts', 'BHPH Accounts', null], ['collections', 'Collections', null], ['cashier', 'Cashier', null], ['insurance', 'Insurance', null], ['service', 'Service', 'ro'], ['parts', 'Parts', null], ['warranty', 'Warranty', null],
-  ['books', 'Accounting', null], ['payroll', 'Payroll', null], ['reports', 'Reports', null], ['clock', 'Time clock', null], ['settings', 'Settings', null],
+  ['books', 'Accounting', null], ['payroll', 'Payroll', null], ['reports', 'Reports', null], ['downloads', 'Downloads', null], ['clock', 'Time clock', null], ['settings', 'Settings', null],
 ];
 const ROLE_PAGES = {
-  sales: ['home', 'inventory', 'leads', 'customers', 'appraisals', 'deals', 'clock'], finance: ['home', 'inventory', 'leads', 'customers', 'appraisals', 'deals', 'accounts', 'collections', 'cashier', 'insurance', 'reports', 'clock'],
-  collector: ['home', 'customers', 'accounts', 'collections', 'cashier', 'insurance', 'clock'], service: ['home', 'customers', 'service', 'parts', 'warranty', 'cashier', 'clock'], parts: ['home', 'service', 'parts', 'cashier', 'clock'],
-  accounting: ['home', 'inventory', 'deals', 'accounts', 'insurance', 'warranty', 'books', 'payroll', 'reports', 'customers', 'cashier', 'clock'],
+  sales: ['home', 'inventory', 'leads', 'customers', 'appraisals', 'deals', 'clock', 'downloads'], finance: ['home', 'inventory', 'leads', 'customers', 'appraisals', 'deals', 'accounts', 'collections', 'cashier', 'insurance', 'reports', 'clock', 'downloads'],
+  collector: ['home', 'customers', 'accounts', 'collections', 'cashier', 'insurance', 'clock', 'downloads'], service: ['home', 'customers', 'service', 'parts', 'warranty', 'cashier', 'clock', 'downloads'], parts: ['home', 'service', 'parts', 'cashier', 'clock', 'downloads'],
+  accounting: ['home', 'inventory', 'deals', 'accounts', 'insurance', 'warranty', 'books', 'payroll', 'reports', 'customers', 'cashier', 'clock', 'downloads'],
 };
 const allowed = p => ['owner', 'manager'].includes(ME.user.role) ? true : (ROLE_PAGES[ME.user.role] || ['home']).includes(p);
 
 async function boot() {
   ME = await api('/api/me'); S.settings = ME.settings || {};
+  if (localStorage.getItem('dms_uid') !== String(ME.user.id)) { try { await caches.delete('dms-data-v1'); } catch (e) {} localStorage.setItem('dms_uid', String(ME.user.id)); } // a different person on this device never sees the last person's saved data
   S.stores = await L('store');
   if (STORE && !S.stores.some(s => String(s.id) === STORE)) STORE = '';
   if (ME.user.store_id) STORE = String(ME.user.store_id);

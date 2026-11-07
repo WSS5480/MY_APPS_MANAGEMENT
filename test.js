@@ -302,6 +302,29 @@ async function books() { const tb = await api('/api/trial'); const d = tb.reduce
   ok(ik.marketcheck.api_key === '••••3456' && ik.marketcheck.zip === '78501', 'P integration key masked');
   ok(!(await api('/api/list/settings'))[0].data.marketcheck, 'P keys not in settings'); await expectErr(() => api('/api/list/secret'), 'P secrets can’t be listed');
   await expectErr(() => api('/api/media/upload-url', { ro_id: roW.id, ext: 'mp4' }), 'P video storage says not connected');
+  // ===== phase 2 review fixes + downloads =====
+  const keyRec = (await (async () => { const all = []; for (let i = 1; i < 400; i++) { try { const r = await api('/api/rec/' + i); if (r.kind === 'secret') all.push(r); } catch (e) {} } return all; })());
+  ok(keyRec.length === 0, 'Q integration keys can’t be read through any record id');
+  const exAll = await api('/api/export'); ok(!exAll.records.some(r => r.kind === 'secret'), 'Q keys not in the full export');
+  await expectErr(() => api('/api/save/settings', { data: { dealer_name: 'second' } }), 'Q a second settings record can’t be made');
+  await api('/api/close-period', { through: sp(0, -1) });
+  await expectErr(() => api('/api/journal', { date: sp(0, -3).replace(/-/g, ''), memo: 'fmt', lines: [{ acct: '6900', debit: 1 }, { acct: '1000', credit: 1 }] }), 'Q odd date format can’t slip past the lock');
+  await api('/api/close-period', { through: null });
+  const evil = await api('/api/sign/request', { ref: anyDeal.id, title: 'x', html: '<p>Doc text long enough to sign here</p><img src=x onerror=alert(1)><script>alert(2)</script><a href="javascript:alert(3)">x</a>' });
+  const evDoc = await api('/api/sign/doc/' + evil.url.split('/').pop()); ok(!/onerror|<script|javascript:/i.test(evDoc.html), 'Q signing documents are cleaned of scripts');
+  const cuBefore = (await api('/api/list/customer')).find(c => c.data.phone === '9565551111'); const keepQ = cookie; cookie = '';
+  await api('/api/site/lead', { first: 'Bad', last: 'Actor', phone: '9565551111', consent: true, type: 'credit_app', address: '666 Fake Rd', income: 1 }); cookie = keepQ;
+  const cuAfter = await api('/api/rec/' + cuBefore.id); ok(cuAfter.data.address === cuBefore.data.address && cuAfter.data.first === cuBefore.data.first, 'Q public form can’t change an existing customer');
+  const hid = await newCar({ photos: ['data:image/jpeg;base64,AAAA'], hide_web: true }); ok((await rawGet(`/photo/${hid.id}/0`)).status === 404, 'Q hidden unit photos aren’t public');
+  ok((await rawGet('/api/site/vehicle/abc')).status === 404, 'Q bad vehicle id gives a clean not-found');
+  const dupCsv = `Date,Description,Amount\n${T0},DEPOSIT,20.00\n${T0},DEPOSIT,20.00\n`; const di = await api('/api/bank/import', { csv: dupCsv }); ok(di.added === 2, 'Q two real identical deposits both import');
+  ok((await api('/api/bank/import', { csv: dupCsv })).added === 0, 'Q re-importing the same file adds nothing');
+  const b0 = await api('/api/save/bill', { store_id: store.id, data: { vendor_id: vend.id, number: 'Z', lines: [{ acct: '6900', amount: 100 }, { acct: '6900', amount: -100 }] } });
+  await expectErr(() => api(`/api/bill/${b0.id}/post`, {}), 'Q bills with zero or negative lines refused');
+  await expectErr(() => api('/api/delete/' + bill.id, {}), 'Q posted bills can’t be deleted');
+  for (const n of ['inventory', 'customers', 'leads', 'deals', 'accounts', 'payments', 'collections', 'repair_orders', 'parts', 'warranty_claims', 'appraisals', 'bills', 'vendors', 'bank_lines', 'time_clock', 'drawers', 'trial_balance', 'chart_of_accounts', 'audit_log']) {
+    const r = await rawGet('/api/csv/' + n); ok(r.status === 200 && r.text.split('\n').length >= 2 && /^[A-Z]/.test(r.text.replace(/^\ufeff/, '')), 'Q CSV ' + n); }
+  const keepR = cookie; cookie = ''; await api('/login', { pin: '1111' }); ok((await rawGet('/api/csv/payments')).status === 403 && (await rawGet('/api/csv/inventory')).status === 200, 'Q sales rep gets inventory CSV but not payments'); cookie = keepR;
   // 12. sign-out really ends the session
   const keep = cookie; await api('/logout', {}); cookie = keep; await expectErr(() => api('/api/me'), 'R12 old session refused after sign-out');
   await api('/login', { pin: process.env.OWNER_PIN });

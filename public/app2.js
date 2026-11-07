@@ -15,7 +15,7 @@ window.vehExtra = d => `<h3>Buyers Guide (FTC)</h3><div class="f">
   ${field("Manufacturer's warranty still applies", 'bg.mfr', d.bg && d.bg.mfr, 'check')}${field("Manufacturer's used-car warranty applies", 'bg.mfr_used', d.bg && d.bg.mfr_used, 'check')}${field('Other used-car warranty applies', 'bg.other', d.bg && d.bg.other, 'check')}${field('Service contract available', 'bg.service_contract', d.bg && d.bg.service_contract, 'check')}</div>
   <h3>Website listing</h3><div class="f">${field('Hide from website & listing feeds', 'hide_web', d.hide_web, 'check')}${field('Website description', 'web_notes', d.web_notes, 'textarea', { wide: true })}</div>
   ${d.market ? `<div class="kv"><span>Market price (MarketCheck, ${fmtD(d.market.checked)})</span><b>${$$(d.market.price, 0)} · ${d.market.price ? Math.round(num(d.price) / d.market.price * 100) + '% to market' : ''}</b></div>` : ''}`;
-window.vehButtons = (id, d) => id === 'new' ? '' : `<button class="btn sec" onclick="marketPrice(${id})">Market price</button><button class="btn sec" onclick="vehHistory('${esc(d.vin || '')}')">History report</button><button class="btn sec" onclick="buyersGuide()">Buyers Guide sheet</button>${isMgr() && !ME.user.store_id && S.stores.length > 1 && ['in_stock', 'hold', 'in_transit'].includes(d.status) ? `<button class="btn sec" onclick="transferUnit(${id})">Move to store</button>` : ''}`;
+window.vehButtons = (id, d) => id === 'new' ? '' : `<button class="btn sec" onclick="marketPrice(${id})">Market price</button><button class="btn sec" data-vin="${esc(d.vin || '')}" onclick="vehHistory(this.dataset.vin)">History report</button><button class="btn sec" onclick="buyersGuide()">Buyers Guide sheet</button>${isMgr() && !ME.user.store_id && S.stores.length > 1 && ['in_stock', 'hold', 'in_transit'].includes(d.status) ? `<button class="btn sec" onclick="transferUnit(${id})">Move to store</button>` : ''}`;
 window.marketPrice = run(async id => { const r = await api('/api/market/vehicle/' + id, {}); toast(`Market ${$$(r.price, 0)}${r.toMarket ? ' · you’re at ' + r.toMarket + '%' : ''}`); route(); });
 window.vehHistory = run(async vin => { if (!vin) throw new Error('Add the VIN first'); const r = await api('/api/history/' + encodeURIComponent(vin));
   const w = window.open('', '_blank'); w.document.write(`<pre style="white-space:pre-wrap;font:13px monospace">${esc(JSON.stringify(r, null, 2))}</pre>`); });
@@ -33,7 +33,7 @@ window.buyersGuide = () => { const d = readForm($('#vf'), VD); const b = d.bg ||
 function printHtml(html) { let box = document.getElementById('xprint'); if (!box) { box = document.createElement('div'); box.id = 'xprint'; box.className = 'print-only'; document.body.appendChild(box); } box.innerHTML = html; window.print(); }
 
 // ---------- driver's license scan (PDF417 barcode, AAMVA standard) ----------
-function parseAamva(t) { const g = c => { const m = new RegExp('(?:^|[\\n\\r\\x1e])' + c + '([^\\n\\r\\x1e]*)').exec(t); return m ? m[1].trim() : ''; };
+function parseAamva(t) { const g = c => { const m = new RegExp('(?:^|[\\n\\r\\x1e]|DL)' + c + '([^\\n\\r\\x1e]*)').exec(t); return m ? m[1].trim() : ''; };
   const dob = g('DBB'); const d = /^\d{8}$/.test(dob) ? (Number(dob.slice(0, 4)) > 1900 && Number(dob.slice(4, 6)) <= 12 ? `${dob.slice(0, 4)}-${dob.slice(4, 6)}-${dob.slice(6)}` : `${dob.slice(4)}-${dob.slice(0, 2)}-${dob.slice(2, 4)}`) : '';
   const cap = s => s.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
   return { first: cap(g('DAC') || (g('DCT').split(/[ ,]/)[0] || '')), last: cap(g('DCS')), dl: g('DAQ'), dl_state: g('DAJ'), dob: d, address: cap(g('DAG')), city: cap(g('DAI')), state: g('DAJ'), zip: g('DAK').slice(0, 5) }; }
@@ -59,8 +59,7 @@ window.useAppraisal = id => { const a = (cache.appraisal || []).find(x => String
   DD.appraisal_id = a.id; dealCalc(); toast('Trade filled from ' + a.data.number); };
 window.feeBtn = () => `<label class="l">&nbsp;<button type="button" class="btn sec" onclick="fillFees()">Fill from fee table</button></label>`;
 window.fillFees = () => { const st = storeOf(DSTORE || STORE); const t = sumFees(st); if (!t) { toast('No fee table set for this store (Settings → Stores)', true); return; } document.querySelector('#df [data-f=title_fees]').value = t.toFixed(2); dealCalc(); };
-const _deliver = window.deliverDeal;
-window.deliverDeal = async id => { const before = DD.appraisal_id; await _deliver(id); if (before) { const d = await api('/api/rec/' + id).catch(() => null); if (d && d.data.status === 'delivered') await api(`/api/appraisal/${before}/traded`, { deal_id: id }).catch(() => {}); bust('appraisal'); } };
+const _deliver = window.deliverDeal; window.deliverDeal = async id => { await _deliver(id); bust('appraisal'); };
 async function captureDoc(kind) { const orig = window.print; window.print = () => {}; try { await printDeal(kind); } finally { window.print = orig; } return $('#dprint').innerHTML; }
 async function extraDoc(kind) {
   const d = DD, k = window.DK || d.calc || {}; const c = (await L('customer')).find(x => String(x.id) === String(d.customer_id)); const v = (await L('vehicle')).find(x => String(x.id) === String(d.vehicle_id));
@@ -99,8 +98,11 @@ window.signDoc = run(async (k, title) => { const h = await extraDoc(k); if (!h) 
   document.getElementById('formsov')?.remove(); dealForms(); });
 window.copyLink = u => { navigator.clipboard.writeText(u).then(() => toast('Link copied'), () => prompt('Copy this link:', u)); };
 window.viewSigned = run(async t => { const s = await api('/api/sign/doc/' + t);
-  printHtml(`${s.html}<div style="font-family:Arial;max-width:760px;margin-top:20px;border-top:2px solid #000;padding-top:10px"><img src="${esc(s.sig)}" style="max-width:300px;height:auto"><br>Signed electronically by <b>${esc(s.signer)}</b> on ${new Date(s.signed_at).toLocaleString()}<br><span style="font-size:11px">IP ${esc(s.ip)} · consent to e-sign given · document fingerprint ${esc(s.doc_hash)}</span></div>`); });
-
+  const ov = document.createElement('div'); ov.style.cssText = 'position:fixed;inset:0;background:#0008;z-index:85;padding:12px;display:flex;flex-direction:column;gap:8px';
+  const fr = document.createElement('iframe'); fr.setAttribute('sandbox', 'allow-same-origin allow-modals'); fr.style.cssText = 'flex:1;width:100%;border:0;border-radius:10px;background:#fff';
+  fr.srcdoc = '<!DOCTYPE html><meta charset="utf-8"><body style="font-family:Arial;padding:12px">' + s.html + `<div style="margin-top:20px;border-top:2px solid #000;padding-top:10px"><img src="${esc(s.sig)}" style="max-width:300px;height:auto"><br>Signed electronically by <b>${esc(s.signer)}</b> on ${esc(new Date(s.signed_at).toLocaleString())}<br><span style="font-size:11px">IP ${esc(s.ip)} · consent to e-sign given · document fingerprint ${esc(s.doc_hash)}</span></div></body>`;
+  const bar = document.createElement('div'); bar.className = 'bar'; bar.innerHTML = '<button class="btn">Print</button><button class="btn sec">Close</button>';
+  bar.children[0].onclick = () => fr.contentWindow.print(); bar.children[1].onclick = () => ov.remove(); ov.append(bar, fr); document.body.appendChild(ov); });
 // ---------- payments: receipt by print or text ----------
 window.afterPay = p => { const cu = window.LCU; const d = p.data;
   const msg = `${S.settings.dealer_name || ''} receipt ${d.receipt}: ${$$(d.amount)} paid ${fmtD(d.date)} on acct ${d.account}. Thank you!`;
@@ -110,7 +112,7 @@ window.afterPay = p => { const cu = window.LCU; const d = p.data;
 window.inspMedia = x => !x.id ? '' : `<div class="photos" style="grid-column:1/-1">${(x.photos || []).map(p => `<img src="${esc(p)}">`).join('')}${RD.status !== 'closed' ? `<label class="btn sec sm" style="cursor:pointer">📷 Photo<input type="file" accept="image/*" capture="environment" style="display:none" onchange="addInspPhoto('${esc(x.id)}', this.files)"></label>` : ''}</div>`;
 window.addInspPhoto = run(async (iid, files) => { const it = (RD.inspection || []).find(x => x.id === iid); if (!it) return; it.photos = it.photos || [];
   for (const f of files) { if (it.photos.length >= 4) break; it.photos.push(await fileToJpeg(f, 800)); } await saveRo(RID, true); bust('ro'); route(); });
-window.roMedia = (id, d) => id === 'new' ? '' : `<h3>Videos</h3><div>${(d.videos || []).map((v, i) => `<button type="button" class="btn sec sm" onclick="viewVideo('${esc(v.key)}')">▶ Video ${i + 1}</button> `).join('') || '<span class="mut small">No videos.</span>'}
+window.roMedia = (id, d) => id === 'new' ? '' : `<h3>Videos</h3><div>${(d.videos || []).map((v, i) => `<button type="button" class="btn sec sm" data-key="${esc(v.key)}" onclick="viewVideo(this.dataset.key)">▶ Video ${i + 1}</button> `).join('') || '<span class="mut small">No videos.</span>'}
   ${d.status !== 'closed' ? `<label class="btn sec sm" style="cursor:pointer">🎥 Upload video<input type="file" accept="video/*" capture="environment" style="display:none" onchange="uploadVideo(${id}, this.files[0])"></label>` : ''}</div>`;
 window.uploadVideo = run(async (id, f) => { if (!f) return; if (f.size > 300e6) throw new Error('Video is over 300 MB'); toast('Uploading…');
   const ext = (f.name.split('.').pop() || 'mp4').toLowerCase(); const u = await api('/api/media/upload-url', { ro_id: id, ext });
@@ -175,7 +177,7 @@ VIEWS.cashier = async () => {
   <div class="card">${Object.entries(d.byMethod).map(([m, v]) => `<div class="kv"><span>${esc(m)} payments</span><b>${$$(v)}</b></div>`).join('') || '<p class="mut small">No in-house payments.</p>'}
   <div class="kv"><span>Other cash (parts, service, deals)</span><b>${$$(d.otherCash)}</b></div><div class="kv"><span><b>Cash expected in drawer</b></span><b style="font-size:18px">${$$(d.expectedCash)}</b></div></div>
   ${d.closed ? `<div class="card"><b>Closed by ${esc(d.closed.closed_by)}</b><div class="kv"><span>Counted</span><b>${$$(d.closed.counted_cash)}</b></div><div class="kv"><span>Over / short</span><b style="color:${d.closed.over_short < 0 ? 'var(--bad)' : 'inherit'}">${$$(d.closed.over_short)}</b></div></div>`
-    : `<div class="card" id="drf"><div class="f">${field('Cash counted', 'counted_cash', '', 'number')}${field('Note', 'note', '')}</div><button class="btn" style="margin-top:8px" onclick="closeDrawer('${esc(who)}','${date}')">Close drawer</button></div>`}`);
+    : `<div class="card" id="drf"><div class="f">${field('Cash counted', 'counted_cash', '', 'number')}${field('Note', 'note', '')}</div><button class="btn" style="margin-top:8px" data-who="${esc(who)}" onclick="closeDrawer(this.dataset.who,'${date}')">Close drawer</button></div>`}`);
 };
 window.closeDrawer = run(async (who, date) => { const b = readForm($('#drf')); if (!confirm('Close this drawer? Any over/short posts to the books.')) return; const r = await api('/api/drawer/close', { ...b, cashier: who, date, store_id: STORE || null }); toast('Closed — over/short ' + $$(r.over_short)); route(); });
 
@@ -287,3 +289,23 @@ VIEWS.home = async () => { await _home(); if (!['owner', 'manager', 'finance', '
 function netBanner() { let b = document.getElementById('offline'); if (navigator.onLine) { b && b.remove(); return; }
   if (!b) { b = document.createElement('div'); b.id = 'offline'; b.style.cssText = 'position:sticky;top:0;z-index:40;background:#a85a00;color:#fff;padding:8px 12px;text-align:center;font-weight:700'; b.textContent = 'Offline — showing the last data loaded. Changes won’t save until you’re back online.'; document.body.prepend(b); } }
 window.addEventListener('online', netBanner); window.addEventListener('offline', netBanner); window.addEventListener('DOMContentLoaded', netBanner);
+
+// ---------- CSV downloads: a button on every list, and all of them on Reports → Export ----------
+const CSV_LIST = [['inventory', 'Inventory', null], ['customers', 'Customers', ['sales', 'finance', 'collector', 'service', 'accounting']], ['leads', 'Leads', ['sales', 'finance']], ['appraisals', 'Appraisals', ['sales', 'finance']], ['deals', 'Deals', ['sales', 'finance', 'accounting']], ['accounts', 'In-house accounts', ['finance', 'collector', 'accounting']], ['payments', 'Payments', ['finance', 'collector', 'accounting']],
+  ['collections', 'Collections queue', ['finance', 'collector', 'accounting']], ['repair_orders', 'Repair orders', ['service', 'parts', 'accounting']], ['parts', 'Parts', ['service', 'parts', 'accounting']], ['warranty_claims', 'Warranty claims', ['service', 'accounting']],
+  ['bills', 'Bills', 'books'], ['vendors', 'Vendors', 'books'], ['bank_lines', 'Bank statement lines', 'books'], ['drawers', 'Cashier drawers', 'books'], ['time_clock', 'Time clock', 'books'],
+  ['trial_balance', 'Trial balance', 'books'], ['chart_of_accounts', 'Chart of accounts', 'books'], ['audit_log', 'Audit log', 'mgr']];
+const csvOk = need => !need || (Array.isArray(need) ? isMgr() || need.includes(ME.user.role) : need === 'books' ? ['owner', 'manager', 'accounting'].includes(ME.user.role) : need === 'mgr' ? isMgr() && !ME.user.store_id : true);
+const csvHref = name => `/api/csv/${name}${STORE ? '?store=' + STORE : ''}`;
+const PAGE_CSV = { inventory: 'inventory', customers: 'customers', leads: 'leads', appraisals: 'appraisals', deals: 'deals', accounts: 'accounts', collections: 'collections', service: 'repair_orders', parts: 'parts', warranty: 'warranty_claims' };
+for (const [page, name] of Object.entries(PAGE_CSV)) { const orig = VIEWS[page]; VIEWS[page] = async (id, extra) => { await orig(id, extra); if (id) return;
+  const a = document.createElement('a'); a.className = 'btn sec sm'; a.href = csvHref(name); a.textContent = '⬇ CSV'; a.title = 'Download this list as a spreadsheet file';
+  const bar = document.querySelector('#main .bar') || document.querySelector('#main .tabs'); if (bar) bar.appendChild(a); else document.querySelector('#main h1').after(a); }; }
+window.exportExtra = (prev => () => { const m = today().slice(0, 8) + '01';
+  return `<p>Your data is yours. Download any list as a spreadsheet (CSV opens in Excel, Numbers or Google Sheets), send the journal to QuickBooks, or take everything.</p>
+  <h3>Spreadsheets (CSV)</h3>${CSV_LIST.filter(x => csvOk(x[2])).map(([n, t]) => `<div class="kv"><span>${t}</span><b><a class="btn sec sm" href="${csvHref(n)}">⬇ Download</a></b></div>`).join('')}
+  ${['owner', 'manager', 'accounting'].includes(ME.user.role) ? `<h3>Accounting files</h3><div class="bar"><label class="l">From<input type="date" id="exf" value="${m}"></label><label class="l">To<input type="date" id="ext" value="${today()}"></label></div>
+  <div class="bar"><button class="btn sec" onclick="location.href='/api/export/journal.csv?from='+exf.value+'&to='+ext.value">Journal (CSV)</button><button class="btn sec" onclick="location.href='/api/csv/trial_balance?from='+exf.value+'&to='+ext.value">Trial balance (CSV)</button><button class="btn sec" onclick="location.href='/api/payroll.csv?from='+exf.value+'&to='+ext.value">Payroll (CSV)</button><button class="btn sec" onclick="location.href='/api/export/qb?from='+exf.value+'&to='+ext.value">QuickBooks (IIF)</button></div>
+  <p class="mut small">QuickBooks Desktop imports IIF files (File → Utilities → Import).</p>` : ''}
+  ${isMgr() || ME.user.role === 'accounting' ? `<h3>Everything</h3><div class="bar"><a class="btn" href="/api/export">All data (JSON backup)</a></div>` : ''}`; })(window.exportExtra);
+VIEWS.downloads = async () => { view(`<h1>Downloads</h1><div class="card">${exportExtra()}</div>`); };
