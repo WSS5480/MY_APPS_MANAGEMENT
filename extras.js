@@ -182,14 +182,27 @@ function privateRoutes(ctx) {
     res.json({ ok: true }); }));
 
   // ---- MarketCheck market price (used for appraisals and price-to-market) ----
+  const mcHost = k => /^mc_test_/.test(String(k)) ? 'https://api.sandbox.marketcheck.com' : 'https://api.marketcheck.com';
+  const mcError = (st, j) => { const m = String(j.message || j.error || '');
+    if (st === 401 || /invalid authentication|invalid api key/i.test(m)) return 'MarketCheck didn’t accept the key. In your MarketCheck account: (1) make sure a plan is picked — even Free needs to be subscribed, (2) copy the API Key, not the Client Secret, (3) if the key has an IP restriction, remove it. Then paste it again in Settings → Integrations.';
+    if (st === 403) return 'MarketCheck: this key isn’t allowed for market prices (' + (m || 'forbidden') + '). Check the key’s plan and endpoint restrictions in your MarketCheck account.';
+    if (st === 429) return 'MarketCheck: monthly call limit reached on your plan';
+    return 'MarketCheck: ' + (m || st); };
+  app.post('/api/integrations/test/marketcheck', W(async (req, res) => { if (!mgr(req.user)) return deny(res);
+    const s = (await secrets(ctx)).marketcheck || {}; if (!s.api_key) throw new Error('Paste the API key and tap Save first');
+    const k = String(s.api_key); const shape = `key is ${k.length} characters, ${/^mc_live_/.test(k) ? 'live (real data)' : /^mc_test_/.test(k) ? 'sandbox (sample data only)' : 'older style'}`;
+    const u = new URL(mcHost(k) + '/v2/search/car/active'); u.searchParams.set('api_key', k); u.searchParams.set('rows', '0'); u.searchParams.set('car_type', 'used');
+    const r = await fetch(u, { signal: AbortSignal.timeout(15000) }); const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(mcError(r.status, j) + ' (' + shape + ')');
+    res.json({ ok: true, msg: 'MarketCheck connected — ' + shape + (s.zip && s.dealer_type ? '' : '. Still need ZIP and dealer type.') }); }));
   async function marketPrice(vin, miles) {
     const s = (await secrets(ctx)).marketcheck || {}; if (!s.api_key) throw new Error('MarketCheck isn’t connected yet — add the key in Settings → Integrations');
     if (!s.zip || !['franchise', 'independent'].includes(s.dealer_type)) throw new Error('Add your ZIP and dealer type (franchise or independent) in Settings → Integrations → MarketCheck');
     if (!(num(miles) > 0)) throw new Error('Enter the miles first');
-    const u = new URL('https://api.marketcheck.com/v2/predict/car/us/marketcheck_price');
+    const u = new URL(mcHost(s.api_key) + '/v2/predict/car/us/marketcheck_price');
     for (const [k, v] of Object.entries({ api_key: s.api_key, vin, miles: String(Math.round(num(miles))), dealer_type: s.dealer_type, zip: s.zip })) u.searchParams.set(k, v);
     const r = await fetch(u, { signal: AbortSignal.timeout(15000) }); const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error('MarketCheck: ' + (j.message || r.status));
+    if (!r.ok) throw new Error(mcError(r.status, j));
     if (j.marketcheck_price == null) throw new Error('MarketCheck couldn’t price this exact VIN');
     return { price: num(j.marketcheck_price), msrp: num(j.msrp), raw: j };
   }
