@@ -37,6 +37,11 @@ Env vars: `DATABASE_URL`, `OWNER_PIN`, `SESSION_SECRET`, `API_TOKEN` (optional, 
 | 2026-11-06 | Independent reviewers check every phase before it ships | Steve: "Get our trusted reviewers to check once you're done" |
 
 ### Defaults Claude chose that Steve has not reviewed yet
+- 2026-11-06 — **Sales reps don't see vehicle cost**, floorplan details or recon cost; they see price. Reason: industry norm (protects front gross). Easy to change.
+- 2026-11-06 — **Who sees what:** loans/payments/collector notes → finance, collector, accounting; deals → sales, finance, accounting; leads/appraisals → sales, finance; repair orders/claims/parts → service, parts, accounting. Owner and managers see all. Reason: least access needed for each job.
+- 2026-11-06 — **One-store staff stay in their store:** no store picker, a one-store manager can only add/edit staff for that store and can't create managers. Nobody can change their own role, store or access.
+- 2026-11-06 — **With several stores, money entries need a store:** counter sales, manual journal entries, bank imports and bank reconciliation. Reason: each store has its own books and bank account.
+- 2026-11-06 — **Drawer count** shows only in-house cash payments as "expected cash"; other cash receipts are listed separately for reference.
 - Automatic late fees (store setting): one fee per missed installment, only for payments that go late after the setting is turned on.
 - FTC Buyers Guide: the app prints the fill-in details and points to the FTC's official forms (wording and layout are set by federal rule), rather than redrawing the form.
 - Website credit application collects no Social Security number until a credit-pull service is connected.

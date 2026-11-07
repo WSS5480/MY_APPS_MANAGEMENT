@@ -117,7 +117,7 @@ function publicRoutes(ctx) {
     if (!b.consent) throw new Error('Please agree to be contacted');
     const out = await ctx.tx(async c => {
       const veh = b.vehicle_id ? await ctx.getRec(c, b.vehicle_id) : null; const st0 = b.store_id ? await ctx.getRec(c, b.store_id) : null; const storeId = veh && veh.kind === 'vehicle' ? veh.store_id : (st0 && st0.kind === 'store' ? st0.id : null);
-      const custs = await ctx.list(c, 'customer'); let cu = custs.find(x => (phone && String(x.data.phone || '').replace(/[^\d+]/g, '') === phone) || (email && (x.data.email || '').toLowerCase() === email.toLowerCase()));
+      const custs = await ctx.list(c, 'customer'); let cu = custs.find(x => String(x.data.last || '').trim().toLowerCase() === last.toLowerCase() && last && ((phone && String(x.data.phone || '').replace(/[^\d+]/g, '') === phone) || (email && (x.data.email || '').toLowerCase() === email.toLowerCase())));
       const app2 = b.type === 'credit_app' ? { employer: String(b.employer || '').slice(0, 80), income: ctx.num(b.income), job_time: String(b.job_time || '').slice(0, 40), housing: String(b.housing || '').slice(0, 80), address: String(b.address || '').slice(0, 120), city: String(b.city || '').slice(0, 60), state: String(b.state || '').slice(0, 2), zip: String(b.zip || '').slice(0, 10), down: ctx.num(b.down) } : null;
       if (!cu) cu = await ctx.put(c, 'customer', null, { first, last, phone, email, sms_ok: !!b.consent, source: 'Website' }); // an existing customer is never changed from the public form; what they typed stays on the lead
       const owner = await assignLead(ctx, c, storeId);
@@ -244,7 +244,7 @@ function privateRoutes(ctx) {
   app.post('/api/late-fees/run', W(async (req, res) => { if (!mgr(req.user) && req.user.role !== 'finance') return deny(res); res.json({ assessed: await runLateFees(ctx) }); }));
 
   // ---- insurance alerts ----
-  app.get('/api/insurance-alerts', W(async (req, res) => { const soon = ctx.addDays(today(), 15);
+  app.get('/api/insurance-alerts', W(async (req, res) => { if (!['owner', 'manager', 'finance', 'collector', 'accounting'].includes(req.user.role)) return deny(res); const soon = ctx.addDays(today(), 15);
     const loans = (await list(pool, 'loan', `AND data->>'status'='active'`)).filter(l => mine(req.user, l));
     res.json(loans.map(l => ({ id: l.id, account: l.data.account, name: l.data.customer_label, vehicle: l.data.vehicle_label, company: l.data.cpi && l.data.cpi.company, expires: l.data.cpi && l.data.cpi.expires }))
       .filter(x => !x.expires || x.expires <= soon).sort((a, b) => String(a.expires || '').localeCompare(String(b.expires || '')))); }));
@@ -257,11 +257,11 @@ function privateRoutes(ctx) {
     const other = r2(rows.reduce((s, r) => s + r.n, 0));
     return { byMethod: by, payments: pays.length, otherCash: other, expectedCash: r2(by.cash || 0) };
   }
-  app.get('/api/drawer', W(async (req, res) => { const date = req.query.date || today(), who = mgr(req.user) && req.query.cashier ? req.query.cashier : req.user.name;
+  app.get('/api/drawer', W(async (req, res) => { if (!can(req.user, 'payment') && !can(req.user, 'ro') && !can(req.user, 'part')) return deny(res); const date = req.query.date || today(), who = mgr(req.user) && req.query.cashier ? req.query.cashier : req.user.name;
     const store = req.user.store_id || req.query.store || null; const exp = await drawerExpected(pool, who, date, store);
     const closed = (await list(pool, 'drawer')).find(d => d.data.date === date && d.data.cashier === who && String(d.store_id || '') === String(store || ''));
     res.json({ date, cashier: who, ...exp, closed: closed && closed.data }); }));
-  app.post('/api/drawer/close', W(async (req, res) => {
+  app.post('/api/drawer/close', W(async (req, res) => { if (!can(req.user, 'payment') && !can(req.user, 'ro') && !can(req.user, 'part')) return deny(res);
     const date = req.body.date || today(), who = mgr(req.user) && req.body.cashier ? req.body.cashier : req.user.name, store = req.user.store_id || req.body.store_id || null;
     if (req.body.counted_cash === '' || req.body.counted_cash == null) throw new Error('Enter the cash you counted');
     const out = await tx(async c => { await c.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, ['drawer|' + who + '|' + date]);
@@ -292,6 +292,7 @@ function privateRoutes(ctx) {
 
   // ---- bank reconciliation (cash account 1000) ----
   app.post('/api/bank/import', W(async (req, res) => { if (!books(req.user)) return deny(res);
+    if (!req.user.store_id && !req.body.store_id && (await list(pool, 'store')).length > 1) throw new Error('Pick the store this bank account belongs to (store picker at the top)');
     const rows = parseCsv(String(req.body.csv || '')); if (rows.length < 2) throw new Error('Paste the bank’s CSV export (with a header row)');
     const h = rows[0].map(x => x.trim().toLowerCase()); const col = (...n) => h.findIndex(x => n.some(y => x.includes(y)));
     const iD = col('date'), iDesc = col('description', 'memo', 'payee', 'name'), iAmt = col('amount'), iDr = col('debit', 'withdrawal'), iCr = col('credit', 'deposit');
@@ -308,6 +309,7 @@ function privateRoutes(ctx) {
       await put(c, 'bankline', store, { date, amount, desc, key, matched: [] }); added++; } });
     res.json({ added, skipped }); }));
   app.get('/api/bank/rec', W(async (req, res) => { if (!books(req.user)) return deny(res); const store = req.user.store_id || req.query.store || null;
+    if (!store && (await list(pool, 'store')).length > 1) return res.json({ pickStore: true });
     const bl = (await list(pool, 'bankline')).filter(b => !store || String(b.store_id || '') === String(store));
     const { rows } = await pool.query(`SELECT id,entry,date,memo,src,debit::float d,credit::float k,cleared_by FROM jrnl WHERE acct='1000' ${store ? 'AND store_id=$1' : ''} ORDER BY date, id`, store ? [store] : []);
     const book = r2(rows.reduce((s, r) => s + r.d - r.k, 0)); const unclearedBook = rows.filter(r => !r.cleared_by);
@@ -382,7 +384,7 @@ function privateRoutes(ctx) {
     if (String(u.id) === String(req.user.id)) throw new Error('Someone else has to set your own pay plan');
     if (req.user.store_id && Number(u.data.store_id) !== Number(req.user.store_id)) throw new Error('You can only set pay plans for your own store');
     const d = { user_id: u.id, name: u.data.name, hourly: num(b.hourly), salary: num(b.salary), per_unit: num(b.per_unit), pct_front: num(b.pct_front), pct_back: num(b.pct_back), per_flag_hour: num(b.per_flag_hour), min_per_unit: num(b.min_per_unit), notes: String(b.notes || '').slice(0, 300) };
-    const old = (await list(pool, 'payplan')).find(p => Number(p.data.user_id) === u.id);
+    const old = (await list(pool, 'payplan')).find(p => String(p.data.user_id) === String(u.id));
     const r = await put(pool, 'payplan', u.data.store_id || null, d, old && old.id); await audit(pool, req.user.name, 'payplan', 'user', u.id, JSON.stringify(d)); res.json(r); }));
   app.post('/api/clock', W(async (req, res) => { const act = req.body.action; if (!['in', 'out'].includes(act)) throw new Error('Clock in or out');
     if (req.user.id === 'owner' || req.user.id === 0) throw new Error('The owner login doesn’t use the time clock');
@@ -405,7 +407,7 @@ function privateRoutes(ctx) {
     const deals = (await list(pool, 'deal')).filter(d => d.data.status === 'delivered' && d.data.delivered >= from && d.data.delivered <= to);
     const ros = (await list(pool, 'ro')).filter(r => r.data.status === 'closed' && r.data.closed >= from && r.data.closed <= to);
     return users.map(u => { const p = plans[u.id] || {}; const name = u.data.name;
-      const hours = r2(clock.filter(t => Number(t.data.user_id) === u.id).reduce((s, t) => s + num(t.data.hours), 0));
+      const hours = r2(clock.filter(t => String(t.data.user_id) === String(u.id)).reduce((s, t) => s + num(t.data.hours), 0));
       const mineDeals = deals.filter(d => (d.data.salesperson || '').trim().toLowerCase() === name.trim().toLowerCase());
       const front = r2(mineDeals.reduce((s, d) => s + num(d.data.calc && d.data.calc.front), 0)), back = r2(mineDeals.reduce((s, d) => s + num(d.data.calc && d.data.calc.back), 0));
       const perDeal = mineDeals.map(d => Math.max(num(p.min_per_unit), num(p.per_unit) + num(d.data.calc && d.data.calc.front) * num(p.pct_front) / 100 + num(d.data.calc && d.data.calc.back) * num(p.pct_back) / 100));

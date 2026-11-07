@@ -3,7 +3,8 @@
 const express = require('express');
 const crypto = require('crypto');
 const path = require('path');
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
+types.setTypeParser(20, v => (v == null ? null : Number(v))); // record ids come back as numbers (all ids are far below 2^53)
 
 const PORT = process.env.PORT || 10000;
 const OWNER_PIN = String(process.env.OWNER_PIN || '');
@@ -12,10 +13,9 @@ const API_TOKEN = process.env.API_TOKEN || '';
 const SCHEMA = (process.env.DB_SCHEMA || 'dealer').replace(/[^a-z0-9_]/gi, '');
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: process.env.DATABASE_URL, options: `-c search_path=${(process.env.DB_SCHEMA || 'dealer').replace(/[^a-z0-9_]/gi, '')},public`,
   ssl: /render\.com/.test(process.env.DATABASE_URL || '') ? { rejectUnauthorized: false } : false,
 });
-pool.on('connect', c => c.query(`SET search_path TO ${SCHEMA}`));
 
 // ---------- helpers ----------
 const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
@@ -234,6 +234,15 @@ const WRITE = {
   parts: ['part', 'ro'],
   accounting: ['account', 'journal', 'payment', 'claim', 'vehicle', 'loan', 'lender', 'product'],
 };
+const READ_ROLES = {
+  loan: ['finance', 'collector', 'accounting'], payment: ['finance', 'collector', 'accounting'], cnote: ['finance', 'collector', 'accounting'],
+  deal: ['sales', 'finance', 'accounting'], lead: ['sales', 'finance'], appraisal: ['sales', 'finance'],
+  ro: ['service', 'parts', 'accounting'], claim: ['service', 'accounting'], appt: ['service'], part: ['service', 'parts', 'accounting'],
+  lender: ['finance', 'accounting', 'sales'], product: ['sales', 'finance', 'accounting'],
+};
+const canRead = (u, kind) => u && (['owner', 'manager'].includes(u.role) || !READ_ROLES[kind] || READ_ROLES[kind].includes(u.role));
+const COST_FIELDS = ['cost', 'posted_cost', 'posted_floor', 'posted_credit', 'floorplan_amount', 'floorplan_rate', 'floorplan_lender', 'recon', 'recon_removed', 'market', 'paid_with'];
+const forRole = (u, r) => { if (r && r.kind === 'vehicle' && u && u.role === 'sales') { const d = { ...r.data }; COST_FIELDS.forEach(f => delete d[f]); return { ...r, data: d }; } return r; }; // salespeople don't see what a unit cost
 const can = (u, kind) => u && (u.role === 'owner' || u.role === 'manager' || (WRITE[u.role] || []).includes(kind));
 const sign = v => v + '.' + crypto.createHmac('sha256', SECRET).update(v).digest('hex').slice(0, 40);
 function cookies(req) { const o = {}; (req.headers.cookie || '').split(';').forEach(x => { const i = x.indexOf('='); if (i > 0) o[x.slice(0, i).trim()] = decodeURIComponent(x.slice(i + 1).trim()); }); return o; }
@@ -380,15 +389,18 @@ app.get('/api/list/:kind', W(async (req, res) => {
   const k = req.params.kind; if (!READ_KINDS.has(k)) return res.status(404).json({ error: 'Unknown list' });
   if (k === 'user' && !['owner', 'manager'].includes(req.user.role)) return deny(res);
   if (['bill', 'vendor'].includes(k) && !['owner', 'manager', 'accounting'].includes(req.user.role)) return deny(res);
+  if (!canRead(req.user, k)) return deny(res);
   let rows = await list(pool, k);
   if (req.user.store_id && !['store', 'settings', 'account', 'product', 'lender', 'user', 'customer'].includes(k)) rows = rows.filter(r => !r.store_id || Number(r.store_id) === Number(req.user.store_id));
-  if (k === 'user') rows = rows.map(r => ({ ...r, data: { ...r.data, pin_hash: undefined, salt: undefined } }));
-  res.json(rows);
+  if (k === 'user') { rows = rows.map(r => ({ ...r, data: { ...r.data, pin_hash: undefined, salt: undefined } }));
+    if (req.user.store_id) rows = rows.filter(r => Number(r.data.store_id) === Number(req.user.store_id)); } // a one-store manager only sees that store's people
+  res.json(rows.map(r => forRole(req.user, r)));
 }));
 app.get('/api/rec/:id', W(async (req, res) => { const r = await getRec(pool, req.params.id);
   const BACK = { payplan: ['owner', 'manager', 'accounting'], timeclock: ['owner', 'manager', 'accounting'], drawer: ['owner', 'manager', 'accounting'], bankline: ['owner', 'manager', 'accounting'], bill: ['owner', 'manager', 'accounting'], vendor: ['owner', 'manager', 'accounting'] };
   if (r && (r.kind === 'secret' || (BACK[r.kind] && !BACK[r.kind].includes(req.user.role)))) return res.status(404).json({ error: 'Not found' });
-  if (!r || r.kind === 'user' || (req.user.store_id && r.store_id && r.kind !== 'store' && Number(r.store_id) !== Number(req.user.store_id))) return res.status(404).json({ error: 'Not found' }); res.json(r); }));
+  if (r && !canRead(req.user, r.kind)) return res.status(404).json({ error: 'Not found' });
+  if (!r || r.kind === 'user' || (req.user.store_id && r.store_id && r.kind !== 'store' && Number(r.store_id) !== Number(req.user.store_id))) return res.status(404).json({ error: 'Not found' }); res.json(forRole(req.user, r)); }));
 
 // generic save for the simple kinds
 var SAVE_KINDS = new Set(['store', 'user', 'customer', 'vehicle', 'lead', 'deal', 'ro', 'part', 'product', 'lender', 'account', 'appt', 'settings']);
@@ -396,11 +408,21 @@ app.post('/api/save/:kind', W(async (req, res) => {
   const k = req.params.kind, u = req.user; if (!SAVE_KINDS.has(k)) return res.status(404).json({ error: 'Unknown record type' });
   if (['store', 'settings', 'user'].includes(k) ? !['owner', 'manager'].includes(u.role) : !can(u, k)) return deny(res);
   if (k === 'store' && u.role !== 'owner') return deny(res, 'Only the owner can add or change stores');
-  const id = req.body.id ? Number(req.body.id) : null, store = req.body.store_id ? Number(req.body.store_id) : null;
+  const id = req.body.id ? Number(req.body.id) : null; let store = req.body.store_id ? Number(req.body.store_id) : null;
   let data = { ...(req.body.data || {}) };
   const out = await tx(async c => {
     const old = id ? await getRec(c, id) : null;
     if (id && (!old || old.kind !== k)) throw new Error('Record not found');
+    if (!store && old) store = old.store_id; // a save without a store keeps the record where it is
+    if (!store && !old && u.store_id && !['customer', 'user', 'product', 'lender', 'account', 'settings', 'store', 'vendor'].includes(k)) store = u.store_id;
+    if (!store && !old && ['vehicle', 'deal', 'ro', 'part', 'appt', 'appraisal', 'lead', 'bill'].includes(k) && (await list(c, 'store')).length > 1) throw new Error('Pick a store');
+    if (k === 'vehicle' && u.role === 'sales') { for (const f of COST_FIELDS) { if (old) data[f] = old.data[f]; else delete data[f]; } } // cost is set by managers / finance
+    if (k === 'user' && u.store_id) { // a one-store manager manages only that store's people, and can't widen anyone's access (their own included)
+      if (old && Number(old.data.store_id) !== Number(u.store_id)) throw new Error('Record not found');
+      data.store_id = Number(u.store_id); if (['owner', 'manager'].includes(data.role) && (!old || old.data.role !== data.role)) throw new Error('Only an all-stores manager can make managers');
+    }
+    if (k === 'user' && old && String(old.id) === String(u.id) && (data.role !== old.data.role || String(data.store_id || '') !== String(old.data.store_id || '') || data.active === false)) throw new Error('Someone else has to change your own role, store or access');
+    if (k === 'user' && old && old.data.role === 'manager' && !u.store_id && u.role === 'manager' && !old.data.store_id && String(old.id) !== String(u.id)) throw new Error('Only the owner can change another all-stores manager');
     if (u.store_id && !['customer', 'user', 'product', 'lender', 'account', 'settings', 'store'].includes(k)) {
       if (old && old.store_id && Number(old.store_id) !== Number(u.store_id)) throw new Error('Record not found');
       if (store && Number(store) !== Number(u.store_id)) throw new Error('You can only save records for your own store');
@@ -622,12 +644,12 @@ app.post('/api/vehicle/:id/wholesale', W(async (req, res) => {
 
 // ---------- loans / payments / collections ----------
 async function loanFull(c, loan) { const pays = await list(c, 'payment', `AND (data->>'loan_id')::bigint=$2`, [loan.id]); return { ...loan, status: loanStatus(loan, pays), payments: pays }; }
-app.get('/api/loans', W(async (req, res) => {
+app.get('/api/loans', W(async (req, res) => { if (!canRead(req.user, 'loan')) return deny(res);
   const loans = await list(pool, 'loan'); const pays = await list(pool, 'payment'); const by = {};
   for (const p of pays) (by[p.data.loan_id] = by[p.data.loan_id] || []).push(p);
   res.json(loans.filter(l => !req.user.store_id || Number(l.store_id) === Number(req.user.store_id)).map(l => ({ ...l, status: loanStatus(l, by[l.id] || []) })));
 }));
-app.get('/api/loan/:id', W(async (req, res) => {
+app.get('/api/loan/:id', W(async (req, res) => { if (!canRead(req.user, 'loan')) return deny(res);
   const l = await need(pool, req.params.id, 'loan', req.user);
   const full = await loanFull(pool, l); const notes = await list(pool, 'cnote', `AND (data->>'loan_id')::bigint=$2`, [l.id]);
   const sched = buildSchedule(l.data);
@@ -806,6 +828,7 @@ app.post('/api/part/:id/receive', W(async (req, res) => {
 app.post('/api/parts/counter', W(async (req, res) => {
   if (!can(req.user, 'part')) return deny(res);
   const out = await tx(async c => { let sale = 0, cost = 0; const lines = req.body.lines || [];
+    if (req.user.store_id) req.body.store_id = req.user.store_id; if (!req.body.store_id && (await list(c, 'store')).length > 1) throw new Error('Pick a store at the top first');
     if (!lines.length) throw new Error('Add parts');
     if (!(num(req.body.tax_rate) >= 0) || req.body.tax_rate === '' || req.body.tax_rate == null) throw new Error('Enter the tax rate (0 if none)');
     for (const l of lines) { const p = await need(c, l.part_id, 'part', req.user); if (!(num(l.qty) > 0)) throw new Error('Quantity must be more than 0'); sale = r2(sale + num(l.qty) * num(l.price != null ? l.price : p.data.price)); cost = r2(cost + num(l.qty) * num(p.data.cost)); p.data.qty = r2(num(p.data.qty) - num(l.qty)); await put(c, 'part', p.store_id, p.data, p.id); }
@@ -824,6 +847,7 @@ app.get('/api/journal', W(async (req, res) => {
 }));
 app.post('/api/journal', W(async (req, res) => {
   if (!can(req.user, 'journal')) return deny(res);
+  if (req.user.store_id) req.body.store_id = req.user.store_id; if (!req.body.store_id && (await list(pool, 'store')).length > 1) throw new Error('Pick a store at the top first');
   const lines = (req.body.lines || []).map(l => [String(l.acct), num(l.debit), num(l.credit)]);
   const accts = new Set((await list(pool, 'account')).map(a => a.data.no)); if (lines.some(l => !accts.has(l[0]))) throw new Error('Unknown account number');
   const e = await tx(c => post(c, { date: req.body.date || today(), store: req.body.store_id || null, memo: req.body.memo || 'Manual entry', src: 'manual', who: req.user.name, lines }));
@@ -874,9 +898,16 @@ app.get('/api/dashboard', W(async (req, res) => {
   const fixedGross = g('4400') + g('4410') + g('5400'), overhead = -(g('6000') + g('6900'));
   out.absorption = overhead > 0 ? r2(fixedGross / overhead * 100) : null; out.fixedGrossMtd = r2(fixedGross);
   if (!store) out.stores = stores.map(s => ({ id: s.id, name: s.data.name, ...calc(s.id) }));
+  const R = req.user.role, all = ['owner', 'manager'].includes(R);
+  const strip = (o, keys) => keys.forEach(k => delete o[k]);
+  const MONEY = ['frontMtd', 'backMtd', 'fiPerUnit', 'inventoryValue', 'fixedGrossMtd', 'absorption'];
+  const BHPH = ['receivable', 'accounts', 'late', 'delinquencyPct', 'pastDue', 'buckets', 'dueToday', 'cashToday', 'paymentsToday', 'collectedMtd'];
+  const SVC = ['openRos', 'rosMtd', 'claimsOpen'];
+  const scrub = o => { if (all || R === 'accounting') return o; if (!['finance'].includes(R)) strip(o, MONEY); if (!canRead(req.user, 'loan')) strip(o, BHPH); if (!canRead(req.user, 'ro')) strip(o, SVC); if (!canRead(req.user, 'lead')) strip(o, ['leadsOpen', 'followupsDue']); if (!canRead(req.user, 'deal')) strip(o, ['dealsMtd', 'pendingFunding']); return o; };
+  scrub(out); out.stores = (out.stores || []).map(scrub); if (!all && R !== 'accounting') delete out.absorption;
   res.json(out);
 }));
-app.get('/api/collections', W(async (req, res) => {
+app.get('/api/collections', W(async (req, res) => { if (!canRead(req.user, 'loan')) return deny(res);
   const loans = await list(pool, 'loan', `AND data->>'status'='active'`); const pays = await list(pool, 'payment'); const notes = await list(pool, 'cnote');
   const custs = {}; (await list(pool, 'customer')).forEach(c => custs[c.id] = c.data);
   const by = {}; pays.forEach(p => (by[p.data.loan_id] = by[p.data.loan_id] || []).push(p));
@@ -893,7 +924,7 @@ app.get('/api/collections', W(async (req, res) => {
   pays.filter(mine).filter(p => p.data.date >= since).forEach(p => { const k = p.data.cashier || '?'; const x = sc[k] = sc[k] || { who: k, contacts: 0, promises: 0, kept: 0 }; x.collected = r2(num(x.collected) + num(p.data.amount)); });
   res.json({ queue: q, scorecard: Object.values(sc) });
 }));
-app.get('/api/opportunities', W(async (req, res) => {
+app.get('/api/opportunities', W(async (req, res) => { if (!canRead(req.user, 'loan') || !canRead(req.user, 'ro')) return deny(res);
   const loans = await list(pool, 'loan', `AND data->>'status'='active'`); const pays = await list(pool, 'payment'); const by = {}; pays.forEach(p => (by[p.data.loan_id] = by[p.data.loan_id] || []).push(p));
   const custs = {}; (await list(pool, 'customer')).forEach(c => custs[c.id] = c.data);
   const mine = r => !req.user.store_id || Number(r.store_id) === Number(req.user.store_id);
@@ -903,7 +934,7 @@ app.get('/api/opportunities', W(async (req, res) => {
   const svc = ros.filter(mine).filter(r => num(r.data.year) && yr - num(r.data.year) >= 8 || num(r.data.miles) >= 120000).slice(0, 100).map(r => ({ ro: r.data.number, name: r.data.customer_label, phone: (custs[r.data.customer_id] || {}).phone, vehicle: r.data.vehicle_label, miles: r.data.miles, closed: r.data.closed }));
   res.json({ equity: eq, service: svc });
 }));
-app.get('/api/audit', W(async (req, res) => { if (!['owner', 'manager'].includes(req.user.role)) return deny(res); const { rows } = await pool.query(`SELECT * FROM audit ORDER BY id DESC LIMIT 500`); res.json(rows); }));
+app.get('/api/audit', W(async (req, res) => { if (!['owner', 'manager'].includes(req.user.role) || req.user.store_id) return deny(res, 'The audit log is for all-stores managers'); const { rows } = await pool.query(`SELECT * FROM audit ORDER BY id DESC LIMIT 500`); res.json(rows); }));
 app.get('/api/export', W(async (req, res) => {
   if (!['owner', 'manager', 'accounting'].includes(req.user.role) || req.user.store_id) return deny(res, 'Only an all-stores owner, manager or accountant can export everything');
   const recs = (await pool.query(`SELECT id,kind,store_id,data,created_at,updated_at FROM rec WHERE kind <> 'secret'`)).rows.map(r => r.kind === 'user' ? { ...r, data: { ...r.data, pin_hash: undefined, salt: undefined } } : r);

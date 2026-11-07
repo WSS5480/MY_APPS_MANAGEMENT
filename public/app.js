@@ -4,8 +4,8 @@ const $ = s => document.querySelector(s);
 const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const num = v => Number(v) || 0;
 const $$ = (n, d = 2) => (num(n) < 0 ? '-$' : '$') + Math.abs(num(n)).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
-const today = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
-const fmtD = d => d ? new Date(d.slice(0, 10) + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+const today = () => new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+const fmtD = d => { if (!d) return ''; const x = String(d).length > 10 ? new Date(d) : new Date(String(d).slice(0, 10) + 'T12:00:00'); return isNaN(x) ? '' : x.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); };
 let ME = null, S = { stores: [], settings: {} }, STORE = localStorage.getItem('dms_store') || '';
 const cache = {};
 
@@ -18,6 +18,10 @@ async function api(url, body, method) {
 }
 const L = async (kind, fresh) => { if (fresh || !cache[kind]) cache[kind] = await api('/api/list/' + kind); return cache[kind]; };
 const bust = (...k) => k.forEach(x => delete cache[x]);
+// choose('Question', [['value', 'Button label'], ...]) -> chosen value, or null if they back out
+function choose(title, options) { return new Promise(res => { const ov = document.createElement('div'); ov.style.cssText = 'position:fixed;inset:0;background:#0008;z-index:95;display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.innerHTML = `<div class="card" style="max-width:420px;width:100%"><p style="margin-top:0;font-weight:700">${esc(title)}</p><div style="display:flex;flex-direction:column;gap:8px">${options.map(([v, l], i) => `<button class="btn ${i ? 'sec' : ''}" data-v="${esc(v)}">${esc(l)}</button>`).join('')}<button class="btn sec" data-v="">Go back</button></div></div>`;
+  ov.addEventListener('click', e => { const b = e.target.closest('button'); if (!b && e.target !== ov) return; ov.remove(); res(b ? (b.dataset.v || null) : null); }); document.body.appendChild(ov); }); }
 function toast(msg, err) { const t = $('#toast'); t.textContent = msg; t.className = err ? 'err' : ''; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', err ? 5000 : 2500); }
 const run = fn => async (...a) => { try { return await fn(...a); } catch (e) { toast(e.message, true); } };
 const can = kind => ME && (['owner', 'manager'].includes(ME.user.role) || (ME.write[ME.user.role] || []).includes(kind));
@@ -76,7 +80,8 @@ async function boot() {
   $('#brand').innerHTML = `${esc(S.settings.dealer_name || 'Dealer System')}<small id="who">${esc(ME.user.name)} · ${esc(ME.user.role)}</small>`;
   const sp = $('#storePick');
   sp.innerHTML = (S.stores.length > 1 && !ME.user.store_id ? '<option value="">All stores</option>' : '') + S.stores.map(s => `<option value="${s.id}" ${String(s.id) === STORE ? 'selected' : ''}>${esc(storeName(s.id))}</option>`).join('');
-  sp.style.display = S.stores.length > 1 ? '' : 'none';
+  sp.style.display = S.stores.length > 1 && !ME.user.store_id ? '' : 'none';
+  window.addEventListener('hashchange', () => document.querySelectorAll('#formsov, .modal-ov').forEach(x => x.remove())); // overlays never linger on the next page
   sp.onchange = () => { STORE = sp.value; localStorage.setItem('dms_store', STORE); route(); };
   window.addEventListener('hashchange', route); route();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
@@ -84,7 +89,8 @@ async function boot() {
 async function logout() { await fetch('/logout', { method: 'POST' }); try { navigator.serviceWorker.controller && navigator.serviceWorker.controller.postMessage('signout'); await caches.delete('dms-data-v1'); } catch (e) {} location.href = '/login'; }
 function route() {
   const [page, id, extra] = (location.hash.slice(1) || 'home').split('/');
-  $('#nav').innerHTML = PAGES.filter(p => allowed(p[0])).map(p => `<a href="#${p[0]}" class="${p[0] === page ? 'on' : ''}">${p[1]}</a>`).join('');
+  const navPages = PAGES.filter(p => allowed(p[0]));
+  $('#nav').innerHTML = navPages.map(p => `<a href="#${p[0]}" class="${p[0] === page ? 'on' : ''}">${p[1]}</a>`).join('') + `<select class="navpick" onchange="location.hash=this.value" aria-label="Go to">${navPages.map(p => `<option value="${p[0]}" ${p[0] === page ? 'selected' : ''}>${p[1]}</option>`).join('')}</select>`;
   const fn = VIEWS[page]; if (!fn || !allowed(page)) { location.hash = 'home'; return; }
   window.scrollTo(0, 0); $('#main').innerHTML = '<p class="mut">Loading…</p>';
   run(fn)(id, extra);
@@ -157,15 +163,19 @@ async function vehicleForm(id) {
   </div>${typeof vehExtra === 'function' ? vehExtra(d) : ''}
   <h3>Reconditioning</h3><div id="recon">${(d.recon || []).map((x, i) => reconRow(x, i)).join('')}</div>
   <button class="btn sec sm" type="button" onclick="addRecon()">+ Add recon item</button>
-  <div class="kv" style="margin-top:8px"><span>Total cost with recon</span><b>${$$(totalCost)}</b></div><div class="kv"><span>Potential front gross</span><b>${$$(num(d.price) - totalCost)}</b></div>
+  ${ME.user.role === 'sales' ? '' : `<div class="kv" style="margin-top:8px"><span>Total cost with recon</span><b id="vtc">${$$(totalCost)}</b></div><div class="kv"><span>Potential front gross</span><b id="vpg">${$$(num(d.price) - totalCost)}</b></div>`}
   <h3>Photos</h3><div class="photos" id="photos">${(d.photos || []).map((p, i) => `<img src="${esc(p)}" onclick="if(confirm('Remove photo?')){VP.splice(${i},1);drawPhotos()}">`).join('')}</div>
   <input type="file" accept="image/*" multiple capture="environment" onchange="addPhotos(this.files)" style="margin-top:6px">
   </div>
-  <div class="sticky">${can('vehicle') ? `<button class="btn" onclick="saveVehicle(${id === 'new' ? 'null' : id})">Save</button>` : ''}${id !== 'new' && isMgr() ? `<button class="btn sec" onclick="delRec(${id},'inventory')">Delete</button>` : ''}
+  <div class="sticky">${can('vehicle') ? `<button class="btn" onclick="saveVehicle(${id === 'new' ? 'null' : id})">Save</button>` : ''}${id !== 'new' && isMgr() && !num(d.posted_cost) && !(d.recon || []).some(x => num(x.posted_amount)) ? `<button class="btn sec" onclick="delRec(${id},'inventory')">Delete</button>` : ''}
   ${id !== 'new' && d.status === 'in_stock' && can('deal') ? `<a class="btn ok" href="#deals/new/${id}">Start a deal</a>` : ''}
   ${typeof vehButtons === 'function' ? vehButtons(id, d) : ''}${id !== 'new' && ['in_stock', 'hold', 'in_transit'].includes(d.status) && ['owner', 'manager', 'accounting'].includes(ME.user.role) ? `<button class="btn sec" onclick="wholesale(${id})">Wholesale</button>` : ''}</div>
   <div class="print-only" id="tag"></div>`);
   window.VP = [...(d.photos || [])]; window.VD = d;
+  $('#vf').addEventListener('input', () => { const t = $('#vtc'); if (!t) return; const cost = num(document.querySelector('#vf [data-f=cost]')?.value) + [...document.querySelectorAll('#recon [data-f=cost]')].reduce((s, e) => s + num(e.value), 0);
+    t.textContent = $$(cost); $('#vpg').textContent = $$(num(document.querySelector('#vf [data-f=price]').value) - cost); });
+  if (ME.user.role === 'sales') $('#vf').querySelectorAll('[data-f=cost],[data-f=paid_with],[data-f=floorplan_lender],[data-f=floorplan_amount],[data-f=floorplan_rate]').forEach(e => e.closest('label').remove());
+  if (ME.user.role === 'sales') { const r = $('#recon'); r.previousElementSibling.remove(); r.nextElementSibling.remove(); r.remove(); }
 }
 const reconRow = (x, i) => `<div class="sub f" data-sub data-recon="${i}" data-rid="${esc(x.id || '')}">${field('Item', 'item', x.item)}${field('Vendor', 'vendor', x.vendor)}${field('Cost', 'cost', x.cost, 'number')}${field('Date', 'date', x.date || today(), 'date')}
   <div style="align-self:end;display:flex;gap:6px;flex-wrap:wrap">${num(x.posted_amount) ? '<span class="chip ok">On the books</span>' : ''}${x.from_ro ? '<span class="chip">From service RO</span>' : `<button type="button" class="btn sec sm" onclick="if(confirm('Remove this recon line? Anything already posted is reversed when you save.'))this.closest('[data-recon]').remove()">Remove</button>`}</div></div>`;
@@ -179,7 +189,7 @@ window.addPhotos = async files => {
   drawPhotos();
 };
 window.decodeVin = run(async () => {
-  const vin = document.querySelector('[data-f=vin]').value.trim(); const x = await api('/api/vin/' + encodeURIComponent(vin));
+  const vin = document.querySelector('[data-f=vin]').value.trim(); const x = await api('/api/vin/' + encodeURIComponent(vin)).catch(e => { throw new Error(/fetch|network|abort/i.test(e.message) ? 'Couldn’t reach the federal VIN service — check the connection and try again' : e.message); });
   for (const k of ['year', 'make', 'model', 'trim', 'body', 'engine', 'drive']) { const el = document.querySelector(`#vf [data-f=${k}]`); if (el && x[k] && !el.value) el.value = x[k]; }
   document.querySelector('[data-f=vin]').value = x.vin; toast(x.make ? 'Decoded: ' + [x.year, x.make, x.model].join(' ') : 'VIN not found in the federal database', !x.make);
 });
@@ -207,7 +217,7 @@ async function customerForm(id, back) {
   const c = id === 'new' ? { data: {} } : await api('/api/rec/' + id), d = c.data;
   let hist = '';
   if (id !== 'new') {
-    const [deals, loans, ros] = await Promise.all([L('deal', true), api('/api/loans'), L('ro', true)]);
+    const [deals, loans, ros] = await Promise.all([L('deal', true).catch(() => []), api('/api/loans').catch(() => []), L('ro', true).catch(() => [])]);
     const mine = x => String(x.data.customer_id) === String(id);
     hist = `<h2>History</h2><div class="grid">${deals.filter(mine).map(x => `<a class="item" href="#deals/${x.id}"><div class="t">Deal ${esc(x.data.number)}</div><div class="s">${esc(x.data.type)} · ${esc(x.data.status)}</div></a>`).join('')}
     ${loans.filter(mine).map(x => `<a class="item" href="#accounts/${x.id}"><div class="t">Account ${esc(x.data.account)}</div><div class="s">${esc(x.data.status)} · balance ${$$(x.status.balance)}</div></a>`).join('')}
@@ -348,7 +358,7 @@ window.dealCalc = run(async () => {
   <div style="height:8px"></div>${kv('Front gross', $$(k.front))}${kv('Back gross (F&I, doc, reserve)', $$(k.back))}${kv('Total gross', $$(k.gross), 1)}`;
   const d = data || DD; if (d.type === 'cash' || !k.financed || !d.frequency || !(d.apr !== '' && d.apr != null)) { $('#grid').innerHTML = `<p class="mut small">${d.type === 'cash' ? 'Cash deal.' : 'Enter APR and payment schedule to see options.'}</p>`; return; }
   const downs = [0, 500, 1000, 2000].map(x => x + num(d.down)), terms = d.frequency === 'monthly' ? [24, 36, 48] : d.frequency === 'weekly' ? [104, 156, 208] : [52, 78, 104];
-  $('#grid').innerHTML = `<table class="tbl"><tr><th>Down</th>${terms.map(t => `<th class="n">${t} pmts</th>`).join('')}</tr>${downs.map(dn => `<tr><td>${$$(dn, 0)}</td>${terms.map(t => `<td class="n">${$$(pmtC(k.financed + num(d.down) - dn, d.apr, t, d.frequency))}</td>`).join('')}</tr>`).join('')}</table><p class="mut small">${esc(d.frequency)} payments at ${esc(d.apr)}% APR</p>`;
+  $('#grid').innerHTML = `<table class="tbl"><tr><th class="n">Down</th>${terms.map(t => `<th class="n">${t} pmts</th>`).join('')}</tr>${downs.map(dn => `<tr><td class="n">${$$(dn, 0)}</td>${terms.map(t => `<td class="n">${$$(pmtC(k.financed + num(d.down) - dn, d.apr, t, d.frequency))}</td>`).join('')}</tr>`).join('')}</table><p class="mut small">${esc(d.frequency)} payments at ${esc(d.apr)}% APR</p>`;
 });
 window.saveDeal = run(async id => {
   const data = readDeal(); const v = (await L('vehicle')).find(x => String(x.id) === String(data.vehicle_id)); data.vehicle_label = v ? vehLabel(v) : '';
@@ -441,7 +451,7 @@ VIEWS.collections = async () => {
   const cnt = k => c.queue.filter(inStore).filter(x => x.bucket === k).length;
   view(`<h1>Collections</h1><div class="tabs">${[['all', 'All (' + c.queue.filter(inStore).length + ')'], ['today', 'Due today'], ['1-15', '1–15 days (' + cnt('1-15') + ')'], ['16-30', '16–30 (' + cnt('16-30') + ')'], ['31-60', '31–60 (' + cnt('31-60') + ')'], ['60+', '60+ (' + cnt('60+') + ')'], ['promise', 'Promises']].map(([k, t]) => `<a class="${k === b ? 'on' : ''}" onclick="sessionStorage.cb='${k}';route()">${t}</a>`).join('')}</div>
   <div class="grid">${q.map(x => { const msg = fillTpl(S.settings.sms_reminder, { first: (x.name || '').split(' ')[0], dealer: S.settings.dealer_name, amount: $$(x.pastDue || x.payment), due: fmtD(x.nextDue), paylink: location.origin + '/pay', phone: S.settings.phone });
-    return `<div class="card"><div class="row"><a href="#accounts/${x.id}" class="t" style="font-weight:800;color:inherit">${esc(x.name)}</a><span class="chip ${x.daysLate > 30 ? 'bad' : x.daysLate ? 'warn' : 'acc'}">${x.daysLate ? x.daysLate + ' days' : 'Due today'}</span></div>
+    return `<div class="card"><div class="row"><a href="#accounts/${x.id}" class="t" style="font-weight:800;color:inherit">${esc(x.name)}</a><span class="chip ${x.daysLate > 30 ? 'bad' : x.daysLate ? 'warn' : 'acc'}">${x.daysLate ? x.daysLate + ' days' : x.nextDue === today() ? 'Due today' : 'Promise due'}</span></div>
     <div class="s mut small">#${esc(x.account)} · ${esc(x.vehicle)} ${x.gps ? '· GPS' : ''}</div>
     <div class="kv"><span>Past due</span><b>${$$(x.pastDue)}</b></div><div class="kv"><span>Balance</span><b>${$$(x.balance)}</b></div>
     ${x.promise ? `<div class="kv"><span>Promise</span><b>${$$(x.promise.amount)} by ${fmtD(x.promise.date)}</b></div>` : ''}
@@ -533,8 +543,9 @@ window.saveRo = run(async (id, quiet) => { const data = readRo(); const st = dat
   const r = await api('/api/save/ro', { id, store_id: st || RSTORE || STORE || (S.stores[0] && S.stores[0].id), data }); bust('ro'); if (!quiet) { toast('Saved'); go('service/' + r.id); } return r; });
 window.sendApproval = run(async id => { await saveRo(id, true); const r = await api(`/api/ro/${id}/link`, {}); const c = (cache.customer || []).find(x => String(x.id) === String(RD.customer_id));
   const msg = `${S.settings.dealer_name || 'Service'}: your vehicle inspection is ready. Review and approve recommended work here: ${r.url}`;
-  if (c && c.data.phone) location.href = smsLink(c.data.phone, msg); else { await navigator.clipboard.writeText(r.url).catch(() => {}); prompt('Approval link (copied):', r.url); } });
-window.closeRo = run(async id => { await saveRo(id, true); const paid = confirm('Close this RO.\n\nOK = customer paid now\nCancel = charge to their account (pay later)');
+  const ch = await choose('Approval link is ready', [...(c && c.data.phone ? [['text', 'Text it to ' + (c.data.first || 'the customer')]] : []), ['copy', 'Copy the link'], ['open', 'Open it here']]);
+  if (ch === 'text') location.href = smsLink(c.data.phone, msg); else if (ch === 'copy') navigator.clipboard.writeText(r.url).then(() => toast('Link copied'), () => prompt('Copy this link:', r.url)); else if (ch === 'open') window.open(r.url, '_blank'); });
+window.closeRo = run(async id => { await saveRo(id, true); const ch = await choose('Close this repair order and post it?', [['paid', 'Customer paid now'], ['account', 'Charge to their account (pay later)']]); if (!ch) return; const paid = ch === 'paid';
   await api(`/api/ro/${id}/close`, { paid }); bust('ro', 'part', 'claim'); toast('RO closed and posted'); go('service/' + id); });
 window.collectRo = run(async id => { await api(`/api/ro/${id}/collect`, {}); bust('ro'); toast('Marked paid'); go('service/' + id); });
 window.printRo = () => { const d = RD.status === 'closed' ? RD : readRo(), t = window.RT || {}; const pn = id => (RPARTS.find(p => String(p.id) === String(id)) || { data: {} }).data;
@@ -571,7 +582,7 @@ window.savePart = run(async id => { const data = readForm($('#pf'), PD); delete 
   const r = await api('/api/save/part', { id, store_id: st || STORE || (S.stores[0] && S.stores[0].id), data }); bust('part'); toast('Saved'); go('parts/' + r.id); });
 window.receive = run(async (id, sign) => {
   if (sign > 0) { const q = prompt('Quantity received'); if (!q) return; const c = prompt('Cost each'); if (c === null || c === '') return; await api(`/api/part/${id}/receive`, { qty: num(q), cost: num(c) }); }
-  else { const q = prompt('Count adjustment: how many to add (+) or remove (−)? Posted at average cost.'); if (!q) return; await api(`/api/part/${id}/receive`, { qty: num(q), mode: 'adjust' }); }
+  else { const q = prompt('Count adjustment: how many to add (e.g. 2) or remove (e.g. -2)? Posted at average cost.'); if (!q) return; await api(`/api/part/${id}/receive`, { qty: num(String(q).replace(/[−–—]/g, '-')), mode: 'adjust' }); }
   bust('part'); toast('Updated'); go('parts/' + id); });
 async function counterTicket() {
   const ps = await L('part', true); window.RPARTS = ps; const st = curStore();
@@ -587,7 +598,7 @@ VIEWS.warranty = async () => {
   const cl = (await L('claim', true)).filter(inStore); const st = sessionStorage.wf || 'open';
   const show = cl.filter(c => st === 'open' ? ['to_submit', 'submitted'].includes(c.data.status) : st === 'all' || c.data.status === st);
   const sum = s => cl.filter(c => c.data.status === s).reduce((a, c) => a + num(c.data.amount), 0);
-  view(`<h1>Warranty claims</h1><div class="tiles"><div class="tile"><span>To submit</span><b>${$$(sum('to_submit'), 0)}</b></div><div class="tile"><span>Submitted, waiting</span><b>${$$(sum('submitted'), 0)}</b></div><div class="tile"><span>Chargebacks (all time)</span><b>${$$(cl.reduce((a, c) => a + num(c.data.chargeback), 0), 0)}</b></div></div>
+  view(`<h1>Warranty claims</h1><div class="tiles"><div class="tile"><span>To submit</span><b>${$$(sum('to_submit'), 0)}</b></div><div class="tile"><span>Submitted, waiting</span><b>${$$(sum('submitted'), 0)}</b></div><div class="tile"><span>Chargebacks (all time)</span><b>${$$(cl.reduce((a, c) => a + Math.max(0, num(c.data.chargeback)), 0), 0)}</b></div></div>
   <div class="bar"><select onchange="sessionStorage.wf=this.value;route()">${[['open', 'Open'], ['to_submit', 'To submit'], ['submitted', 'Submitted'], ['paid', 'Paid'], ['rejected', 'Rejected'], ['all', 'All']].map(([v, t]) => `<option value="${v}" ${v === st ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
   <div class="grid">${show.map(c => { const d = c.data; return `<div class="card"><div class="row"><b>${esc(d.ro)} · ${esc(d.oem || 'OEM')}</b><span class="chip ${d.status === 'paid' ? 'ok' : d.status === 'rejected' ? 'bad' : 'warn'}">${esc(d.status.replace('_', ' '))}</span></div>
   <div class="small mut">${esc(d.line || '')} · ${esc(d.op || '')} · VIN ${esc(d.vin || '')}</div><div class="kv"><span>Claim amount</span><b>${$$(d.amount)}</b></div>${d.claim_no ? `<div class="kv"><span>Claim #</span><b>${esc(d.claim_no)}</b></div>` : ''}${d.paid_amount != null ? `<div class="kv"><span>Paid / chargeback</span><b>${$$(d.paid_amount)} / ${$$(d.chargeback)}</b></div>` : ''}
@@ -651,7 +662,7 @@ VIEWS.reports = async () => {
   if (tab === 'opp') { const o = await api('/api/opportunities');
     R.innerHTML = `<h3>In-house customers in good standing, more than half paid</h3>${o.equity.map(x => `<div class="kv"><span><a href="#accounts/${x.loan_id}">${esc(x.name)}</a> · ${esc(x.vehicle)} ${x.phone ? `· <a href="${telLink(x.phone)}">${esc(x.phone)}</a>` : ''}</span><b>${x.paidPct}% paid · payoff ${$$(x.payoff, 0)}</b></div>`).join('') || '<p class="mut small">None yet.</p>'}
     <h3>Service customers with older or high-mile vehicles</h3>${o.service.map(x => `<div class="kv"><span>${esc(x.name)} · ${esc(x.vehicle)} ${x.phone ? `· <a href="${telLink(x.phone)}">${esc(x.phone)}</a>` : ''}</span><b>${num(x.miles).toLocaleString()} mi · ${esc(x.ro)}</b></div>`).join('') || '<p class="mut small">None yet.</p>'}`; }
-  if (tab === 'audit') { if (!isMgr()) { R.innerHTML = '<p class="mut">Managers only.</p>'; return; } const a = await api('/api/audit');
+  if (tab === 'audit') { if (!isMgr() || ME.user.store_id) { R.innerHTML = '<p class="mut">Managers only.</p>'; return; } const a = await api('/api/audit');
     R.innerHTML = a.map(x => `<div class="kv"><span>${new Date(x.at).toLocaleString()} · ${esc(x.who)}</span><b style="font-weight:500">${esc(x.action)} ${esc(x.kind || '')} ${x.ref || ''}</b></div>`).join(''); }
   if (tab === 'export' && typeof exportExtra === 'function') { R.innerHTML = exportExtra(); return; }
   if (tab === 'export') R.innerHTML = `<p>Your data is yours. Download everything — every record and every journal line — as one file you can keep, load into another system or hand to your accountant.</p><a class="btn" href="/api/export">Download all data (JSON)</a>`;
@@ -667,7 +678,7 @@ VIEWS.settings = async () => {
     P.innerHTML = `<div class="f" id="setf">${field('Dealer / group name', 'dealer_name', s.data.dealer_name)}${field('Main phone', 'phone', s.data.phone, 'tel')}${field('Owner mobile (for sign-in code)', 'owner_phone', s.data.owner_phone, 'tel')}${field('Online payment link (from your processor)', 'pay_link', s.data.pay_link, 'url', { wide: true })}
     ${field('Payment reminder text', 'sms_reminder', s.data.sms_reminder, 'textarea', { wide: true })}${field('Lead auto-reply text', 'lead_reply', s.data.lead_reply, 'textarea', { wide: true })}</div>
     <p class="mut small">Text fill-ins: {first} {dealer} {amount} {due} {paylink} {phone} {vehicle}. Customers check their balance at <b>${location.origin}/pay</b> with their account # and last name.</p><button class="btn" onclick="saveSet()">Save</button>`; }
-  if (tab === 'stores') { const ss = await L('store', true);
+  if (tab === 'stores') { const ss = (await L('store', true)).filter(s => !ME.user.store_id || String(s.id) === String(ME.user.store_id));
     P.innerHTML = ss.map(s => storeBox(s)).join('') + (ME.user.role === 'owner' ? `<button class="btn sec" onclick="$('#sp').insertAdjacentHTML('beforeend',storeBox({data:{}}))">+ Add store</button>` : ''); }
   if (tab === 'users') { const us = await L('user', true);
     P.innerHTML = `<p class="mut small">Each person signs in with their own PIN. The owner PIN set on the server always works.</p>${us.map(u => userBox(u)).join('')}<button class="btn sec" onclick="$('#sp').insertAdjacentHTML('beforeend',userBox({data:{role:'sales',active:true}}))">+ Add user</button>`; }
@@ -684,8 +695,8 @@ window.storeBox = s => `<div class="sub" data-store="${s.id || ''}"><div class="
   ${field('Sales tax %', 'tax_rate', s.data.tax_rate, 'number')}${field('Doc fee', 'doc_fee', s.data.doc_fee, 'number')}${field('Late fee', 'late_fee', s.data.late_fee, 'number')}${field('Grace days', 'grace_days', s.data.grace_days, 'number')}${field('Shop labor rate', 'labor_rate', s.data.labor_rate, 'number')}
 ${typeof storeExtra === 'function' ? storeExtra(s) : ''}  ${field('Trade-in reduces taxable price?', 'trade_tax_credit', s.data.trade_tax_credit === true ? 'yes' : s.data.trade_tax_credit === false ? 'no' : '', 'select', { options: [['', '— pick —'], ['yes', 'Yes'], ['no', 'No']] })}
   ${field('In-house payment order', 'pay_order', s.data.pay_order, 'select', { options: [['', '— pick —'], ['fees_first', 'Fees, then interest, then principal'], ['fees_last', 'Interest, then principal, then fees']] })}</div>${ME.user.role === 'owner' ? `<button class="btn sm" style="margin-top:8px" onclick="saveBox(this,'store')">Save store</button>` : ''}</div>`;
-window.userBox = u => `<div class="sub" data-uid="${u.id || ''}"><div class="f">${field('Name', 'name', u.data.name)}${field('Role', 'role', u.data.role, 'select', { options: ME.roles.filter(r => r !== 'owner' || ME.user.role === 'owner') })}${field(u.id ? 'New PIN (leave blank to keep)' : 'PIN (4–8 digits)', 'pin', '', 'password', { attrs: 'inputmode="numeric" autocomplete="new-password"' })}
-  ${field('Mobile (for sign-in code)', 'phone', u.data.phone, 'tel')}${field('Limit to store', 'store_id', u.data.store_id, 'select', { options: [['', 'All stores'], ...S.stores.map(s => [s.id, s.data.name || 'Unnamed store'])] })}${field('Active', 'active', u.data.active !== false, 'check')}</div><button class="btn sm" style="margin-top:8px" onclick="saveBox(this,'user')">Save user</button></div>`;
+window.userBox = u => `<div class="sub" data-uid="${u.id || ''}"><div class="f">${field('Name', 'name', u.data.name)}${field('Role', 'role', u.data.role, 'select', { options: ME.roles.filter(r => (r !== 'owner' || ME.user.role === 'owner') && (!ME.user.store_id || !['owner', 'manager'].includes(r))) })}${field(u.id ? 'New PIN (leave blank to keep)' : 'PIN (4–8 digits)', 'pin', '', 'password', { attrs: 'inputmode="numeric" autocomplete="new-password"' })}
+  ${field('Mobile (for sign-in code)', 'phone', u.data.phone, 'tel')}${ME.user.store_id ? '' : field('Limit to store', 'store_id', u.data.store_id, 'select', { options: [['', 'All stores'], ...S.stores.map(s => [s.id, s.data.name || 'Unnamed store'])] })}${field('Active', 'active', u.data.active !== false, 'check')}</div><button class="btn sm" style="margin-top:8px" onclick="saveBox(this,'user')">Save user</button></div>`;
 window.prodBox = p => `<div class="sub" data-pid="${p.id || ''}"><div class="f">${field('Product', 'name', p.data.name)}${field('Provider', 'provider', p.data.provider)}${field('Term / coverage', 'term', p.data.term)}${field('Price to customer', 'price', p.data.price, 'number')}${field('Dealer cost', 'cost', p.data.cost, 'number')}${field('Menu description', 'description', p.data.description, 'text', { wide: true })}</div><button class="btn sm" style="margin-top:8px" onclick="saveBox(this,'product')">Save product</button></div>`;
 window.lenderBox = l => `<div class="sub" data-lid="${l.id || ''}"><div class="f">${field('Lender', 'name', l.data.name)}${field('Contact / rep', 'contact', l.data.contact)}${field('Phone', 'phone', l.data.phone)}${field('Typical buy rate %', 'buy_rate', l.data.buy_rate, 'number')}${field('Max reserve %', 'reserve', l.data.reserve, 'number')}${field('Floorplan lender', 'floorplan', l.data.floorplan, 'check')}${field('Notes (stips, programs)', 'notes', l.data.notes, 'text', { wide: true })}</div><button class="btn sm" style="margin-top:8px" onclick="saveBox(this,'lender')">Save lender</button></div>`;
 window.saveBox = run(async (btn, kind) => { const box = btn.closest('.sub'); const id = box.dataset.store || box.dataset.uid || box.dataset.pid || box.dataset.lid || null; const old = (cache[kind] || []).find(x => String(x.id) === String(id));

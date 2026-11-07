@@ -1,5 +1,5 @@
 // Dealer System service worker: installable app; when offline, shows the last data that was loaded (read-only).
-const CACHE = 'dms-shell-v3', DATA = 'dms-data-v1';
+const CACHE = 'dms-shell-v4', DATA = 'dms-data-v1';
 const SHELL = ['/icons/icon-192.png', '/icons/icon-512.png', '/offline.html'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE && k !== DATA).map(k => caches.delete(k)))).then(() => self.clients.claim())); });

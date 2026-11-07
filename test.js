@@ -130,7 +130,7 @@ async function books() { const tb = await api('/api/trial'); const d = tb.reduce
   await api('/api/claim/' + claims[0].id, { status: 'submitted', claim_no: 'H123' }); await api('/api/claim/' + claims[0].id, { status: 'paid', paid_amount: 90 });
   B = await books(); ok(near(B.bal('1210'), 0) && near(B.bal('6300'), 10), 'claim paid, 10 chargeback');
   await api(`/api/ro/${ro.id}/collect`, {}); B = await books(); ok(near(B.bal('1220'), 0), 'service A/R collected');
-  await api('/api/parts/counter', { lines: [{ part_id: part.id, qty: 2 }], tax_rate: 8.25 }); B = await books(); ok(B.balanced && near(B.bal('1400'), 68), 'counter sale posted');
+  await api('/api/parts/counter', { store_id: store.id, lines: [{ part_id: part.id, qty: 2 }], tax_rate: 8.25 }); B = await books(); ok(B.balanced && near(B.bal('1400'), 68), 'counter sale posted');
 
   // repo flow on the BHPH account
   await api(`/api/loan/${L.id}/repo`, { step: 'assigned', agent: 'RGV Recovery', cost: 0 });
@@ -141,8 +141,8 @@ async function books() { const tb = await api('/api/trial'); const d = tb.reduce
   B = await books(); ok(B.balanced && near(B.bal('1200'), 0) && near(B.bal('1310'), 0), 'note and repo inventory cleared');
 
   // manual entry, dashboard, export, permissions
-  await expectErr(() => api('/api/journal', { memo: 'bad', lines: [{ acct: '1000', debit: 10 }, { acct: '3000', credit: 9 }] }), 'unbalanced manual entry refused');
-  await api('/api/journal', { memo: 'Rent', lines: [{ acct: '6900', debit: 2500 }, { acct: '1000', credit: 2500 }] });
+  await expectErr(() => api('/api/journal', { store_id: store.id, memo: 'bad', lines: [{ acct: '1000', debit: 10 }, { acct: '3000', credit: 9 }] }), 'unbalanced manual entry refused');
+  await api('/api/journal', { store_id: store.id, memo: 'Rent', lines: [{ acct: '6900', debit: 2500 }, { acct: '1000', credit: 2500 }] });
   const dash = await api('/api/dashboard'); ok(dash.stores.length === 2 && dash.dealsMtd >= 0, 'dashboard with per-store rollup; absorption ' + dash.absorption);
   const ex = await api('/api/export'); ok(ex.records.length > 10 && ex.journal.length > 10 && !ex.records.some(r => r.data.pin_hash), 'export has data, no PIN hashes');
   await expectErr(() => api('/api/delete/' + L.id, {}), 'loans cannot be deleted');
@@ -270,14 +270,15 @@ async function books() { const tb = await api('/api/trial'); const d = tb.reduce
   await expectErr(() => api('/api/save/bill', { id: bill.id, store_id: store.id, data: { ...bill.data, lines: [] } }), 'P posted bill locked');
   await api(`/api/bill/${bill.id}/pay`, { amount: 250 }); ok(near((await books()).bal('2000'), ap0), 'P bill paid');
   // bank reconciliation
-  const rec0 = await api('/api/bank/rec'); const one = rec0.bookUncleared.find(x => x.amount > 0);
+  ok((await api('/api/bank/rec')).pickStore === true, 'S bank rec asks for a store when there are several');
+  const rec0 = await api('/api/bank/rec?store=' + store.id); const one = rec0.bookUncleared.find(x => x.amount > 0);
   const csvTxt = `Date,Description,Amount\n${one.date},Deposit,${one.amount}\n${one.date},Bank fee,-12.50\n`;
-  const imp = await api('/api/bank/import', { csv: csvTxt }); ok(imp.added === 2, 'P bank statement imported');
-  ok((await api('/api/bank/import', { csv: csvTxt })).added === 0, 'P same statement not imported twice');
-  const auto = await api('/api/bank/auto', {}); const rec1 = await api('/api/bank/rec'); ok(auto.matched >= 1 && rec1.bankUnmatched.length === 1, 'P auto-match clears the deposit, bank fee left to post');
+  const imp = await api('/api/bank/import', { store_id: store.id, csv: csvTxt }); ok(imp.added === 2, 'P bank statement imported');
+  ok((await api('/api/bank/import', { store_id: store.id, csv: csvTxt })).added === 0, 'P same statement not imported twice');
+  const auto = await api('/api/bank/auto', { store_id: store.id }); const rec1 = await api('/api/bank/rec?store=' + store.id); ok(auto.matched >= 1 && rec1.bankUnmatched.length === 1, 'P auto-match clears the deposit, bank fee left to post');
   // month-end lock
   await api('/api/close-period', { through: sp(0, -1) });
-  await expectErr(() => api('/api/journal', { date: sp(0, -2), memo: 'old', lines: [{ acct: '6900', debit: 1 }, { acct: '1000', credit: 1 }] }), 'P posting into a closed period refused');
+  await expectErr(() => api('/api/journal', { store_id: store.id, date: sp(0, -2), memo: 'old', lines: [{ acct: '6900', debit: 1 }, { acct: '1000', credit: 1 }] }), 'P posting into a closed period refused');
   const s9 = (await api('/api/list/settings'))[0]; await api('/api/save/settings', { id: s9.id, data: { ...s9.data, closed_through: null } });
   ok((await api('/api/list/settings'))[0].data.closed_through === sp(0, -1), 'P settings save can’t reopen the books');
   await api('/api/close-period', { through: null });
@@ -308,7 +309,7 @@ async function books() { const tb = await api('/api/trial'); const d = tb.reduce
   const exAll = await api('/api/export'); ok(!exAll.records.some(r => r.kind === 'secret'), 'Q keys not in the full export');
   await expectErr(() => api('/api/save/settings', { data: { dealer_name: 'second' } }), 'Q a second settings record can’t be made');
   await api('/api/close-period', { through: sp(0, -1) });
-  await expectErr(() => api('/api/journal', { date: sp(0, -3).replace(/-/g, ''), memo: 'fmt', lines: [{ acct: '6900', debit: 1 }, { acct: '1000', credit: 1 }] }), 'Q odd date format can’t slip past the lock');
+  await expectErr(() => api('/api/journal', { store_id: store.id, date: sp(0, -3).replace(/-/g, ''), memo: 'fmt', lines: [{ acct: '6900', debit: 1 }, { acct: '1000', credit: 1 }] }), 'Q odd date format can’t slip past the lock');
   await api('/api/close-period', { through: null });
   const evil = await api('/api/sign/request', { ref: anyDeal.id, title: 'x', html: '<p>Doc text long enough to sign here</p><img src=x onerror=alert(1)><script>alert(2)</script><a href="javascript:alert(3)">x</a>' });
   const evDoc = await api('/api/sign/doc/' + evil.url.split('/').pop()); ok(!/onerror|<script|javascript:/i.test(evDoc.html), 'Q signing documents are cleaned of scripts');
@@ -317,14 +318,23 @@ async function books() { const tb = await api('/api/trial'); const d = tb.reduce
   const cuAfter = await api('/api/rec/' + cuBefore.id); ok(cuAfter.data.address === cuBefore.data.address && cuAfter.data.first === cuBefore.data.first, 'Q public form can’t change an existing customer');
   const hid = await newCar({ photos: ['data:image/jpeg;base64,AAAA'], hide_web: true }); ok((await rawGet(`/photo/${hid.id}/0`)).status === 404, 'Q hidden unit photos aren’t public');
   ok((await rawGet('/api/site/vehicle/abc')).status === 404, 'Q bad vehicle id gives a clean not-found');
-  const dupCsv = `Date,Description,Amount\n${T0},DEPOSIT,20.00\n${T0},DEPOSIT,20.00\n`; const di = await api('/api/bank/import', { csv: dupCsv }); ok(di.added === 2, 'Q two real identical deposits both import');
-  ok((await api('/api/bank/import', { csv: dupCsv })).added === 0, 'Q re-importing the same file adds nothing');
+  const dupCsv = `Date,Description,Amount\n${T0},DEPOSIT,20.00\n${T0},DEPOSIT,20.00\n`; const di = await api('/api/bank/import', { store_id: store.id, csv: dupCsv }); ok(di.added === 2, 'Q two real identical deposits both import');
+  ok((await api('/api/bank/import', { store_id: store.id, csv: dupCsv })).added === 0, 'Q re-importing the same file adds nothing');
   const b0 = await api('/api/save/bill', { store_id: store.id, data: { vendor_id: vend.id, number: 'Z', lines: [{ acct: '6900', amount: 100 }, { acct: '6900', amount: -100 }] } });
   await expectErr(() => api(`/api/bill/${b0.id}/post`, {}), 'Q bills with zero or negative lines refused');
   await expectErr(() => api('/api/delete/' + bill.id, {}), 'Q posted bills can’t be deleted');
   for (const n of ['inventory', 'customers', 'leads', 'deals', 'accounts', 'payments', 'collections', 'repair_orders', 'parts', 'warranty_claims', 'appraisals', 'bills', 'vendors', 'bank_lines', 'time_clock', 'drawers', 'trial_balance', 'chart_of_accounts', 'audit_log']) {
     const r = await rawGet('/api/csv/' + n); ok(r.status === 200 && r.text.split('\n').length >= 2 && /^[A-Z]/.test(r.text.replace(/^\ufeff/, '')), 'Q CSV ' + n); }
   const keepR = cookie; cookie = ''; await api('/login', { pin: '1111' }); ok((await rawGet('/api/csv/payments')).status === 403 && (await rawGet('/api/csv/inventory')).status === 200, 'Q sales rep gets inventory CSV but not payments'); cookie = keepR;
+  // ===== screen-review permission fixes =====
+  { const keepS = cookie; cookie = ''; await api('/login', { pin: '1111' });
+    await expectErr(() => api('/api/loans'), 'S sales rep can’t open the loan book');
+    await expectErr(() => api('/api/list/payment'), 'S sales rep can’t list payments');
+    await expectErr(() => api('/api/list/ro'), 'S sales rep can’t list repair orders');
+    const inv = await api('/api/list/vehicle'); ok(inv.length && inv.every(v => v.data.cost === undefined && v.data.posted_cost === undefined), 'S sales rep doesn’t see vehicle cost');
+    const me = (await api('/api/me')).user; await expectErr(() => api('/api/save/user', { id: me.id, data: { role: 'manager' } }), 'S nobody can change their own role');
+    const d = await api('/api/dashboard'); ok(d.cashToday === undefined || d.cashToday === null, 'S dashboard hides money from sales');
+    cookie = keepS; }
   // 12. sign-out really ends the session
   const keep = cookie; await api('/logout', {}); cookie = keep; await expectErr(() => api('/api/me'), 'R12 old session refused after sign-out');
   await api('/login', { pin: process.env.OWNER_PIN });

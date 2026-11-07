@@ -83,18 +83,18 @@ async function extraDoc(kind) {
   return captureDoc(kind);
 }
 const DOCS = [['sale', 'Bill of sale'], ['tila', 'Finance disclosure worksheet'], ['menu', 'F&I product menu'], ['odometer', 'Odometer disclosure'], ['poa', 'Power of attorney'], ['weowe', 'We owe / due bill'], ['stateforms', 'Official state forms list']];
-window.dealForms = run(async () => { if (DID === 'new') throw new Error('Save the deal first'); const signed = await api('/api/sign/list/' + DID).catch(() => []);
+window.dealForms = run(async () => { if (DID === 'new') throw new Error('Save the deal first'); const signed = await api('/api/sign/list/' + DID).catch(() => []); window.DUPD = (await api('/api/rec/' + DID).catch(() => ({}))).updated_at;
   const ov = document.createElement('div'); ov.id = 'formsov'; ov.style.cssText = 'position:fixed;inset:0;background:#0008;z-index:80;overflow:auto;padding:16px';
   ov.innerHTML = `<div class="card" style="max-width:640px;margin:20px auto"><div class="row"><b style="font-size:17px">Forms & e-signatures — ${esc(DD.number || '')}</b><button class="btn sec sm" onclick="this.closest('#formsov').remove()">Close</button></div>
   ${DOCS.map(([k, t]) => `<div class="kv"><span>${t}</span><b style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="btn sec sm" onclick="printDoc('${k}')">Print</button>${k !== 'stateforms' ? `<button class="btn sm" onclick="signDoc('${k}','${esc(t)}')">Send to sign</button>` : ''}</b></div>`).join('')}
-  <h3>Signed and sent</h3>${signed.map(s => `<div class="kv"><span>${esc(s.title)} · sent ${new Date(s.created_at).toLocaleDateString()} by ${esc(s.created_by)}</span><b>${s.signed_at ? `<button class="btn ok sm" onclick="viewSigned('${s.token}')">Signed ${new Date(s.signed_at).toLocaleDateString()}</button>` : `<span class="chip warn">waiting</span> <button class="btn sec sm" onclick="copyLink('${location.origin}/sign/${s.token}')">Link</button>`}</b></div>`).join('') || '<p class="mut small">Nothing sent yet.</p>'}
+  <h3>Signed and sent</h3>${signed.map(s => `<div class="kv"><span>${s.signed_at && window.DUPD && new Date(window.DUPD) > new Date(s.signed_at) ? '<span class="chip bad">Deal changed after signing</span> ' : ''}${esc(s.title)} · sent ${new Date(s.created_at).toLocaleDateString()} by ${esc(s.created_by)}</span><b>${s.signed_at ? `<button class="btn ok sm" onclick="viewSigned('${s.token}')">Signed ${new Date(s.signed_at).toLocaleDateString()}</button>` : `<span class="chip warn">waiting</span> <button class="btn sec sm" onclick="copyLink('${location.origin}/sign/${s.token}')">Link</button>`}</b></div>`).join('') || '<p class="mut small">Nothing sent yet.</p>'}
   <p class="mut small">The customer signs on their phone or a store tablet, agrees to sign electronically first, and the app keeps the exact document, signature, time, IP address and a fingerprint (hash) of the document.</p></div>`;
   document.body.appendChild(ov); });
 window.printDoc = run(async k => { const h = await extraDoc(k); if (h) printHtml(h); });
 window.signDoc = run(async (k, title) => { const h = await extraDoc(k); if (!h) return; const r = await api('/api/sign/request', { ref: DID, title: title + ' — ' + (DD.number || ''), html: h });
   const cu = (cache.customer || []).find(x => String(x.id) === String(DD.customer_id));
-  if (confirm('Signing link ready.\n\nOK = open it here so the customer signs on this device\nCancel = text the link to the customer')) window.open(r.url, '_blank');
-  else if (cu && cu.data.phone) location.href = smsLink(cu.data.phone, `${S.settings.dealer_name || ''}: please review and sign: ${r.url}`); else copyLink(r.url);
+  const ch = await choose('Signing link is ready', [['here', 'Customer signs on this device'], ...(cu && cu.data.phone ? [['text', 'Text it to ' + (cu.data.first || 'the customer')]] : []), ['copy', 'Copy the link']]);
+  if (ch === 'here') window.open(r.url, '_blank'); else if (ch === 'text') location.href = smsLink(cu.data.phone, `${S.settings.dealer_name || ''}: please review and sign: ${r.url}`); else if (ch === 'copy') copyLink(r.url);
   document.getElementById('formsov')?.remove(); dealForms(); });
 window.copyLink = u => { navigator.clipboard.writeText(u).then(() => toast('Link copied'), () => prompt('Copy this link:', u)); };
 window.viewSigned = run(async t => { const s = await api('/api/sign/doc/' + t);
@@ -106,11 +106,11 @@ window.viewSigned = run(async t => { const s = await api('/api/sign/doc/' + t);
 // ---------- payments: receipt by print or text ----------
 window.afterPay = p => { const cu = window.LCU; const d = p.data;
   const msg = `${S.settings.dealer_name || ''} receipt ${d.receipt}: ${$$(d.amount)} paid ${fmtD(d.date)} on acct ${d.account}. Thank you!`;
-  if (cu && cu.data && cu.data.phone && confirm('Payment posted.\n\nOK = text the receipt to the customer\nCancel = print it')) location.href = smsLink(cu.data.phone, msg); else setTimeout(() => printReceipt(p.id), 300); };
+  choose('Payment posted. Receipt?', [['print', 'Print it'], ...(cu && cu.data && cu.data.phone ? [['text', 'Text it to ' + (cu.data.first || 'the customer')]] : [])]).then(ch => { if (ch === 'text') location.href = smsLink(cu.data.phone, msg); else if (ch === 'print') printReceipt(p.id); }); };
 
 // ---------- service: inspection photos, video, shop capacity ----------
 window.inspMedia = x => !x.id ? '' : `<div class="photos" style="grid-column:1/-1">${(x.photos || []).map(p => `<img src="${esc(p)}">`).join('')}${RD.status !== 'closed' ? `<label class="btn sec sm" style="cursor:pointer">📷 Photo<input type="file" accept="image/*" capture="environment" style="display:none" onchange="addInspPhoto('${esc(x.id)}', this.files)"></label>` : ''}</div>`;
-window.addInspPhoto = run(async (iid, files) => { const it = (RD.inspection || []).find(x => x.id === iid); if (!it) return; it.photos = it.photos || [];
+window.addInspPhoto = run(async (iid, files) => { const it = (RD.inspection || []).find(x => String(x.id) === String(iid)); if (!it) return; it.photos = it.photos || [];
   for (const f of files) { if (it.photos.length >= 4) break; it.photos.push(await fileToJpeg(f, 800)); } await saveRo(RID, true); bust('ro'); route(); });
 window.roMedia = (id, d) => id === 'new' ? '' : `<h3>Videos</h3><div>${(d.videos || []).map((v, i) => `<button type="button" class="btn sec sm" data-key="${esc(v.key)}" onclick="viewVideo(this.dataset.key)">▶ Video ${i + 1}</button> `).join('') || '<span class="mut small">No videos.</span>'}
   ${d.status !== 'closed' ? `<label class="btn sec sm" style="cursor:pointer">🎥 Upload video<input type="file" accept="video/*" capture="environment" style="display:none" onchange="uploadVideo(${id}, this.files[0])"></label>` : ''}</div>`;
@@ -122,9 +122,9 @@ window.viewVideo = run(async key => { const r = await api('/api/media/view?key='
 const _service = VIEWS.service;
 VIEWS.service = async (id, extra) => { await _service(id, extra);
   if (id === 'appt') { const el = document.querySelector('#apf [data-f=when]'); if (!el) return; const box = document.createElement('div'); box.className = 'card'; box.id = 'capbox'; el.closest('.card').after(box);
-    const draw = async () => { const day = (el.value || '').slice(0, 10); if (!day) return; const c = await api(`/api/capacity?from=${day}&days=1${STORE ? '&store=' + STORE : ''}`); const x = c.days[0];
+    const draw = async () => { const day = (el.value || '').slice(0, 10); if (!day) return; const sid = (document.querySelector('#apf [data-f=_store]') || {}).value || STORE; const c = await api(`/api/capacity?from=${day}&days=1${sid ? '&store=' + sid : ''}`); const x = c.days[0];
       box.innerHTML = c.set ? `<b>Shop capacity ${fmtD(day)}:</b> ${x.booked} of ${x.capacity} tech hours booked — <span style="color:${x.open < 0 ? 'var(--bad)' : 'var(--ok)'}">${x.open < 0 ? 'overbooked by ' + (-x.open) : x.open + ' open'}</span>` : '<span class="mut small">Set tech count and hours per day under Settings → Stores to see shop capacity.</span>'; };
-    el.addEventListener('change', draw); draw(); }
+    el.addEventListener('change', draw); document.querySelector('#apf [data-f=_store]')?.addEventListener('change', draw); draw(); }
   else if (!id) { const c = await api(`/api/capacity?days=7${STORE ? '&store=' + STORE : ''}`).catch(() => null); if (!c || !c.set) return;
     const h = document.querySelector('#main h3'); if (!h) return; const box = document.createElement('div'); box.className = 'card';
     box.innerHTML = `<b>Shop capacity — next 7 days</b>${c.days.map(x => `<div class="kv"><span>${fmtD(x.date)}</span><b style="color:${x.open < 0 ? 'var(--bad)' : 'inherit'}">${x.booked} / ${x.capacity} hrs</b></div>`).join('')}`; h.before(box); } };
@@ -164,8 +164,8 @@ window.apPhotos = async files => { for (const f of files) { if (AP.length >= 12)
 window.saveAppraisal = run(async id => { const data = readForm($('#af'), AD2); data.photos = AP; const st = data._store; delete data._store;
   const r = await api('/api/save/appraisal', { id, store_id: st || STORE || (S.stores[0] && S.stores[0].id), data }); bust('appraisal'); toast('Saved'); go('appraisals/' + r.id); });
 window.apMarket = run(async id => { await saveAppraisal(id); const m = await api(`/api/appraisal/${id}/market`, {}); toast('Market price ' + $$(m.price, 0)); route(); });
-window.apBuy = run(async id => { await api('/api/save/appraisal', { id, store_id: STORE || null, data: { ...readForm($('#af'), AD2), photos: AP } }).catch(() => {});
-  if (!confirm('Buy this vehicle into inventory at the offer price? It posts to the books.')) return; const ap = confirm('OK = paid by cash/check now\nCancel = on account (A/P)') ? 'cash' : 'ap';
+window.apBuy = run(async id => { const f = readForm($('#af'), AD2); const st = f._store; delete f._store; await api('/api/save/appraisal', { id, store_id: st || null, data: { ...f, photos: AP } });
+  const ap = await choose(`Buy this vehicle into inventory for ${$$(f.offer, 0)}? It posts to the books.`, [['cash', 'Paid now (cash / check)'], ['ap', 'On account (pay later)']]); if (!ap) return;
   const v = await api(`/api/appraisal/${id}/buy`, { paid_with: ap }); bust('appraisal', 'vehicle'); toast('Added to inventory as ' + v.data.stock); go('inventory/' + v.id); });
 
 // ---------- cashier drawer ----------
@@ -175,7 +175,8 @@ VIEWS.cashier = async () => {
   view(`<h1>Cashier drawer</h1><div class="bar"><label class="l">Date<input type="date" value="${date}" onchange="sessionStorage.cdate=this.value;route()"></label>
   ${isMgr() ? `<label class="l">Cashier<select onchange="sessionStorage.ccash=this.value;route()">${[ME.user.name, ...users.map(u => u.data.name)].filter((v, i, a) => a.indexOf(v) === i).map(n => `<option ${n === who ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label>` : ''}</div>
   <div class="card">${Object.entries(d.byMethod).map(([m, v]) => `<div class="kv"><span>${esc(m)} payments</span><b>${$$(v)}</b></div>`).join('') || '<p class="mut small">No in-house payments.</p>'}
-  <div class="kv"><span>Other cash (parts, service, deals)</span><b>${$$(d.otherCash)}</b></div><div class="kv"><span><b>Cash expected in drawer</b></span><b style="font-size:18px">${$$(d.expectedCash)}</b></div></div>
+  <div class="kv"><span><b>Cash expected in drawer</b> (in-house cash payments)</span><b style="font-size:18px">${$$(d.expectedCash)}</b></div>
+  <div class="kv"><span class="small">For reference: other receipts you posted to cash today (parts, service, deals — any payment type)</span><b>${$$(d.otherCash)}</b></div></div>
   ${d.closed ? `<div class="card"><b>Closed by ${esc(d.closed.closed_by)}</b><div class="kv"><span>Counted</span><b>${$$(d.closed.counted_cash)}</b></div><div class="kv"><span>Over / short</span><b style="color:${d.closed.over_short < 0 ? 'var(--bad)' : 'inherit'}">${$$(d.closed.over_short)}</b></div></div>`
     : `<div class="card" id="drf"><div class="f">${field('Cash counted', 'counted_cash', '', 'number')}${field('Note', 'note', '')}</div><button class="btn" style="margin-top:8px" data-who="${esc(who)}" onclick="closeDrawer(this.dataset.who,'${date}')">Close drawer</button></div>`}`);
 };
@@ -186,7 +187,7 @@ VIEWS.insurance = async () => { const a = await api('/api/insurance-alerts');
   view(`<h1>Insurance alerts</h1><p class="mut">In-house accounts with no insurance on file, or insurance expiring within 15 days.</p><div class="grid">${a.map(x => `<a class="item" href="#accounts/${x.id}" onclick="sessionStorage.at='gps'"><div class="row"><span class="t">${esc(x.name)}</span><span class="chip ${!x.expires || x.expires < today() ? 'bad' : 'warn'}">${!x.expires ? 'None on file' : x.expires < today() ? 'Expired ' + fmtD(x.expires) : 'Expires ' + fmtD(x.expires)}</span></div><div class="s">#${esc(x.account)} · ${esc(x.vehicle)}</div><div class="s">${esc(x.company || '')}</div></a>`).join('') || '<p class="mut">All covered. 👍</p>'}</div>`); };
 
 // ---------- time clock ----------
-VIEWS.clock = async () => { const mine = await api('/api/clock/me'); const open = mine.find(x => !x.out);
+VIEWS.clock = async () => { if (ME.user.id === 'owner' || !ME.user.id) { view('<h1>Time clock</h1><p class="mut">The owner login doesn’t use the time clock. Each employee clocks in with their own PIN.</p>'); return; } const mine = await api('/api/clock/me'); const open = mine.find(x => !x.out);
   view(`<h1>Time clock</h1><div class="card" style="text-align:center"><p>${open ? 'Clocked in since <b>' + new Date(open.in).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + '</b>' : 'You are clocked out.'}</p>
   <button class="btn ${open ? 'bad' : 'ok'}" style="font-size:18px;padding:14px 28px" onclick="clockAct('${open ? 'out' : 'in'}')">Clock ${open ? 'out' : 'in'}</button></div>
   <h3>Recent</h3><div class="card">${mine.map(x => `<div class="kv"><span>${new Date(x.in).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span><b>${x.out ? x.hours + ' h' : 'open'}</b></div>`).join('') || '<p class="mut small">No punches yet.</p>'}</div>`); };
@@ -203,7 +204,7 @@ VIEWS.payroll = async () => {
     <table class="tbl"><tr><th>Employee</th><th class="n">Hours</th><th class="n">Units</th><th class="n">Commission</th><th class="n">Flag hrs</th><th class="n">Tech pay</th><th class="n">Total</th></tr>${rows.map(r => `<tr><td>${esc(r.name)}<br><span class="mut small">${esc(r.role)}${r.hasPlan ? '' : ' · no pay plan'}</span></td><td class="n">${r.hours}</td><td class="n">${r.units}</td><td class="n">${$$(r.commission)}</td><td class="n">${r.flagHours}</td><td class="n">${$$(r.techPay)}</td><td class="n"><b>${$$(r.total)}</b></td></tr>`).join('')}</table>
     <p class="mut small">Commission counts delivered deals where the salesperson name matches; tech pay counts closed RO lines where the technician name matches. Taxes and deductions are handled by your payroll company.</p>`; }
   if (tab === 'plans') { const [plans, users] = await Promise.all([api('/api/payplans'), L('user', true)]);
-    P.innerHTML = `${users.filter(u => u.data.active !== false).map(u => { const p = (plans.find(x => Number(x.data.user_id) === u.id) || { data: {} }).data;
+    P.innerHTML = `${users.filter(u => u.data.active !== false).map(u => { const p = (plans.find(x => String(x.data.user_id) === String(u.id)) || { data: {} }).data;
       return `<div class="sub" data-pu="${u.id}"><b>${esc(u.data.name)}</b> <span class="mut small">${esc(u.data.role)}</span><div class="f">${field('Hourly rate', 'hourly', p.hourly, 'number')}${field('Salary per period', 'salary', p.salary, 'number')}${field('Flat per unit sold', 'per_unit', p.per_unit, 'number')}${field('% of front gross', 'pct_front', p.pct_front, 'number')}${field('% of back gross', 'pct_back', p.pct_back, 'number')}${field('Minimum per unit (mini)', 'min_per_unit', p.min_per_unit, 'number')}${field('Per flag hour (techs)', 'per_flag_hour', p.per_flag_hour, 'number')}${field('Notes', 'notes', p.notes)}</div>${isMgr() ? `<button class="btn sm" style="margin-top:6px" onclick="savePlan(${u.id})">Save plan</button>` : ''}</div>`; }).join('') || '<p class="mut">Add users first (Settings → Users).</p>'}`; }
 };
 window.savePlan = run(async uid => { await api('/api/payplans', { user_id: uid, ...readForm(document.querySelector(`[data-pu="${uid}"]`)) }); toast('Saved'); });
@@ -218,6 +219,7 @@ window.booksExtra = async (tab, B, qs, from, to) => {
       <div class="bar" style="margin:6px 0 0">${!b.data.posted ? `<button class="btn sm" onclick="postBill(${b.id})">Post</button><button class="btn sec sm" onclick="delRec(${b.id},'books')">Delete</button>` : b.data.status !== 'paid' ? `<button class="btn ok sm" onclick="payBill(${b.id},${b.data.balance})">Pay</button>` : ''}</div></div>`).join('') || '<p class="mut">No bills yet.</p>'}
     <div id="billf"></div>`; window._ao = ao; window._vendors = vendors; return true; }
   if (tab === 'bank') { const r = await api('/api/bank/rec' + (STORE ? '?store=' + STORE : ''));
+    if (r.pickStore) { B.innerHTML = '<p>Each store banks on its own account. Pick a store in the picker at the top to reconcile it.</p>'; return true; }
     B.innerHTML = `<div class="kv"><span>Cash per books</span><b>${$$(r.book)}</b></div><div class="kv"><span>Cleared by the bank</span><b>${$$(r.cleared)}</b></div><div class="kv"><span>Outstanding (not yet at the bank)</span><b>${$$(r.outstanding)}</b></div>
     <h3>Import bank statement</h3><textarea id="bankcsv" placeholder="Paste the bank's CSV export here (with its header row)"></textarea><div class="bar" style="margin-top:6px"><input type="file" accept=".csv,text/csv" onchange="this.files[0].text().then(t=>document.getElementById('bankcsv').value=t)"><button class="btn" onclick="bankImport()">Import</button><button class="btn sec" onclick="bankAuto()">Auto-match</button></div>
     <h3>Bank lines not matched (${r.bankUnmatched.length})</h3>${r.bankUnmatched.map(b => `<div class="sub"><div class="kv"><span>${fmtD(b.date)} · ${esc(b.desc)}</span><b>${$$(b.amount)}</b></div>
@@ -245,7 +247,7 @@ window.payBill = run(async (id, bal) => { const a = prompt('Amount to pay', bal)
 window.bankImport = run(async () => { const r = await api('/api/bank/import', { csv: $('#bankcsv').value, store_id: STORE || null }); toast(`${r.added} lines added, ${r.skipped} skipped`); route(); });
 window.bankAuto = run(async () => { const r = await api('/api/bank/auto', { store_id: STORE || null }); toast(r.matched + ' matched'); route(); });
 window.bankMatch = run(async id => { const sel = document.querySelector(`[data-bm="${id}"]`); const ids = [...sel.selectedOptions].map(o => Number(o.value)); await api('/api/bank/match', { bankline_id: id, jrnl_ids: ids }); toast('Matched'); route(); });
-window.mapOem = run(async (id, v) => { const a = (cache.account || []).find(x => x.id === id); await api('/api/save/account', { id, data: { ...a.data, oem_line: v.trim() } }); bust('account'); toast('Saved'); });
+window.mapOem = run(async (id, v) => { const a = (cache.account || []).find(x => String(x.id) === String(id)); await api('/api/save/account', { id, data: { ...a.data, oem_line: v.trim() } }); bust('account'); toast('Saved'); });
 window.closeBooks = run(async reopen => { const d = reopen ? null : $('#closedt').value; if (!reopen && !d) throw new Error('Pick a date'); if (!confirm(reopen ? 'Reopen all periods?' : `Close the books through ${d}?`)) return;
   const r = await api('/api/close-period', { through: d }); S.settings.closed_through = r.closed_through; toast(reopen ? 'Reopened' : 'Closed'); route(); });
 window.exportExtra = () => { const m = today().slice(0, 8) + '01';
