@@ -204,6 +204,25 @@ async function books() { const tb = await api('/api/trial'); const d = tb.reduce
   await api('/api/save/ro', { id: ro14.id, store_id: store.id, data: { ...ro14.data, status: 'closed' } });
   const ro14b = await api('/api/rec/' + ro14.id); ok(ro14b.data.inspection[0].approved === true, 'R14 customer approval survives a stale save'); ok(ro14b.data.status !== 'closed', 'R15 saving can’t mark an RO closed');
   const c14 = await api(`/api/ro/${ro14.id}/close`, { paid: true }); ok(near(c14.totals.customer, 300), 'R14 approved work billed on close');
+  // ===== second review =====
+  // N1 approvals are tied to each item; re-pricing an item asks again
+  const roN = await api('/api/save/ro', { store_id: store.id, data: { customer_id: custR.id, tax_rate: 0, lines: [], inspection: [{ item: 'Brakes', status: 'red', price: 300 }, { item: 'Tires', status: 'yellow', price: 100 }, { item: 'Tires', status: 'red', price: 600 }] } });
+  const tkN = (await api(`/api/ro/${roN.id}/link`, {})).url.split('/').pop(); await api('/api/public/inspection/' + tkN, { approved: [0, 1] });
+  const roN2 = await api('/api/rec/' + roN.id); roN2.data.inspection[0].price = 900; await api('/api/save/ro', { id: roN.id, store_id: store.id, data: roN2.data });
+  const cN = await api(`/api/ro/${roN.id}/close`, { paid: true }); ok(near(cN.totals.customer, 100), 'N1 re-priced brakes need a new answer; only the approved $100 tires bill');
+  // N2 recon locked on a sold unit
+  const vN = await newCar(); const dN = await api('/api/save/deal', { store_id: store.id, data: { customer_id: custR.id, vehicle_id: vN.id, type: 'cash', price: 9000, doc_fee: 0, trade: {} } }); await api(`/api/deal/${dN.id}/deliver`, {});
+  const vN2 = await api('/api/rec/' + vN.id); await expectErr(() => api('/api/save/vehicle', { id: vN.id, store_id: store.id, data: { ...vN2.data, recon: [{ item: 'late', cost: 200 }] } }), 'N2 recon on a sold unit refused');
+  // N3 per-store dashboard matches the all-stores rollup
+  const dAll = await api('/api/dashboard'); const dOne = await api('/api/dashboard?store=' + store.id); const row = dAll.stores.find(x => String(x.id) === String(store.id));
+  ok(dOne.inventory === row.inventory && dOne.inventory > 0 && dOne.dealsMtd === row.dealsMtd, `N3 store dashboard ${dOne.inventory} units = rollup ${row.inventory}`);
+  // N4 a manager limited to one store can't touch another store's records
+  const mgr = await api('/api/save/user', { data: { name: 'North Mgr', role: 'manager', pin: '7777', store_id: Number(s2.id), active: true } });
+  const ownerCk = cookie; cookie = ''; await api('/login', { pin: '7777' });
+  await expectErr(() => api('/api/save/vehicle', { id: vN.id, store_id: s2.id, data: { ...vN2.data, price: 1 } }), 'N4 other-store vehicle save refused');
+  await expectErr(() => api('/api/rec/' + vN.id), 'N4 other-store record hidden');
+  ok((await api('/api/list/vehicle')).every(v => !v.store_id || String(v.store_id) === String(s2.id)), 'N4 lists show only their store');
+  cookie = ownerCk;
   // 12. sign-out really ends the session
   const keep = cookie; await api('/logout', {}); cookie = keep; await expectErr(() => api('/api/me'), 'R12 old session refused after sign-out');
   await api('/login', { pin: process.env.OWNER_PIN });

@@ -512,7 +512,7 @@ const roLine = (l, i) => `<div class="sub" data-sub data-line="${i}"><div class=
   ${field('Cause / correction', 'story', l.story, 'textarea', { wide: true })}</div>
   <div class="small mut" style="margin-top:6px">Parts on this line</div><div data-plines>${(l.parts || []).map(p => partLine(p)).join('')}</div><button class="btn sec sm" type="button" onclick="addPart(this)">+ Part</button></div>`;
 const partLine = p => `<div class="f" data-sub data-pline style="margin-top:6px">${field('Part', 'part_id', p.part_id, 'select', { options: partOpts(), attrs: 'onchange="partPick(this)"' })}${field('Qty', 'qty', p.qty || 1, 'number')}${field('Price each', 'price', p.price, 'number')}</div>`;
-const inspRow = (x, i) => `<div class="sub f insp-${x.status || 'green'}" data-sub data-insp="${i}">${field('Item', 'item', x.item)}${field('Condition', 'status', x.status || 'green', 'select', { options: [['green', 'Good'], ['yellow', 'Needs attention soon'], ['red', 'Needs repair now']] })}${field('Recommendation / note', 'note', x.note)}${field('Price to fix', 'price', x.price, 'number')}${x.approved != null && x.status !== 'green' ? `<span class="chip ${x.approved ? 'ok' : 'bad'}" style="align-self:end">Customer ${x.approved ? 'approved' : 'declined'}</span>` : ''}</div>`;
+const inspRow = (x, i) => `<div class="sub f insp-${x.status || 'green'}" data-sub data-insp="${i}" data-iid="${esc(x.id || '')}">${field('Item', 'item', x.item)}${field('Condition', 'status', x.status || 'green', 'select', { options: [['green', 'Good'], ['yellow', 'Needs attention soon'], ['red', 'Needs repair now']] })}${field('Recommendation / note', 'note', x.note)}${field('Price to fix', 'price', x.price, 'number')}${x.approved != null && x.status !== 'green' ? `<span class="chip ${x.approved ? 'ok' : 'bad'}" style="align-self:end">Customer ${x.approved ? 'approved' : 'declined'}</span>` : ''}</div>`;
 window.addLine = () => { const box = $('#lines'); const st = curStore(); box.insertAdjacentHTML('beforeend', roLine({ pay_type: 'customer', rate: st && st.data.labor_rate !== '' ? st.data.labor_rate : '', parts: [] }, box.children.length)); };
 window.addPart = btn => btn.previousElementSibling.insertAdjacentHTML('beforeend', partLine({}));
 window.partPick = sel => { const p = RPARTS.find(x => String(x.id) === sel.value); const pr = sel.closest('[data-pline]').querySelector('[data-f=price]'); if (p && !pr.value) pr.value = p.data.price; roTot(); };
@@ -521,7 +521,7 @@ window.stdInsp = () => { ['Front brakes', 'Rear brakes', 'Tires / tread depth', 
 function readRo() {
   const root = $('#rof'); const data = readForm(root, RD);
   data.lines = [...root.querySelectorAll('[data-line]')].map((el, i) => ({ ...readForm(el, (RD.lines || [])[i] || {}), parts: [...el.querySelectorAll('[data-pline]')].map(pl => readForm(pl)).filter(p => p.part_id) })).filter(l => l.desc || l.op || num(l.hours) || l.parts.length);
-  data.inspection = [...root.querySelectorAll('[data-insp]')].map((el, i) => ({ ...((RD.inspection || [])[i] || {}), ...readForm(el) })).filter(x => x.item);
+  data.inspection = [...root.querySelectorAll('[data-insp]')].map(el => ({ ...((RD.inspection || []).find(x => x.id && x.id === el.dataset.iid) || {}), ...readForm(el), id: el.dataset.iid || undefined })).filter(x => x.item);
   const c = (cache.customer || []).find(x => String(x.id) === String(data.customer_id)); data.customer_label = custName(c);
   return data;
 }

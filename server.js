@@ -109,6 +109,7 @@ function interestEarned(L, pays, asOf, sched) {
 // Loan status as of a date (default today).
 function loanStatus(loan, pays, asOf) {
   const L = loan.data, pre = L.method === 'precomputed';
+  if (asOf) pays = pays.filter(p => p.data.date <= asOf); // a quote for a past date ignores later payments
   const pi = pays.reduce((s, p) => s + num(p.data.principal) + num(p.data.interest), 0);
   const prin = pays.reduce((s, p) => s + num(p.data.principal), 0), intPaid = pays.reduce((s, p) => s + num(p.data.interest), 0);
   const balance = r2(num(L.principal) - prin);
@@ -382,6 +383,11 @@ app.post('/api/save/:kind', W(async (req, res) => {
   const out = await tx(async c => {
     const old = id ? await getRec(c, id) : null;
     if (id && (!old || old.kind !== k)) throw new Error('Record not found');
+    if (u.store_id && !['customer', 'user', 'product', 'lender', 'account', 'settings', 'store'].includes(k)) {
+      if (old && old.store_id && Number(old.store_id) !== Number(u.store_id)) throw new Error('Record not found');
+      if (store && Number(store) !== Number(u.store_id)) throw new Error('You can only save records for your own store');
+    }
+    if (u.store_id && k === 'user' && data.store_id && Number(data.store_id) !== Number(u.store_id)) throw new Error('You can only manage users for your own store');
     if (k === 'user') {
       if (!ROLES.includes(data.role)) throw new Error('Pick a role');
       if (data.role === 'owner' && u.role !== 'owner') throw new Error('Only the owner can add owners');
@@ -396,13 +402,17 @@ app.post('/api/save/:kind', W(async (req, res) => {
     if (k === 'deal' && old && ['delivered', 'unwound'].includes(old.data.status)) throw new Error('Delivered deals are locked — unwind it to change it');
     if (k === 'deal' && !old) { data.number = 'D' + (await nextNum(c, 'deal', 1001)); data.status = 'pending'; data.created_by = u.name; }
     if (k === 'deal') data.status = old ? old.data.status : 'pending';
-    if (k === 'ro' && !old) { data.number = 'RO' + (await nextNum(c, 'ro', 5001)); data.status = data.status || 'open'; data.opened = data.opened || today(); data.advisor = data.advisor || u.name; }
+    if (k === 'ro' && !old) { data.inspection = (data.inspection || []).map(({ approved, decided_at, ...x }) => x); data.number = 'RO' + (await nextNum(c, 'ro', 5001)); data.status = data.status || 'open'; data.opened = data.opened || today(); data.advisor = data.advisor || u.name; }
     if (k === 'ro' && old && old.data.status === 'closed') throw new Error('Closed ROs are locked');
+    if (k === 'ro') data.inspection = (data.inspection || []).map(x => ({ ...x, id: x.id && /^[a-f0-9]{10}$/.test(x.id) ? x.id : crypto.randomBytes(5).toString('hex') }));
     if (k === 'ro') { const OPEN = ['open', 'waiting_approval', 'in_progress', 'waiting_parts', 'ready']; if (!OPEN.includes(data.status)) data.status = old ? old.data.status : 'open'; }
     if (k === 'ro' && old) { data.number = old.data.number; data.closed_entry = old.data.closed_entry; data.opened = old.data.opened;
       // the customer's answers on the approval link always win over whatever the advisor's screen had loaded
       const was = old.data.inspection || [];
-      data.inspection = (data.inspection || []).map(x => { const o = was.find(w => w.item === x.item && w.decided_at); return o ? { ...x, approved: o.approved, decided_at: o.decided_at } : { ...x, approved: x.status === 'green' ? undefined : x.approved }; }); }
+      data.inspection = (data.inspection || []).map(x => { const o = x.id && was.find(w => w.id === x.id);
+        if (o && o.decided_at && num(o.price) === num(x.price) && o.status === x.status) return { ...x, approved: o.approved, decided_at: o.decided_at };
+        const { approved, decided_at, ...rest } = x; return rest; }); // new item, or changed after the customer answered: needs a fresh answer
+    }
     if (k === 'part') { if (old) { data.qty = old.data.qty; data.cost = old.data.cost; data.last_received = old.data.last_received; } else { data.qty = 0; if (!data.number) throw new Error('Enter a part #'); } }
     if (k === 'vehicle') {
       const EDITABLE = ['in_stock', 'hold', 'in_transit'];
@@ -417,6 +427,9 @@ app.post('/api/save/:kind', W(async (req, res) => {
       // recon lines carry a stable id; posted amounts come only from what the server already posted
       const oldRecon = (old && old.data.recon) || [];
       data.recon = (data.recon || []).map(x => { const o = x.id && oldRecon.find(r => r.id === x.id); return { item: x.item, vendor: x.vendor, cost: num(x.cost), date: x.date, id: o ? o.id : crypto.randomBytes(5).toString('hex'), posted_amount: o ? num(o.posted_amount != null ? o.posted_amount : (o.posted ? o.cost : 0)) : 0, ...(o && o.from_ro ? { from_ro: o.from_ro } : {}) }; });
+      for (const o of oldRecon) if (o.from_ro && !data.recon.some(x => x.id === o.id)) data.recon.push(o); // a page loaded before the RO closed doesn't drop it
+      if (old && ['sold', 'repo', 'wholesaled'].includes(old.data.status)) { const sig = r => JSON.stringify((r || []).map(x => [x.id, num(x.cost)]));
+        if (sig(data.recon) !== sig(oldRecon)) throw new Error('Recon is locked once a unit is sold, repossessed or wholesaled'); }
       const kept = new Set(data.recon.map(x => x.id));
       data.recon_removed = (old && old.data.recon_removed) || []; // never taken from the client
       for (const o of oldRecon) if (!kept.has(o.id)) { if (o.from_ro) throw new Error('Recon from a repair order can’t be removed here'); data.recon_removed = [...data.recon_removed, { ...o, removed: today() }]; }
@@ -484,7 +497,7 @@ app.post('/api/deal/calc', W(async (req, res) => {
 app.post('/api/deal/:id/deliver', W(async (req, res) => {
   if (!can(req.user, 'deal') || req.user.role === 'sales') return deny(res, 'A manager or finance user delivers deals');
   const out = await tx(async c => {
-    const deal = await getRec(c, req.params.id); if (!deal || deal.kind !== 'deal') throw new Error('Deal not found');
+    const deal = await need(c, req.params.id, 'deal', req.user);
     const d = deal.data; if (d.status !== 'pending') throw new Error('Deal is already ' + d.status);
     if (!d.customer_id || !d.vehicle_id) throw new Error('Pick a customer and a vehicle first');
     const x = await dealCtx(c, d, deal.store_id); const k = calcDeal({ ...d, _veh_cost: x.vehCost }, x.store, x.products);
@@ -760,7 +773,8 @@ app.post('/api/parts/counter', W(async (req, res) => {
   if (!can(req.user, 'part')) return deny(res);
   const out = await tx(async c => { let sale = 0, cost = 0; const lines = req.body.lines || [];
     if (!lines.length) throw new Error('Add parts');
-    for (const l of lines) { const p = await getRec(c, l.part_id); if (!p) throw new Error('Part not found'); sale = r2(sale + num(l.qty) * num(l.price != null ? l.price : p.data.price)); cost = r2(cost + num(l.qty) * num(p.data.cost)); p.data.qty = r2(num(p.data.qty) - num(l.qty)); await put(c, 'part', p.store_id, p.data, p.id); }
+    if (!(num(req.body.tax_rate) >= 0) || req.body.tax_rate === '' || req.body.tax_rate == null) throw new Error('Enter the tax rate (0 if none)');
+    for (const l of lines) { const p = await need(c, l.part_id, 'part', req.user); if (!(num(l.qty) > 0)) throw new Error('Quantity must be more than 0'); sale = r2(sale + num(l.qty) * num(l.price != null ? l.price : p.data.price)); cost = r2(cost + num(l.qty) * num(p.data.cost)); p.data.qty = r2(num(p.data.qty) - num(l.qty)); await put(c, 'part', p.store_id, p.data, p.id); }
     const tax = r2(sale * num(req.body.tax_rate) / 100), inv = 'P' + (await nextNum(c, 'pinv', 30001));
     await post(c, { date: today(), store: req.body.store_id || null, memo: `Counter ticket ${inv} ${req.body.customer || ''}`, src: 'parts', who: req.user.name, lines: [['1000', r2(sale + tax), 0], ['4410', 0, sale], ['2200', 0, tax], ['5400', cost, 0], ['1400', 0, cost]] });
     return { invoice: inv, sale, tax, total: r2(sale + tax) }; });
@@ -792,12 +806,12 @@ app.get('/api/trial', W(async (req, res) => {
 // ---------- dashboard / reports ----------
 app.get('/api/dashboard', W(async (req, res) => {
   const t = today(), m = t.slice(0, 8) + '01', store = req.user.store_id ? Number(req.user.store_id) : req.query.store ? Number(req.query.store) : null;
-  const inStore = r => !store || r.store_id === store;
+  const inStore = r => !store || Number(r.store_id) === store;
   const [vehs, deals, loans, pays, ros, claims, leads, stores] = await Promise.all(['vehicle', 'deal', 'loan', 'payment', 'ro', 'claim', 'lead', 'store'].map(k => list(pool, k)));
   const by = {}; pays.forEach(p => (by[p.data.loan_id] = by[p.data.loan_id] || []).push(p));
   const out = { stores: [] };
   const calc = sid => {
-    const f = r => !sid || r.store_id === sid;
+    const f = r => !sid || Number(r.store_id) === Number(sid);
     const inv = vehs.filter(v => f(v) && v.data.status === 'in_stock');
     const age = { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 };
     inv.forEach(v => { const a = daysBetween(v.data.acquired || t, t); age[a <= 30 ? '0-30' : a <= 60 ? '31-60' : a <= 90 ? '61-90' : '90+']++; });
@@ -840,18 +854,19 @@ app.get('/api/collections', W(async (req, res) => {
       lastNote: lastNote && { at: lastNote.data.at, type: lastNote.data.type, note: lastNote.data.note, by: lastNote.data.by }, promise: promise && { date: promise.data.promise_date, amount: promise.data.promise_amount }, touchedToday: ns.some(n => (n.data.at || '').slice(0, 10) === t) };
   }).filter(x => !req.user.store_id || Number(x.store_id) === Number(req.user.store_id)).filter(x => x.daysLate > 0 || x.nextDue === t || (x.promise && x.promise.date <= t)).sort((a, b) => b.daysLate - a.daysLate);
   // collector scorecard (last 30 days)
-  const since = addDays(t, -30); const sc = {};
-  notes.filter(n => (n.data.at || '') >= since).forEach(n => { const k = n.data.by || '?'; const x = sc[k] = sc[k] || { who: k, contacts: 0, promises: 0, kept: 0 }; x.contacts++; if (n.data.type === 'promise') { x.promises++; if (n.data.kept === 'yes') x.kept++; } });
-  pays.filter(p => p.data.date >= since).forEach(p => { const k = p.data.cashier || '?'; const x = sc[k] = sc[k] || { who: k, contacts: 0, promises: 0, kept: 0 }; x.collected = r2(num(x.collected) + num(p.data.amount)); });
+  const since = addDays(t, -30); const sc = {}; const mine = r => !req.user.store_id || Number(r.store_id) === Number(req.user.store_id);
+  notes.filter(mine).filter(n => (n.data.at || '') >= since).forEach(n => { const k = n.data.by || '?'; const x = sc[k] = sc[k] || { who: k, contacts: 0, promises: 0, kept: 0 }; x.contacts++; if (n.data.type === 'promise') { x.promises++; if (n.data.kept === 'yes') x.kept++; } });
+  pays.filter(mine).filter(p => p.data.date >= since).forEach(p => { const k = p.data.cashier || '?'; const x = sc[k] = sc[k] || { who: k, contacts: 0, promises: 0, kept: 0 }; x.collected = r2(num(x.collected) + num(p.data.amount)); });
   res.json({ queue: q, scorecard: Object.values(sc) });
 }));
 app.get('/api/opportunities', W(async (req, res) => {
   const loans = await list(pool, 'loan', `AND data->>'status'='active'`); const pays = await list(pool, 'payment'); const by = {}; pays.forEach(p => (by[p.data.loan_id] = by[p.data.loan_id] || []).push(p));
   const custs = {}; (await list(pool, 'customer')).forEach(c => custs[c.id] = c.data);
-  const eq = loans.map(l => ({ l, s: loanStatus(l, by[l.id] || []) })).filter(x => x.s.daysLate === 0 && x.s.paidPI >= num(x.l.data.principal) * 0.5)
+  const mine = r => !req.user.store_id || Number(r.store_id) === Number(req.user.store_id);
+  const eq = loans.filter(mine).map(l => ({ l, s: loanStatus(l, by[l.id] || []) })).filter(x => x.s.daysLate === 0 && x.s.paidPI >= num(x.l.data.principal) * 0.5)
     .map(x => ({ loan_id: x.l.id, name: x.l.data.customer_label, phone: (custs[x.l.data.customer_id] || {}).phone, vehicle: x.l.data.vehicle_label, payoff: x.s.payoff, paidPct: r2(x.s.paidCount / num(x.l.data.term) * 100) }));
   const ros = await list(pool, 'ro', `AND data->>'status'='closed'`); const yr = new Date().getFullYear();
-  const svc = ros.filter(r => num(r.data.year) && yr - num(r.data.year) >= 8 || num(r.data.miles) >= 120000).slice(0, 100).map(r => ({ ro: r.data.number, name: r.data.customer_label, phone: (custs[r.data.customer_id] || {}).phone, vehicle: r.data.vehicle_label, miles: r.data.miles, closed: r.data.closed }));
+  const svc = ros.filter(mine).filter(r => num(r.data.year) && yr - num(r.data.year) >= 8 || num(r.data.miles) >= 120000).slice(0, 100).map(r => ({ ro: r.data.number, name: r.data.customer_label, phone: (custs[r.data.customer_id] || {}).phone, vehicle: r.data.vehicle_label, miles: r.data.miles, closed: r.data.closed }));
   res.json({ equity: eq, service: svc });
 }));
 app.get('/api/audit', W(async (req, res) => { if (!['owner', 'manager'].includes(req.user.role)) return deny(res); const { rows } = await pool.query(`SELECT * FROM audit ORDER BY id DESC LIMIT 500`); res.json(rows); }));
