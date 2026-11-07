@@ -1,0 +1,16 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Approve service</title><meta name="theme-color" content="#0f1b2d">
+<style>body{margin:0;background:#f3f5f8;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#132033}.w{max-width:520px;margin:0 auto;padding:18px}h1{font-size:21px;margin:4px 0}
+.i{background:#fff;border:1px solid #e1e6ee;border-radius:12px;padding:12px;margin:8px 0;display:flex;gap:12px;align-items:flex-start}.i.red{border-left:5px solid #c42b2b}.i.yellow{border-left:5px solid #e3a500}.i.green{border-left:5px solid #0d8a4e;opacity:.8}
+.i input{width:22px;height:22px;margin-top:2px}.i b{display:block}.i span{color:#62708a;font-size:14px}.p{margin-left:auto;font-weight:800;white-space:nowrap}
+button{width:100%;padding:14px;border:0;border-radius:10px;background:#0d8a4e;color:#fff;font-size:17px;font-weight:800;margin-top:12px}.tot{display:flex;justify-content:space-between;font-size:18px;font-weight:800;margin-top:10px}</style></head>
+<body><div class="w" id="w">Loading…</div><script>
+const t=location.pathname.split('/').pop(),m=n=>'$'+(Number(n)||0).toLocaleString('en-US',{minimumFractionDigits:2}),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+fetch('/api/public/inspection/'+t).then(r=>r.json()).then(j=>{if(j.error){w.textContent=j.error;return}
+const need=j.items.filter(x=>x.status!=='green'),ok=j.items.filter(x=>x.status==='green');
+w.innerHTML=`<p style="color:#62708a;margin:0">${esc(j.dealer)} · ${esc(j.ro)}</p><h1>${esc(j.vehicle||'Your vehicle')}</h1><p>Check the work you want us to do and tap Send.</p>
+${need.map(x=>`<label class="i ${x.status}"><input type="checkbox" value="${x.i}" ${x.approved?'checked':''} onchange="sum()"><div><b>${x.status==='red'?'Needs repair now':'Needs attention soon'}: ${esc(x.item)}</b><span>${esc(x.note||'')}</span></div><div class="p">${x.price?m(x.price):''}</div></label>`).join('')||'<p>Everything checked out. 👍</p>'}
+<div class="tot"><span>Approved total</span><span id="tt">$0.00</span></div>${need.length?'<button onclick="send()">Send my choices</button>':''}
+${ok.length?`<p style="margin-top:18px;color:#62708a">Checked and good: ${ok.map(x=>esc(x.item)).join(', ')}</p>`:''}`;window.items=j.items;sum();});
+function sum(){let s=0;document.querySelectorAll('input:checked').forEach(c=>s+=Number(items[c.value].price)||0);tt.textContent=m(s)}
+async function send(){const a=[...document.querySelectorAll('input:checked')].map(c=>Number(c.value));const r=await fetch('/api/public/inspection/'+t,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({approved:a})});w.innerHTML=r.ok?'<h1>Thank you!</h1><p>We got your choices and will get started. We’ll text you when it’s ready.</p>':'<p>Something went wrong — please call us.</p>'}
+</script></body></html>
